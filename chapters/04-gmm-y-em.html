@@ -651,6 +651,7 @@ Parte B · EM con regularización (reg = 1e-3)
         <div class="callout math">
           <div class="callout-title">➗ BIC y AIC</div>
           <p>$$ \mathrm{BIC}(k) = -2\,\ell(\hat\theta_k) + p(k)\log n, \qquad \mathrm{AIC}(k) = -2\,\ell(\hat\theta_k) + 2\,p(k) $$</p>
+          <p class="math-note">$\hat\theta_k$ son los parámetros a los que llega EM con $k$ componentes, y $\ell(\hat\theta_k)$ su log-verosimilitud; $p(k)$ es el número de parámetros libres del modelo. Dicho con precisión, después de la sección anterior: $\hat\theta_k$ no es «el» máximo de verosimilitud —que acabamos de demostrar que no existe— sino el mejor óptimo local que se encuentra, con la covarianza regularizada y varios arranques; por eso el código toma el mejor de ocho semillas.</p>
           <p class="math-note">En ambos, más bajo es mejor. El BIC (Schwarz, 1978) sale de aproximar la verosimilitud marginal bayesiana por Laplace; el AIC (Akaike, 1974) de estimar la divergencia KL esperada a la verdad. La diferencia práctica está en la penalización: $\log n$ frente a $2$. En cuanto $n \gt e^2 \approx 7{,}4$, el BIC castiga más y elige modelos más pequeños.</p>
         </div>
 

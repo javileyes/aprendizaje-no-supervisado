@@ -105,7 +105,7 @@
 
         <div class="callout warn">
           <div class="callout-title">⚠️ ¿Y si un grupo se queda vacío?</div>
-          <p>La media de un conjunto vacío es $0/0$: si $n_j = 0$, la fórmula no dice nada. Y ocurre de verdad, sobre todo en las primeras vueltas, cuando un centroide mal sembrado queda «rodeado» por otros y en el paso de asignación no se lleva ni un punto. Por eso en los tres programas de este capítulo verás <code>X[z == j].mean(axis=0) if np.any(z == j) else C[j]</code>: si el grupo $j$ está vacío, su centroide se queda donde estaba. Es la reparación más conservadora y no estropea la demostración de convergencia, porque así $J$ tampoco sube; el precio es que ese centro puede quedarse inútil varias vueltas —o para siempre—, y entonces acabas con menos de $k$ grupos efectivos. scikit-learn hace algo más agresivo: teletransporta el centroide huérfano al punto peor representado de todos, el de mayor $D(x)^2$, lo que también baja $J$ y además recupera el grupo perdido.</p>
+          <p>La media de un conjunto vacío es $0/0$: si $n_j = 0$, la fórmula no dice nada. Y ocurre de verdad, sobre todo en las primeras vueltas, cuando un centroide mal sembrado queda «rodeado» por otros y en el paso de asignación no se lleva ni un punto. Por eso en los tres programas de este capítulo verás <code>X[z == j].mean(axis=0) if np.any(z == j) else C[j]</code>: si el grupo $j$ está vacío, su centroide se queda donde estaba. Es la reparación más conservadora y no estropea la demostración de convergencia, porque así $J$ tampoco sube; el precio es que ese centro puede quedarse inútil varias vueltas —o para siempre—, y entonces acabas con menos de $k$ grupos efectivos. scikit-learn hace algo más agresivo: teletransporta el centroide huérfano al punto peor representado de todos —el más alejado del centroide que le tocaría, la cantidad que en la sección de k-means++ llamaremos $D(x)^2$—, lo que también baja $J$ y además recupera el grupo perdido.</p>
         </div>
 
         <h3>Por qué el algoritmo siempre termina</h3>
@@ -546,7 +546,7 @@ porque ninguna frontera recta las sigue.
               <tr><td><strong>k-medianas</strong></td><td>Minimiza $\ell_1$ en vez de $\ell_2$; el óptimo por grupo es la mediana coordenada a coordenada.</td><td>Cuando hay ruido de cola pesada y la media se descoloca.</td></tr>
               <tr><td><strong>mini-batch k-means</strong></td><td>Actualiza los centroides con muestras pequeñas en vez del conjunto entero.</td><td>Millones de puntos. Pierde algo de calidad a cambio de mucha velocidad.</td></tr>
               <tr><td><strong>k-means esférico</strong></td><td>Normaliza las filas y usa similitud coseno.</td><td>Texto y datos de recuentos, por lo visto en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</td></tr>
-              <tr><td><strong>k-means difuso</strong> (c-means)</td><td>Asignación blanda con exponente $m$: cada punto pertenece un poco a cada grupo.</td><td>Cuando las fronteras son genuinamente ambiguas. Es el paso previo natural al <a href="04-gmm-y-em.html">capítulo 4</a>.</td></tr>
+              <tr><td><strong>k-means difuso</strong> (c-means)</td><td>Asignación blanda con un exponente de difuminado $m \gt 1$: cada punto pertenece un poco a cada grupo, y cuanto mayor es $m$ más repartidas están las pertenencias ($m \to 1$ devuelve el k-means duro).</td><td>Cuando las fronteras son genuinamente ambiguas. Es el paso previo natural al <a href="04-gmm-y-em.html">capítulo 4</a>.</td></tr>
             </tbody>
           </table>
         </div>

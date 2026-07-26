@@ -45,7 +45,7 @@
         <div class="callout math">
           <div class="callout-title">➗ El objetivo</div>
           <p>$$ \min_{\theta,\phi} \; \frac{1}{n}\sum_{i=1}^{n} \big\lVert x_i - g_\phi\big(f_\theta(x_i)\big) \big\rVert^2, \qquad z = f_\theta(x) \in \mathbb{R}^k,\quad k \ll d $$</p>
-          <p class="math-note">$f_\theta$ es el <em>codificador</em>, que lleva de $\mathbb{R}^d$ al espacio latente $\mathbb{R}^k$; $g_\phi$ el <em>decodificador</em>, que vuelve. Ambos son redes neuronales con parámetros $\theta$ y $\phi$. Cuando $k \lt d$ se dice que el autoencoder es <em>subcompleto</em> (<em>undercomplete</em>), y esa restricción es lo que dificulta la solución trivial $g\circ f = \mathrm{id}$ —aunque, como veremos, no siempre la impide—.</p>
+          <p class="math-note">$f_\theta$ es el <em>codificador</em>, que lleva de $\mathbb{R}^d$ al espacio latente $\mathbb{R}^k$; $g_\phi$ el <em>decodificador</em>, que vuelve. Ambos son redes neuronales con parámetros $\theta$ y $\phi$. Escribiremos $\hat x = g_\phi(f_\theta(x))$ para la <strong>reconstrucción</strong> de $x$; ojo a la letra, porque el $\hat x$ del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> era el vector normalizado a norma 1, y aquí el sombrero significa «lo que el modelo produce», como el $\hat y$ del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>. Cuando $k \lt d$ se dice que el autoencoder es <em>subcompleto</em> (<em>undercomplete</em>), y esa restricción es lo que dificulta la solución trivial $g\circ f = \mathrm{id}$ —aunque, como veremos, no siempre la impide—.</p>
         </div>
 
         <figure class="figure">
@@ -233,6 +233,7 @@ concentrarlas: cualquier rotación dentro del subespacio le da igual.</pre>
           <div class="callout-title">➗ Una red, en tres líneas (todo lo que hace falta saber)</div>
           <p>Hasta este capítulo el manual no ha usado ninguna red neuronal, así que conviene fijar el vocabulario antes de derivar nada. Una <strong>red densa</strong> —o perceptrón multicapa— es una composición de $L$ capas; la capa $\ell$ toma la salida de la anterior y calcula</p>
           <p>$$ z^{(\ell)} = a^{(\ell-1)}W^{(\ell)} + b^{(\ell)}, \qquad a^{(\ell)} = \sigma\big(z^{(\ell)}\big), \qquad a^{(0)} = x $$</p>
+          <p class="math-note"><strong>Aviso de convenio.</strong> Fíjate en que el dato multiplica <em>por la izquierda</em>, $aW$ y no $Wa$: en estos capítulos $a^{(\ell)}$ es una matriz con una fila por dato del lote, que es como opera NumPy y como está escrito el código. Comparado con el $Wz$ del <a href="10-svd-y-ppca.html">capítulo 10</a> o el $y = Wx$ del <a href="11-nmf-e-ica.html">11</a>, todas las matrices de pesos van traspuestas; así $W^{(\ell)}$ tiene tantas filas como entradas de la capa y tantas columnas como salidas.</p>
           <p class="math-note">$W^{(\ell)}$ es una matriz de <em>pesos</em>, $b^{(\ell)}$ un vector de <em>sesgos</em> y $\sigma$ una función no lineal aplicada elemento a elemento, la <em>activación</em>: aquí usaremos $\tanh$, y en el <a href="14-vae.html">capítulo 14</a> también ReLU, $\max(0,z)$, y la sigmoide. Sin $\sigma$ la red colapsa: componer capas lineales da otra capa lineal, y de hecho es <em>exactamente</em> por eso que el teorema de Baldi y Hornik de la sección anterior dice lo que dice.</p>
           <p class="math-note">Entrenar es minimizar $\mathcal{L}(\theta)$ por <strong>descenso de gradiente</strong>, $\theta \leftarrow \theta - \eta\,\nabla_\theta\mathcal{L}$, con $\eta$ la <em>tasa de aprendizaje</em>. Calcular el gradiente sobre los $n$ datos en cada paso es caro, así que cada paso usa un <em>lote</em> —un subconjunto al azar— y una <em>época</em> es una pasada completa por los datos. <strong>Adam</strong>, que aparece en el código de aquí en adelante, es la variante habitual: mantiene una media móvil del gradiente y de su cuadrado para dar a cada peso su propio paso efectivo. Nada de esto cambia <em>qué</em> se optimiza; solo cómo se baja.</p>
         </div>
@@ -243,7 +244,7 @@ concentrarlas: cualquier rotación dentro del subespacio le da igual.</pre>
           <div class="callout-title">➗ Retropropagación</div>
           <p>$$ \delta^{(L)} = \frac{\partial \mathcal{L}}{\partial a^{(L)}}, \qquad \delta^{(\ell)} = \Big(\delta^{(\ell+1)} \big(W^{(\ell+1)}\big)^{\!\top}\Big) \odot \sigma'\!\big(z^{(\ell)}\big) $$</p>
           <p>$$ \frac{\partial \mathcal{L}}{\partial W^{(\ell)}} = \big(a^{(\ell-1)}\big)^{\!\top} \delta^{(\ell)}, \qquad \frac{\partial \mathcal{L}}{\partial b^{(\ell)}} = \sum_{\text{lote}} \delta^{(\ell)} $$</p>
-          <p class="math-note">$\odot$ es el producto elemento a elemento. Con $\sigma = \tanh$ resulta $\sigma'(z) = 1 - \tanh^2(z) = 1 - a^2$, así que la derivada se calcula desde la propia activación sin guardar $z$. El coste de todo el gradiente es el mismo, en orden de magnitud, que el de una pasada hacia delante.</p>
+          <p class="math-note">$\delta^{(\ell)}$ es el <strong>error retropropagado</strong> de la capa $\ell$: la derivada de la pérdida respecto de la <em>preactivación</em> $z^{(\ell)}$, es decir cuánto cambiaría $\mathcal{L}$ si moviéramos un pelo lo que entra en la activación de esa capa. La primera fórmula lo arranca en la última capa y la segunda lo va empujando hacia atrás, que es de donde viene el nombre del método. $L$ es el número de capas. $\odot$ es el producto elemento a elemento. Con $\sigma = \tanh$ resulta $\sigma'(z) = 1 - \tanh^2(z) = 1 - a^2$, así que la derivada se calcula desde la propia activación sin guardar $z$. El coste de todo el gradiente es el mismo, en orden de magnitud, que el de una pasada hacia delante.</p>
         </div>
 
         <div class="callout warn">
@@ -505,7 +506,7 @@ reconstruir. De ahí que su error sea tres veces menor.</pre>
               </tr>
               <tr>
                 <td><strong>Disperso</strong></td>
-                <td>Penaliza la activación media: $\lambda\sum_j D_{\mathrm{KL}}(\rho \Vert \hat\rho_j)$ con $\rho$ pequeño, o simplemente $\lambda\lVert z\rVert_1$</td>
+                <td>Penaliza la activación media: $\lambda\sum_j D_{\mathrm{KL}}(\rho \Vert \hat\rho_j)$, donde $\hat\rho_j$ es la activación media <em>observada</em> de la neurona latente $j$ sobre el conjunto y $\rho$ la que uno querría, pequeña; o simplemente $\lambda\lVert z\rVert_1$</td>
                 <td>Cada dato usa pocas unidades. Las bases resultantes se parecen a las de NMF del <a href="11-nmf-e-ica.html">capítulo 11</a> y a los campos receptivos de la corteza visual.</td>
               </tr>
               <tr>

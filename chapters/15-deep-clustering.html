@@ -46,7 +46,7 @@
 
         <h2 id="dec">DEC: asignación blanda y distribución objetivo</h2>
 
-        <p>DEC (Xie, Girshick y Farhadi, 2016) mantiene $K$ centroides $\mu_j$ en el espacio latente y define la pertenencia con la misma distribución que usábamos en t-SNE:</p>
+        <p>DEC (Xie, Girshick y Farhadi, 2016) mantiene $k$ centroides $\mu_j$ en el espacio latente y define la pertenencia con la misma <em>familia</em> de distribuciones que usábamos en t-SNE —una t de Student—, pero reciclando las letras con otro significado: aquí el segundo índice de $q_{ij}$ no es otro dato sino un <strong>grupo</strong>, así que $q$ es una matriz $n \times k$ que normaliza por filas ($\sum_j q_{ij} = 1$), y no una distribución sobre pares de puntos como la del <a href="12-manifold-tsne-umap.html">capítulo 12</a>. Lo mismo vale para $P$ y $Q$ de aquí en adelante.</p>
 
         <div class="callout math">
           <div class="callout-title">➗ Asignación blanda (t de Student)</div>

@@ -46,7 +46,7 @@
 
         <h2 id="metricas">El catálogo de métricas, y de dónde sale cada una</h2>
 
-        <p>Formalmente, una función $d : \mathbb{R}^d \times \mathbb{R}^d \to \mathbb{R}_{\ge 0}$ es una <strong>métrica</strong> si cumple cuatro cosas: es no negativa; vale cero exactamente cuando $x = y$ (identidad de los indiscernibles); es simétrica, $d(x,y) = d(y,x)$; y respeta la desigualdad triangular $d(x,z) \le d(x,y) + d(y,z)$. La última es la que le da contenido geométrico: sin ella «acercarse» deja de ser transitivo y buena parte de las estructuras de indexación dejan de funcionar.</p>
+        <p>Formalmente, una función $d : \mathbb{R}^d \times \mathbb{R}^d \to \mathbb{R}_{\ge 0}$ es una <strong>métrica</strong> si cumple cuatro cosas —y observa de paso que la letra $d$ está haciendo dos trabajos en esa misma línea, como hará en todo el manual: <em>con argumentos</em> es una distancia, $d(x,y)$; <em>sin ellos</em> es la dimensión, $\mathbb{R}^d$; el contexto los separa siempre, pero conviene tenerlo dicho—: es no negativa; vale cero exactamente cuando $x = y$ (identidad de los indiscernibles); es simétrica, $d(x,y) = d(y,x)$; y respeta la desigualdad triangular $d(x,z) \le d(x,y) + d(y,z)$. La última es la que le da contenido geométrico: sin ella «acercarse» deja de ser transitivo y buena parte de las estructuras de indexación dejan de funcionar.</p>
 
         <div class="callout math">
           <div class="callout-title">➗ La familia de Minkowski</div>
@@ -76,7 +76,7 @@
 
         <p>$$ \lVert \hat x - \mu_k \rVert^2 \;=\; 1 - 2\,\hat x^\top \mu_k + \lVert \mu_k \rVert^2 , $$</p>
 
-        <p>y los centroides son <em>medias</em>, no vectores unitarios: un grupo compacto produce un $\mu_k$ de norma casi 1 y uno disperso, un $\mu_k$ de norma pequeña. Ese término $\lVert\mu_k\rVert^2$ no es común a todos los $k$, así que inclina la comparación y el argmin euclídeo puede no coincidir con el argmax del coseno. La equivalencia se restaura renormalizando también los centroides en cada iteración, $\mu_k \leftarrow \mu_k/\lVert\mu_k\rVert$: eso es exactamente el <em>k-means esférico</em> del <a href="03-kmeans.html">capítulo 3</a>.</p>
+        <p>y los centroides son <em>medias</em>, no vectores unitarios: un grupo compacto produce un $\mu_k$ de norma casi 1 y uno disperso, un $\mu_k$ de norma pequeña. Ese término $\lVert\mu_k\rVert^2$ no es común a todos los grupos, así que inclina la comparación y el argmin euclídeo puede no coincidir con el argmax del coseno. La equivalencia se restaura renormalizando también los centroides en cada iteración, $\mu_k \leftarrow \mu_k/\lVert\mu_k\rVert$: eso es exactamente el <em>k-means esférico</em> del <a href="03-kmeans.html">capítulo 3</a>.</p>
 
         <h3>Mahalanobis: la distancia que descuenta la correlación</h3>
 

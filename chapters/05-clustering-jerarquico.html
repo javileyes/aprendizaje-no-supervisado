@@ -61,7 +61,7 @@
 
         <p>Hay un quinto criterio, distinto en espíritu: en lugar de definir una distancia entre grupos, Ward pregunta <strong>cuánto empeora la inercia si fusiono estos dos</strong>. Fusiona la pareja que menos la aumente. Como la inercia $W$ es exactamente el objetivo del <a href="03-kmeans.html">capítulo 3</a>, Ward es un k-means codicioso y jerárquico.</p>
 
-        <p>Lo bonito es que ese coste tiene una fórmula cerrada muy simple, que merece la pena derivar. Sea $\mu_{AB}$ la media del grupo fusionado. Aplicando la identidad ANOVA del capítulo 3 dentro del grupo $A\cup B$ —la dispersión total se descompone en intra más entre—:</p>
+        <p>Lo bonito es que ese coste tiene una fórmula cerrada muy simple, que merece la pena derivar. Escribimos $W(S) = \sum_{x \in S}\lVert x - \mu_S\rVert^2$ para la inercia de un <em>solo</em> grupo: la misma suma intra del capítulo 3, restringida a $S$ y medida respecto de su propia media $\mu_S$, de modo que el $W$ de allí es $\sum_j W(C_j)$. Sea $\mu_{AB}$ la media del grupo fusionado. Aplicando la identidad ANOVA del capítulo 3 dentro del grupo $A\cup B$ —la dispersión total se descompone en intra más entre—:</p>
 
         <p>$$ W(A\cup B) \;=\; W(A) + W(B) + n_A\lVert \mu_A - \mu_{AB}\rVert^2 + n_B\lVert \mu_B - \mu_{AB}\rVert^2 . $$</p>
 
@@ -112,7 +112,7 @@
 
         <h2 id="inversiones">Monotonía e inversiones</h2>
 
-        <p>Para que un dendrograma se pueda dibujar y leer, las alturas de fusión deben ser no decrecientes: cada fusión, a mayor altura que las anteriores. Formalmente, eso equivale a que las distancias cofenéticas formen una <strong>ultramétrica</strong>, es decir, que cumplan $d(x,z) \le \max\{d(x,y), d(y,z)\}$ —una condición más fuerte que la desigualdad triangular—.</p>
+        <p>Para que un dendrograma se pueda dibujar y leer, las alturas de fusión deben ser no decrecientes: cada fusión, a mayor altura que las anteriores. Formalmente, eso equivale a que las <strong>distancias cofenéticas</strong> —la distancia cofenética entre dos puntos es la altura a la que el dendrograma los junta por primera vez— formen una <strong>ultramétrica</strong>, es decir, que cumplan $d(x,z) \le \max\{d(x,y), d(y,z)\}$ —una condición más fuerte que la desigualdad triangular—.</p>
 
         <p>Simple, completo, medio y Ward la cumplen. <strong>El de centroide y el de mediana, no.</strong> Pueden producir <em>inversiones</em>: una fusión a menor altura que la anterior, que en el dibujo aparece como una rama que baja. Ocurre cuando el centroide del grupo fusionado se acerca a un tercer grupo más de lo que estaban los originales; el caso más simple es un triángulo casi equilátero.</p>
 

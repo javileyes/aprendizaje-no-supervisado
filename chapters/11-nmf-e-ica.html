@@ -98,7 +98,7 @@
           <p class="math-note">$\odot$ y la barra de fracción son producto y división <em>elemento a elemento</em>. La clave del diseño: si $X \ge 0$ y se parte de $W, H \gt 0$, todos los factores son no negativos, así que <strong>el producto nunca puede volverse negativo</strong>. La restricción se satisface sola, sin proyecciones ni penalizaciones. Además se demuestra —construyendo una función auxiliar, como en EM— que el error no aumenta nunca.</p>
         </div>
 
-        <p>Las reglas son, en el fondo, un descenso de gradiente con un paso elegido con astucia. Para $H$, el gradiente del error es $\nabla_H = 2(W^\top W H - W^\top X)$; con paso $\eta = H \oslash (2W^\top W H)$ —distinto para cada elemento— el descenso $H - \eta\odot\nabla_H$ se reduce exactamente a la regla multiplicativa. Ese paso adaptativo es lo que garantiza que nada cruce el cero.</p>
+        <p>Las reglas son, en el fondo, un descenso de gradiente con un paso elegido con astucia. Para $H$, el gradiente del error es $\nabla_H = 2(W^\top W H - W^\top X)$; con paso $\eta = H \oslash (2W^\top W H)$ —donde $\oslash$ es la división elemento a elemento, hermana del producto $\odot$, de modo que el paso es distinto para cada entrada de la matriz— el descenso $H - \eta\odot\nabla_H$ se reduce exactamente a la regla multiplicativa. Ese paso adaptativo es lo que garantiza que nada cruce el cero.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ NMF no tiene solución única</div>
@@ -273,7 +273,7 @@ sino en CÓMO las representa:
         <div class="callout math">
           <div class="callout-title">➗ El modelo de ICA</div>
           <p>$$ x = A\,s, \qquad s = (s_1,\dots,s_k)\ \text{con componentes} \ \textbf{independientes} \ \text{y} \ \textbf{no gaussianas} $$</p>
-          <p class="math-note">$x$ es lo que observamos (los micrófonos), $s$ las fuentes y $A$ la matriz de mezcla, ambas desconocidas. Buscamos $W \approx A^{-1}$ tal que $y = Wx$ tenga componentes independientes. Hay dos indeterminaciones inevitables: no se puede recuperar la <em>escala</em> de cada fuente (multiplicar $s_j$ por 2 y dividir la columna $j$ de $A$ por 2 da lo mismo) ni su <em>orden</em>.</p>
+          <p class="math-note">$x$ es lo que observamos (los micrófonos), $s$ las fuentes y $A$ la matriz de mezcla, ambas desconocidas. Buscamos $W \approx A^{-1}$ tal que $y = Wx$ tenga componentes independientes. Aviso de letra: esta $W$ de <em>desmezclado</em>, de tamaño $k \times d$, no tiene nada que ver con la $W$ de coeficientes no negativos de la primera mitad del capítulo, ni con la dispersión intra-grupo de los capítulos <a href="03-kmeans.html">3</a> y <a href="08-validacion-clusteres.html">8</a>; es la letra más reciclada del manual. Hay dos indeterminaciones inevitables: no se puede recuperar la <em>escala</em> de cada fuente (multiplicar $s_j$ por 2 y dividir la columna $j$ de $A$ por 2 da lo mismo) ni su <em>orden</em>.</p>
         </div>
 
         <p>Compara con PCA. PCA busca componentes <em>incorreladas</em>, que es una condición sobre los momentos de segundo orden: $\mathbb{E}[y_iy_j]=0$. La independencia es mucho más fuerte: exige que la densidad conjunta factorice, $p(y) = \prod_j p_j(y_j)$, lo que involucra <em>todos</em> los momentos. Incorrelación no implica independencia, y esa brecha es exactamente el espacio donde vive ICA.</p>

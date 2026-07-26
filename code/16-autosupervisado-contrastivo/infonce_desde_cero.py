@@ -74,13 +74,13 @@ def normaliza(H):
 
 
 def nt_xent(H, tau=0.2):
-    """Pérdida InfoNCE simétrica. H tiene 2n filas: [vista A ; vista B]."""
+    """Pérdida InfoNCE simétrica. H tiene 2b filas: [vista A ; vista B]."""
     Z, norm = normaliza(H)
     m = len(Z)
-    n = m // 2
+    b = m // 2                                    # tamaño del LOTE, no del conjunto
     S = (Z @ Z.T) / tau
     np.fill_diagonal(S, -1e9)                     # nadie es su propio positivo
-    pos = np.concatenate([np.arange(n, m), np.arange(0, n)])
+    pos = np.concatenate([np.arange(b, m), np.arange(0, b)])
     S = S - S.max(axis=1, keepdims=True)
     P = np.exp(S)
     P /= P.sum(axis=1, keepdims=True)

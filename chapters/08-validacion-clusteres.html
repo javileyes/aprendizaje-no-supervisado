@@ -66,6 +66,7 @@
           <p>Para cada punto $i$, sea $a(i)$ la distancia media a los demás puntos de <em>su</em> grupo y $b(i)$ la menor de las distancias medias a los puntos de <em>otro</em> grupo:</p>
           <p>$$ s(i) \;=\; \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}} \;\in\; [-1, 1] $$</p>
           <p class="math-note">$s(i) \approx 1$ significa que $i$ está mucho más cerca de los suyos que de cualquier otro grupo; $s(i) \approx 0$, que está en la frontera; $s(i) \lt 0$, que estaría mejor en otro grupo. El índice global es la media sobre todos los puntos. Su gran virtud es que también se puede mirar punto a punto, para localizar quién está mal colocado.</p>
+          <p class="math-note">Dos condiciones de validez que la fórmula no enseña. Hace falta $k \ge 2$ para que $b(i)$ exista —de ahí que la silueta, al contrario que el <em>gap</em>, nunca pueda proponer $k = 1$: la pregunta «¿y si no hay grupos?» le queda literalmente fuera del dominio—. Y si $i$ es el único punto de su grupo, $a(i)$ queda indefinido y la fórmula sale $0/0$; el convenio universal, el de scikit-learn incluido, es tomar $s(i) = 0$.</p>
         </div>
 
         <figure class="figure">
@@ -113,6 +114,7 @@
         <div class="callout math">
           <div class="callout-title">➗ Davies-Bouldin (1979)</div>
           <p>$$ \mathrm{DB}(k) \;=\; \frac{1}{k}\sum_{i=1}^{k} \max_{j \ne i} \frac{S_i + S_j}{\lVert \mu_i - \mu_j\rVert}, \qquad S_i = \sqrt{\frac{1}{n_i}\sum_{x \in C_i} \lVert x - \mu_i\rVert^2} $$</p>
+          <p class="math-note"><strong>Aviso de índices:</strong> aquí, y solo aquí, $i$ y $j$ recorren <em>grupos</em>, no puntos. $\mu_i$, $C_i$, $n_i$ y $S_i$ son el centroide, el conjunto de puntos, el tamaño y la dispersión del grupo $i$ —al revés que en la silueta de arriba, donde $s(i)$, $a(i)$ y $b(i)$ eran de un punto, y al revés que en el resto del manual—. Es la notación original de Davies y Bouldin y se ha respetado para que puedas cotejarla con el artículo.</p>
           <p class="math-note">$S_i$ es la dispersión media del grupo $i$ y el denominador, la distancia entre centroides. Para cada grupo se toma su <em>peor</em> vecino —el que más se le solapa— y se promedia. Aquí, más bajo es mejor.</p>
         </div>
 
@@ -314,7 +316,7 @@ En las lunas, comparemos la partición de k-means con la verdadera:
         <div class="callout math">
           <div class="callout-title">➗ Estadístico de hueco (gap)</div>
           <p>$$ \mathrm{Gap}(k) \;=\; \mathbb{E}^{*}\!\big[\log W_k\big] \;-\; \log W_k $$</p>
-          <p class="math-note">$W_k$ es la inercia obtenida con $k$ grupos en tus datos, y $\mathbb{E}^{*}$ la esperanza de la misma cantidad sobre conjuntos de <em>referencia</em> generados sin estructura (uniformes dentro de la envolvente de tus datos), estimada con $B$ repeticiones. El «hueco» mide cuánto mejor agrupan tus datos que el ruido. Con $s_k = \mathrm{sd}^*(\log W_k)\sqrt{1 + 1/B}$ como error típico, la regla es quedarse con el <strong>menor $k$ tal que $\mathrm{Gap}(k) \ge \mathrm{Gap}(k+1) - s_{k+1}$</strong>: el primer $k$ a partir del cual añadir grupos ya no aporta nada por encima del ruido.</p>
+          <p class="math-note">$W_k$ es la inercia obtenida con $k$ grupos en tus datos, y $\mathbb{E}^{*}$ la esperanza de la misma cantidad sobre conjuntos de <em>referencia</em> generados sin estructura (uniformes dentro de la envolvente de tus datos), estimada con $B_{\mathrm{ref}}$ repeticiones —en el código, <code>B_REF = 20</code>—. Dos avisos de letra: el asterisco de $\mathbb{E}^{*}$ y $\mathrm{sd}^{*}$ significa aquí «sobre las referencias sintéticas», no la estrella de «lo verdadero» que llevaba $p^\star$ en el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>; y el subíndice de $B_{\mathrm{ref}}$ está para no chocar con el $B$ de dispersión <em>entre</em> grupos que acabamos de usar en Calinski-Harabasz. El «hueco» mide cuánto mejor agrupan tus datos que el ruido. Con $s_k = \mathrm{sd}^*(\log W_k)\sqrt{1 + 1/B_{\mathrm{ref}}}$ como error típico, la regla es quedarse con el <strong>menor $k$ tal que $\mathrm{Gap}(k) \ge \mathrm{Gap}(k+1) - s_{k+1}$</strong>: el primer $k$ a partir del cual añadir grupos ya no aporta nada por encima del ruido.</p>
           <p class="math-note">Y el logaritmo no es cosmético. Si multiplicas todos tus datos por 1000, la inercia se multiplica por $10^6$ y la de las referencias también; en escala logarítmica ambas se desplazan exactamente $2\log 1000 = 13{,}8155$, y la resta no se entera: el gap sale idéntico, salvo redondeo de coma flotante. Una diferencia de inercias crudas, en cambio, se multiplicaría por $10^6$ y no significaría nada. El logaritmo es lo que convierte el gap en una cantidad sin unidades, comparable entre conjuntos de datos: la misma invariancia de escala que el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> ponía en el teorema de Kleinberg como una de las tres propiedades irrenunciables e incompatibles.</p>
         </div>
 
@@ -450,7 +452,7 @@ uniforme (sin grupos)   (respuesta correcta: k = 1)
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
           <p>Sube <code>B_REF = 20</code> a <code>B_REF = 60</code> y compara. Las dos decisiones se mantienen ($k=4$ y $k=1$), pero fíjate en algo que sorprende: <strong>los $s_k$ no se encogen</strong>. Con 20 referencias, $s_4 = 0{,}0767$; con 60, $s_4 = 0{,}0547$, y otros suben (por ejemplo $s_1$ pasa de 0,0303 a 0,0326). La diferencia es simple ruido de Monte Carlo.</p>
-          <p>El motivo está en la fórmula: $s_k = \mathrm{sd}^{*}(\log W_k)\sqrt{1 + 1/B}$ <em>no</em> es el error típico de una media —eso sería dividir por $\sqrt{B}$—, sino la desviación de la <em>distribución</em> de referencia, corregida para predecir una observación nueva. El factor $\sqrt{1+1/B}$ solo pasa de 1,025 a 1,008. Lo que sí mejora al subir $B$ es la estimación de $\mathbb{E}^{*}[\log W_k]$, y con ella la estabilidad de la decisión.</p>
+          <p>El motivo está en la fórmula: $s_k = \mathrm{sd}^{*}(\log W_k)\sqrt{1 + 1/B_{\mathrm{ref}}}$ <em>no</em> es el error típico de una media —eso sería dividir por $\sqrt{B_{\mathrm{ref}}}$—, sino la desviación de la <em>distribución</em> de referencia, corregida para predecir una observación nueva. El factor $\sqrt{1+1/B_{\mathrm{ref}}}$ solo pasa de 1,025 a 1,008. Lo que sí mejora al subir $B_{\mathrm{ref}}$ es la estimación de $\mathbb{E}^{*}[\log W_k]$, y con ella la estabilidad de la decisión.</p>
         </div>
 
         <h2 id="estabilidad">Estabilidad: ¿sobreviviría a otra muestra?</h2>
@@ -463,6 +465,7 @@ uniforme (sin grupos)   (respuesta correcta: k = 1)
           <div class="callout-title">➗ Estabilidad por remuestreo</div>
           <p>$$ \mathrm{Est}(k) \;=\; \mathbb{E}\Big[\, \mathrm{acuerdo}\big(\,\mathcal{A}(S_1)\big|_{S_1\cap S_2},\; \mathcal{A}(S_2)\big|_{S_1\cap S_2}\,\big) \Big] $$</p>
           <p class="math-note">$S_1$ y $S_2$ son dos submuestras aleatorias (aquí, del 80&nbsp;%), $\mathcal{A}$ es el algoritmo de clústering con $k$ grupos, y el acuerdo se mide <em>solo en los puntos que ambas comparten</em> —a cada uno se le aplica el modelo aprendido en su submuestra—. La esperanza se estima repitiendo el sorteo. Un $k$ que produzca siempre la misma partición da $\mathrm{Est}\approx 1$.</p>
+          <p class="math-note">$\mathrm{acuerdo}(\cdot,\cdot)$ se mide <strong>por parejas</strong>, no comparando etiquetas: de todos los pares de puntos compartidos, la fracción en la que las dos particiones coinciden en si van juntos o separados. Hay que hacerlo así porque los números de grupo son arbitrarios —la partición de $S_1$ puede llamar «2» a lo que la de $S_2$ llama «5»— y las parejas son justamente lo que no depende del nombre. Es el mismo índice de Rand de la sección anterior, aquí sin ajustar.</p>
         </div>
 
         <div class="code-example" data-packages="numpy,matplotlib">

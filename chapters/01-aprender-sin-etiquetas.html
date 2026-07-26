@@ -31,7 +31,7 @@
 
         <span class="chapter-eyebrow">Parte I · Capítulo 1</span>
         <h1>Aprender sin etiquetas</h1>
-        <p class="lead">En el aprendizaje supervisado alguien ha pasado antes que tú poniendo nombres. Aquí no hay nadie. Solo hay una nube de puntos (nota: cada punto es un dato, un ejemplar y sus coordenadas son las propiedades del dato, si tiene 3 propiedades tendrá 3 coordenadas, es decir, 3 dimensiones; si tiene n propiedades entonces el punto tendrá n dimensiones, será un punto en ℝⁿ) y la sospecha de que no está repartida al azar. Este capítulo explica qué se puede aprender de esa sospecha, qué optimiza realmente un algoritmo no supervisado, y por qué la pregunta «¿cuál es la respuesta correcta?» está mal planteada.</p>
+        <p class="lead">En el aprendizaje supervisado alguien ha pasado antes que tú poniendo nombres. Aquí no hay nadie. Solo hay una nube de puntos (nota: cada punto es un dato, un ejemplar y sus coordenadas son las propiedades del dato, si tiene 3 propiedades tendrá 3 coordenadas, es decir, 3 dimensiones; si tiene d propiedades entonces el punto tendrá d dimensiones, será un punto en ℝᵈ) y la sospecha de que no está repartida al azar. Este capítulo explica qué se puede aprender de esa sospecha, qué optimiza realmente un algoritmo no supervisado, y por qué la pregunta «¿cuál es la respuesta correcta?» está mal planteada.</p>
 
         <h2 id="idea">Un botánico sin nombres</h2>
 
@@ -61,6 +61,12 @@
         </div>
 
         <p>Eso es todo. Esa tabla <em>es</em> el conjunto de datos, y merece una mirada atenta porque todo el manual trabaja sobre objetos de esta forma. Cada fila es una planta y se escribe como un vector $x_i \in \mathbb{R}^d$ con $d = 4$ componentes; el conjunto entero es una matriz $X \in \mathbb{R}^{n \times d}$ con $n = 10\,000$ filas. El subíndice $i$ no significa nada: si barajas las filas, tienes exactamente el mismo conjunto de datos. Y —esto es lo importante— <strong>no hay ninguna columna más</strong>. Ni la hay ahora ni la va a haber después.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Un convenio para todo el manual: fila o columna</div>
+          <p>En la matriz $X$ los datos van <strong>por filas</strong>, una por observación. Pero cuando $x_i$ aparece suelto dentro de una fórmula lo trataremos como <strong>vector columna</strong> de $\mathbb{R}^d$: por eso $u^\top x_i$ es un número y $x_i x_i^\top$ una matriz $d \times d$. Las dos cosas conviven sin contradicción —$X$ es la tabla, $x_i$ es un vector—, pero conviene tenerlo dicho antes de la primera traspuesta.</p>
+          <p>Hay una excepción, y se avisa allí: en los capítulos de redes (<a href="13-autoencoders.html">13</a> en adelante) las capas se escriben $aW$ y no $Wx$, porque así es como opera el código sobre un lote entero —una fila por dato, que es la convención de NumPy—. Comparadas con las de la parte III, todas las matrices de pesos van traspuestas.</p>
+        </div>
 
         <p>Vuelve ahora a las cuatro cosas que decías en la isla y mira de dónde salen exactamente, en el mismo orden:</p>
 

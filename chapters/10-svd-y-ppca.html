@@ -40,6 +40,7 @@
         <div class="callout math">
           <div class="callout-title">➗ Descomposición en valores singulares</div>
           <p>$$ X \;=\; U\,\Sigma\,V^\top, \qquad U^\top U = I,\quad V^\top V = I,\quad \Sigma = \operatorname{diag}(\sigma_1 \ge \sigma_2 \ge \cdots \ge 0) $$</p>
+          <p class="math-note"><strong>Los tamaños, que aquí importan.</strong> Con $X$ de $n \times d$ y $r = \min(n, d)$, usamos siempre la SVD <em>reducida</em>: $U$ es $n\times r$, $\Sigma$ es $r \times r$ y $V$ es $d \times r$. Hay, por tanto, $r$ valores singulares. Es la que calcula <code>np.linalg.svd(..., full_matrices=False)</code>. Cuidado con una trampa clásica: $U^\top U = I_r$ y $V^\top V = I_r$ siempre, pero $UU^\top$ y $VV^\top$ <em>no</em> son la identidad salvo que la matriz sea cuadrada; por eso los productos de abajo se escriben siempre en ese orden.</p>
           <p class="math-note">$U$ tiene por columnas los <em>vectores singulares por la izquierda</em>, $V$ los de la derecha, ambos ortonormales, y los $\sigma_j \ge 0$ son los <em>valores singulares</em>. Geométricamente: toda aplicación lineal es una rotación ($V^\top$), un estiramiento de cada eje por su $\sigma_j$ ($\Sigma$) y otra rotación ($U$). No hay más.</p>
         </div>
 
@@ -90,7 +91,7 @@
 
         <p>$$ S = \frac{1}{n-1}\tilde X^\top \tilde X = \frac{1}{n-1}\,V\Sigma U^\top U\Sigma V^\top = V\,\frac{\Sigma^2}{n-1}\,V^\top . $$</p>
 
-        <p>Como $V$ es ortogonal y $\Sigma^2/(n-1)$ diagonal, eso <em>es</em> la diagonalización de $S$. Por tanto:</p>
+        <p>Como las columnas de $V$ son ortonormales y $\Sigma^2/(n-1)$ es diagonal, eso <em>es</em> la diagonalización de $S$: los $r$ vectores singulares por la derecha son autovectores de $S$ con autovalores $\sigma_j^2/(n-1)$. Si $r \lt d$ —el caso $d \gg n$ del que hablaremos enseguida— la lista está completa igualmente: los $d - r$ autovalores que faltan valen cero, porque $S$ tiene rango $r$ como mucho. Por tanto:</p>
 
         <ul>
           <li>Las <strong>direcciones principales</strong> son las columnas de $V$.</li>
@@ -262,7 +263,7 @@ plt.show()
 
         <p>PCA es una receta geométrica y por eso no responde a preguntas que en la práctica surgen siempre: ¿cuál es la probabilidad de este dato?, ¿cómo de seguro estoy de su representación latente?, ¿qué hago si faltan valores?, ¿cómo elijo $k$ con un criterio y no con un codo?</p>
 
-        <p>Tipping y Bishop resolvieron todo eso en 1999 escribiendo el <em>modelo generativo</em> del que PCA es la solución:</p>
+        <p>Tipping y Bishop resolvieron todo eso en 1999 escribiendo el <em>modelo generativo</em> del que PCA es la solución. Antes de leerlo, un aviso de notación: en esta segunda mitad del capítulo <strong>$\sigma^2$ sin subíndice es la varianza del ruido</strong> del modelo, no un valor singular. Los valores singulares siguen llevando subíndice —$\sigma_j$— y el puente entre los dos mundos es $\lambda_j = \sigma_j^2/(n-1)$. La letra $W$ también cambia de manos: aquí es la matriz de cargas, nada que ver con la dispersión intra-grupo $W$ de los capítulos <a href="03-kmeans.html">3</a> y <a href="08-validacion-clusteres.html">8</a>.</p>
 
         <div class="callout math">
           <div class="callout-title">➗ El modelo de PPCA</div>
