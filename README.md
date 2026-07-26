@@ -2,17 +2,28 @@
 
 de la intuición a las matemáticas
 
+### 👉 **[Leer el manual en línea](https://javileyes.github.io/aprendizaje-no-supervisado/)**
+
 Un manual web **interactivo**: explicaciones **de la intuición a las matemáticas**, con
 ejemplos en Python que puedes **ejecutar en el propio navegador** (gracias a
 [Pyodide](https://pyodide.org)) o descargar y correr en tu **terminal**.
 
 ---
 
-## 🚀 Cómo abrir el manual (el sitio web)
+## 🚀 Cómo abrir el manual
 
-Sitio **estático** (HTML + CSS + JS, sin backend). Recomendado:
+**En línea, sin instalar nada:** <https://javileyes.github.io/aprendizaje-no-supervisado/>
+
+Es la forma recomendada. El sitio está publicado en GitHub Pages y funciona entero desde el
+navegador: los ejemplos se ejecutan, se editan y se pueden anotar sin descargar el repositorio.
+
+**En local**, si prefieres tenerlo en tu máquina o vas a modificarlo. Es un sitio **estático**
+(HTML + CSS + JS, sin backend), pero conviene servirlo por HTTP en vez de abrir el fichero
+directamente, porque Pyodide no funciona con `file://`:
 
 ```bash
+git clone https://github.com/javileyes/aprendizaje-no-supervisado.git
+cd aprendizaje-no-supervisado
 python3 -m http.server 8000
 # Abre http://localhost:8000 en tu navegador
 ```
@@ -71,9 +82,13 @@ pip install -r requirements.txt
 ### 3. Ejecuta cualquier ejemplo
 
 ```bash
-python code/01-aprender-sin-etiquetas/ejemplo_1.py
+python code/01-aprender-sin-etiquetas/panorama.py
 # sin ventana de gráficas (servidores):  MPLBACKEND=Agg python code/...
 ```
+
+Cada capítulo tiene su carpeta en `code/` con el mismo nombre, y dentro un `.py` por cada
+bloque de ejemplo del capítulo. El nombre del fichero es el que aparece en la cabecera del
+bloque en la web, así que es fácil ir de uno a otro.
 
 Los ejemplos `*.py` en NumPy son los que también corren en el navegador; los que usan
 librerías pesadas se ejecutan en la terminal.
@@ -102,7 +117,8 @@ aprendizaje-no-supervisado/
 **Parte IV · No supervisado profundo** — 13) Autoencoders: compresión aprendida · 14) Autoencoders variacionales · 15) Deep clustering: DEC, IDEC y el colapso · 16) Autosupervisado y contrastivo: SimCLR e InfoNCE
 **Parte V · La frontera con lo supervisado** — 17) Semisupervisado: pocas etiquetas, muchos datos · 18) Detección de anomalías
 
-Empieza por [`chapters/01-aprender-sin-etiquetas.html`](chapters/01-aprender-sin-etiquetas.html).
+Empieza por el **[capítulo 1: Aprender sin etiquetas](https://javileyes.github.io/aprendizaje-no-supervisado/chapters/01-aprender-sin-etiquetas.html)**
+(o por [el fichero local](chapters/01-aprender-sin-etiquetas.html), si has clonado el repositorio).
 
 ---
 
