@@ -31,7 +31,7 @@
 
         <span class="chapter-eyebrow">Parte I · Capítulo 1</span>
         <h1>Aprender sin etiquetas</h1>
-        <p class="lead">En el aprendizaje supervisado alguien ha pasado antes que tú poniendo nombres. Aquí no hay nadie. Solo hay una nube de puntos (nota: cada punto es un dato, un ejemplar y sus coordenadas son las propiedades del dato, si tiene 3 propiedades tendrá 3 coordenadas, es decir, 3 dimensiones si tiene n propiedades entonces el punto tendrá n dimensiones,será un punto en ℝⁿ) y la sospecha de que no está repartida al azar. Este capítulo explica qué se puede aprender de esa sospecha, qué optimiza realmente un algoritmo no supervisado, y por qué la pregunta «¿cuál es la respuesta correcta?» está mal planteada.</p>
+        <p class="lead">En el aprendizaje supervisado alguien ha pasado antes que tú poniendo nombres. Aquí no hay nadie. Solo hay una nube de puntos (nota: cada punto es un dato, un ejemplar y sus coordenadas son las propiedades del dato, si tiene 3 propiedades tendrá 3 coordenadas, es decir, 3 dimensiones; si tiene n propiedades entonces el punto tendrá n dimensiones, será un punto en ℝⁿ) y la sospecha de que no está repartida al azar. Este capítulo explica qué se puede aprender de esa sospecha, qué optimiza realmente un algoritmo no supervisado, y por qué la pregunta «¿cuál es la respuesta correcta?» está mal planteada.</p>
 
         <h2 id="idea">Un botánico sin nombres</h2>
 
@@ -85,7 +85,7 @@
               <tr><th></th><th>Supervisado</th><th>No supervisado</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>Qué te dan</strong></td><td>Pares $(x_i, y_i)$: medidas y etiqueta.</td><td>Solo $x_1, \dots, x_n$.</td></tr>
+              <tr><td><strong>Qué te dan</strong></td><td>Pares $(x_i, y_i)$: medidas y etiqueta.</td><td>Solo ejemplares $(x_i) no etiquetados.</td></tr>
               <tr><td><strong>Qué persigues</strong></td><td>La condicional $p(y \mid x)$: cómo depende la etiqueta de las medidas.</td><td>La marginal $p^\star(x)$: cómo se reparten las medidas, sin más.</td></tr>
               <tr><td><strong>Qué minimizas</strong></td><td>El error frente a $y$, que está escrito en los datos.</td><td>Un criterio que te has inventado tú: verosimilitud, distorsión, error de reconstrucción.</td></tr>
               <tr><td><strong>Quién arbitra</strong></td><td>Un conjunto de test etiquetado. La comparación es objetiva.</td><td>Nadie. Hay que argumentar, y por eso el <a href="08-validacion-clusteres.html">capítulo 8</a> existe.</td></tr>
