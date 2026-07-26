@@ -71,11 +71,11 @@
           <li><strong>«Casi todo se resume en sombra y sol.»</strong> Si el largo y el ancho van juntos, y la altura y el grosor del tallo también, tus cuatro medidas son dos cantidades disfrazadas: «tamaño de la hoja» y «porte de la planta». Y en esta isla van enfrentadas —hoja grande con porte bajo y al revés—, que es justo lo que nombrabas al decir «de sombra» y «de sol». Encontrar esas coordenadas que nadie ha medido pero que explican las que sí es <strong>aprendizaje de representación</strong>.</li>
         </ul>
 
-        <p>Fíjate en qué tienen en común las cuatro. Ninguna es una afirmación sobre una columna que falte: todas son afirmaciones sobre <em>cómo están repartidas las filas que tienes</em>. Esa es, en una frase, la materia prima de este manual.</p>
+        <p>Fíjate en qué tienen en común las cuatro. Ninguna es una afirmación sobre una columna que falte: todas son afirmaciones sobre <em>cómo están repartidas las filas que tienes</em>. Eso —sacar conclusiones de $X$ y de ninguna otra columna— es el <strong>aprendizaje no supervisado</strong>, y es lo que acabas de hacer cuatro veces seguidas sin que nadie te dijera cómo se llamaba. Ese reparto es la materia prima de este manual.</p>
 
-        <h3>La columna que no está</h3>
+        <h3>El aprendizaje supervisado: la columna que aquí no está</h3>
 
-        <p>Para ver lo que cambia, imagina la misma tabla con una columna más al final —<em>especie</em>— rellenada por alguien que sí sabía. Esa columna, la etiqueta $y_i$, no se mide: <strong>se sabe</strong>, y alguien tuvo que ponerla a mano. Con ella, el problema se transforma. Ya no preguntas cómo se reparten las plantas: preguntas qué especie tiene una planta nueva, y eso es la distribución condicional $p(y \mid x)$. Aparece una diana, aparece una forma obvia de puntuar cualquier respuesta —cuenta los aciertos— y aparece un árbitro imparcial: guardas mil filas sin mirarlas, entrenas con el resto y mides.</p>
+        <p>Imagina ahora la misma libreta con una columna más al final —<em>especie</em>—; llámala $y_i$, la especie de la planta $i$. Esa columna no la da el calibre: la escribe a mano alguien que ya conocía la isla, y de ahí viene el nombre, porque ese alguien te está supervisando las respuestas. Trabajar con esa columna es <strong>aprendizaje supervisado</strong>; trabajar sin ella, <strong>aprendizaje no supervisado</strong>. Con ella la pregunta pasa a ser qué especie tiene una planta que aún no has visto, y el objeto a perseguir es la condicional $p(y \mid x)$: la probabilidad de cada especie $y$ dadas unas medidas $x$. Todo lo que vuelve cómodo ese problema cuelga de esa columna —una diana, una forma obvia de puntuar cualquier respuesta y un árbitro imparcial: guardas mil filas sin mirarlas, entrenas con el resto y cuentas los aciertos—.</p>
 
         <p>Ahora tapa esa columna con el pulgar. Lo que desaparece no es solo la respuesta:</p>
 
@@ -100,6 +100,8 @@
           <div class="callout-title">🧠 Intuición</div>
           <p>El aprendizaje supervisado pregunta «¿qué etiqueta le corresponde a este dato?». El no supervisado pregunta algo anterior y más ambicioso: <strong>«¿cómo están repartidos los datos?»</strong>. Si conoces el reparto, la etiqueta —cuando llegue— será casi un detalle: bastará con nombrar los grupos que ya habías encontrado.</p>
         </div>
+
+        <p>Un aviso antes de seguir: la frontera entre los dos no es la línea limpia que sugiere la tabla. Se puede tener unas pocas etiquetas y muchísimos datos sin ellas (<a href="17-semisupervisado.html">capítulo 17</a>), o fabricarse las etiquetas a partir de los propios datos, sin que nadie anote nada (<a href="16-autosupervisado-contrastivo.html">capítulo 16</a>). Esa zona intermedia es hoy una de las más activas del campo. Pero el eje es el que acabas de ver, y para recorrerlo conviene entender primero los dos extremos.</p>
 
         <h2 id="densidad-verdadera">El objeto que sí existe</h2>
 
