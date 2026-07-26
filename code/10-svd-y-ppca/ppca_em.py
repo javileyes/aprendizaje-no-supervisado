@@ -10,7 +10,8 @@ Comprobamos cuatro cosas:
         W = U_k (Lambda_k - sigma^2 I)^{1/2}
   2. que EM converge a esa misma solución (y que la log-verosimilitud sube);
   3. que el subespacio que encuentra es el de PCA;
-  4. que cuando sigma^2 -> 0 la posterior E[z|x] tiende a la proyección de PCA.
+  4. que cuando sigma^2 -> 0 la posterior E[z|x] tiende a la proyección de PCA
+     BLANQUEADA, (x . u_j)/sqrt(lambda_j).
 
 La ventaja de tener un modelo: da una densidad p(x) con la que puntuar datos
 nuevos, y EM permite tratar valores ausentes.

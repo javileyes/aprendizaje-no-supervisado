@@ -103,6 +103,11 @@
           <p class="math-note">$\nabla_{\mu_j}$ es el gradiente respecto al vector $\mu_j$. Como la función es estrictamente convexa (su hessiano es $2n_j I$, definido positivo), ese punto crítico es el mínimo global, no solo un punto estacionario. Nótese que la media aparece <em>porque</em> el error es cuadrático: con error absoluto saldría la mediana, y el algoritmo se llamaría $k$-medianas.</p>
         </div>
 
+        <div class="callout warn">
+          <div class="callout-title">⚠️ ¿Y si un grupo se queda vacío?</div>
+          <p>La media de un conjunto vacío es $0/0$: si $n_j = 0$, la fórmula no dice nada. Y ocurre de verdad, sobre todo en las primeras vueltas, cuando un centroide mal sembrado queda «rodeado» por otros y en el paso de asignación no se lleva ni un punto. Por eso en los tres programas de este capítulo verás <code>X[z == j].mean(axis=0) if np.any(z == j) else C[j]</code>: si el grupo $j$ está vacío, su centroide se queda donde estaba. Es la reparación más conservadora y no estropea la demostración de convergencia, porque así $J$ tampoco sube; el precio es que ese centro puede quedarse inútil varias vueltas —o para siempre—, y entonces acabas con menos de $k$ grupos efectivos. scikit-learn hace algo más agresivo: teletransporta el centroide huérfano al punto peor representado de todos, el de mayor $D(x)^2$, lo que también baja $J$ y además recupera el grupo perdido.</p>
+        </div>
+
         <h3>Por qué el algoritmo siempre termina</h3>
 
         <p>La demostración es corta y vale la pena entenderla, porque es el patrón de todos los algoritmos tipo EM que vendrán después.</p>
@@ -182,7 +187,8 @@ def lloyd(X, C, iters=20):
     """Descenso por bloques de coordenadas: asignar, recolocar, repetir."""
     historia = []
     z = dist2(X, C).argmin(axis=1)
-    historia.append(("inicial", inercia(X, C, z), C.copy(), z.copy()))
+    J0 = inercia(X, C, z)
+    historia.append(("inicial", J0, J0, C.copy(), z.copy()))
     for t in range(iters):
         # PASO 1 (asignación): con C fijo, la z óptima es el centro más próximo
         z = dist2(X, C).argmin(axis=1)
@@ -191,7 +197,7 @@ def lloyd(X, C, iters=20):
         C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
                             for j in range(k)])
         J_act = inercia(X, C_nuevo, z)
-        historia.append((f"iter {t+1}", J_asig, C.copy(), z.copy()))
+        historia.append((f"iter {t+1}", J_asig, J_act, C_nuevo.copy(), z.copy()))
         if np.allclose(C_nuevo, C):
             print(f"Convergió en la iteración {t+1}: los centros ya no se mueven.")
             C = C_nuevo
@@ -203,12 +209,9 @@ def lloyd(X, C, iters=20):
 C0 = init_pp(X, k, rng)
 C, z, historia = lloyd(X, C0)
 
-print(f"\n{'paso':&gt;10} {'inercia':&gt;12}   (asignación) -&gt; (recolocación)")
-J_prev = np.inf
-for nombre, J, _, _ in historia:
-    flecha = "  ↓" if J &lt; J_prev else ""
-    print(f"{nombre:&gt;10} {J:12.3f}{flecha}")
-    J_prev = J
+print(f"\n{'paso':&gt;10} {'tras asignar':&gt;14} {'tras recolocar':&gt;16}")
+for nombre, J_a, J_b, _, _ in historia:
+    print(f"{nombre:&gt;10} {J_a:14.3f} {J_b:16.3f}")
 print(f"\nInercia final: {inercia(X, C, z):.3f}")
 print(f"Tamaños de los grupos: {np.bincount(z, minlength=k)}")
 
@@ -225,13 +228,13 @@ print(f"  intra + inter   : {intra + inter:10.3f}  &lt;- coincide con el total")
 # --- Dibujo: tres instantáneas y la curva de la inercia ---
 fig, ax = plt.subplots(1, 4, figsize=(15, 3.7))
 for a, idx in zip(ax[:3], [0, 1, len(historia) - 1]):
-    nombre, J, Ct, zt = historia[idx]
+    nombre, _, J, Ct, zt = historia[idx]
     a.scatter(X[:, 0], X[:, 1], c=zt, cmap="viridis", s=14, edgecolors="none")
     a.scatter(Ct[:, 0], Ct[:, 1], marker="X", s=180, c="red", edgecolors="k")
     a.set_title(f"{nombre} · J = {J:.0f}")
     a.set_xticks([])
     a.set_yticks([])
-ax[3].plot([h[1] for h in historia], "o-", color="#ef476f")
+ax[3].plot([h[2] for h in historia], "o-", color="#ef476f")
 ax[3].set_xlabel("iteración")
 ax[3].set_ylabel("inercia J")
 ax[3].set_title("J nunca sube")
@@ -244,11 +247,11 @@ plt.show()
           <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
           <pre>Convergió en la iteración 3: los centros ya no se mueven.
 
-      paso      inercia   (asignación) -&gt; (recolocación)
-   inicial     1783.482  ↓
-    iter 1     1783.482
-    iter 2      695.431  ↓
-    iter 3      677.730  ↓
+      paso   tras asignar   tras recolocar
+   inicial       1783.482         1783.482
+    iter 1       1783.482          799.849
+    iter 2        695.431          677.730
+    iter 3        677.730          677.730
 
 Inercia final: 677.730
 Tamaños de los grupos: [91 89 90 90]
@@ -259,7 +262,7 @@ Dispersión total  :   5630.212
   intra + inter   :   5630.212  &lt;- coincide con el total</pre>
         </div>
 
-        <p>Tres cosas que leer en esa salida. Primera: la inercia cae de 1783 a 678 y <strong>en ningún momento sube</strong>, tal como demuestra la sección anterior. La flecha ↓ no aparece en «iter 1» porque ese valor es el mismo que el inicial: el paso de asignación con los centroides originales ya se había hecho al construir la fila «inicial», así que ahí no había nada que ganar.</p>
+        <p>Tres cosas que leer en esa salida. Primera: la inercia cae de 1783 a 678 y <strong>en ningún momento sube</strong>, tal como demuestra la sección anterior. Las dos columnas son los dos medios pasos, y ninguna sube nunca. La fila «inicial» repite el valor porque la asignación con los centroides de partida ya se había hecho al construirla; por eso en «iter 1» el paso de asignar no tiene nada que ganar —1783,482 otra vez— mientras que el de recolocar se lleva por delante casi mil unidades de inercia de golpe.</p>
 
         <p>Segunda: convergió en tres iteraciones. Con grupos separados, Lloyd es rapidísimo; el número de iteraciones depende de la geometría, no del tamaño de la muestra. Tercera: la identidad ANOVA se cumple hasta el último decimal, $677{,}730 + 4952{,}482 = 5630{,}212$. Con 4952 de 5630 —el 88 %— de la dispersión explicada entre grupos, la partición es muy buena.</p>
 
@@ -279,6 +282,8 @@ Dispersión total  :   5630.212
           <p>$$ \Pr\big[\text{elegir } x\big] \;=\; \frac{D(x)^2}{\sum_{x'} D(x')^2}, \qquad D(x) = \min_{\mu \in \mathcal{C}} \lVert x - \mu\rVert $$</p>
           <p class="math-note">$\mathcal{C}$ es el conjunto de centros ya elegidos y $D(x)$ la distancia de $x$ al más próximo de ellos. El resultado clave es una <strong>garantía de aproximación</strong>: la inercia esperada tras la siembra —antes incluso de ejecutar Lloyd— cumple $\mathbb{E}[J] \le 8(\ln k + 2)\, J_{\mathrm{OPT}}$. Ninguna otra inicialización barata ofrece una cota así.</p>
         </div>
+
+        <p>¿Y por qué el <em>cuadrado</em> de la distancia, y no la distancia a secas? Porque $D(x)^2$ es exactamente lo que ese punto le está costando a la inercia ahora mismo: si dejáramos de añadir centros aquí, la asignación óptima daría $J = \sum_x D(x)^2$. La siembra $D^2$ no es una heurística arbitraria, es <em>muestrear proporcionalmente al daño</em>: cada punto sale con probabilidad igual a la fracción del error total de la que es responsable. Y sortear, en vez de coger sin más el punto de $D$ máxima, tiene también su motivo: el punto más lejano de todo suele ser un valor atípico solitario, y sembrar ahí desperdicia un centro entero en un solo dato. El azar ponderado cae casi siempre en una región densa todavía sin cubrir, y solo de vez en cuando en el atípico.</p>
 
         <p>El factor $8(\ln k + 2)$ no es pequeño, pero es una cota <em>en el peor caso</em> y sin ejecutar Lloyd todavía. En la práctica el efecto es mucho mejor de lo que promete. Medámoslo con 30 semillas, porque una sola no demuestra nada:</p>
 
@@ -362,8 +367,7 @@ k-means++  -&gt; mediana    983.4 | mejor    983.4 | peor   5275.4 | desviación
 
 Mejor inercia encontrada por cualquiera: 983.4
   azar      : 33% de las 30 semillas llegan a menos del 2% del óptimo
-  k-means++ : 87% de las 30 semillas llegan a menos del 2% del óptimo
-</pre>
+  k-means++ : 87% de las 30 semillas llegan a menos del 2% del óptimo</pre>
         </div>
 
         <p>La diferencia es brutal y no es cuestión de suerte: son 30 semillas. Con inicialización al azar, la <strong>mediana</strong> de la inercia es 5056,7, cinco veces peor que el óptimo, y solo un tercio de las ejecuciones llega cerca del mejor valor. Con k-means++, la mediana <em>es</em> el óptimo —983,4— y el 87 % de las semillas lo alcanza. Ambos métodos encuentran alguna vez la misma mejor solución; lo que cambia es cuántas veces.</p>

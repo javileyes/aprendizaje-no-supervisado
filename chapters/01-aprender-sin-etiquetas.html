@@ -114,6 +114,8 @@
           <div class="callout-title">🧠 Aprender es comprimir</div>
           <p>Toma logaritmos en base 2. Entonces $-\log_2 p_\theta(x)$ es la longitud, en bits, del código óptimo de Shannon para el símbolo $x$ bajo la creencia $p_\theta$: lo probable se codifica corto, lo raro largo. La verosimilitud media negativa es, literalmente, <strong>la longitud media del mensaje</strong> necesaria para transmitir tus datos usando el modelo como diccionario.</p>
           <p>Aprender sin supervisión es, por tanto, comprimir. Y esa frase da una lectura unificada de todo lo que viene: k-means comprime cada punto a la identidad de su centroide, PCA a $k$ coordenadas, el autoencoder a un vector latente, la mixtura gaussiana a «qué componente y cuánta desviación». Todos son códecs. Lo que cambia es el diccionario.</p>
+          <p>Pero el mensaje tiene dos partes, y esa es la mitad que salva la idea de ser trivial: para descodificar, el receptor necesita el diccionario, así que la factura total es <em>bits del modelo</em> más <em>bits de los datos dado el modelo</em>. Una tabla que memorice los $n$ puntos los comprime a cero bits, pero el diccionario cuesta tanto como los datos originales y no has ganado nada. Comprimir de verdad es dar con la regularidad que hace el diccionario <em>corto</em> y los datos <em>baratos</em> a la vez. Esa tensión —la longitud de descripción mínima— reaparece en el <a href="04-gmm-y-em.html">capítulo 4</a>, cuando la verosimilitud de una mixtura se dispara al infinito al pegar una componente sobre un solo punto y hacen falta AIC y BIC para decidir cuántas componentes hay, y vuelve en el <a href="13-autoencoders.html">capítulo 13</a> al elegir cuántas neuronas caben en el cuello de botella.</p>
+          <p class="math-note">Con rigor: lo del código óptimo es exacto cuando $x$ toma valores discretos. Si $x$ es continua —y aquí $p^\star$ es una densidad sobre $\mathbb{R}^d$— hay que cuantizar primero: redondeando a una rejilla de paso $\Delta$, la probabilidad de la celda que contiene a $x$ vale $\approx p_\theta(x)\,\Delta^d$ y el código mide $-\log_2 p_\theta(x) - d\log_2\Delta$ bits. El término $-d\log_2\Delta$ es el mismo para todos los modelos, así que comparar modelos por longitud de código sigue siendo exactamente comparar verosimilitudes: solo el cero de la escala es convencional. Por eso $H(p^\star)$, que en el caso continuo es la entropía <em>diferencial</em>, puede salir negativa sin que nada esté roto —para $p$ uniforme en $[0,\,1/2]$ vale $-1$ bit—, mientras que $D_{\mathrm{KL}}$, donde el $\Delta$ se cancela, nunca lo hace.</p>
         </div>
 
         <h2 id="panorama">El panorama, en Python</h2>
@@ -146,7 +148,7 @@ print(f"Datos: {X.shape[0]} puntos en {X.shape[1]} dimensiones, sin etiquetas.")
 # --- Pregunta 1: ¿dónde está la masa? Densidad por histograma 2D ---
 H, xe, ye = np.histogram2d(X[:, 0], X[:, 1], bins=24)
 densidad = H / (H.sum() * (xe[1] - xe[0]) * (ye[1] - ye[0]))
-print(f"Densidad máxima estimada: {densidad.max():.4f} puntos por unidad de área.")
+print(f"Densidad máxima estimada: {densidad.max():.4f} (densidad de probabilidad, integra 1).")
 
 # --- Pregunta 2: ¿en cuántos grupos cae? k-means en 12 líneas ---
 def kmeans(X, k, semilla=0, iters=50):
@@ -207,7 +209,7 @@ plt.show()
         <div class="terminal">
           <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
           <pre>Datos: 360 puntos en 2 dimensiones, sin etiquetas.
-Densidad máxima estimada: 0.1977 puntos por unidad de área.
+Densidad máxima estimada: 0.1977 (densidad de probabilidad, integra 1).
 k-means con k=3 -&gt; tamaños [120 120 120], inercia 351.06
 Varianza explicada por la 1ª componente: 60.0%</pre>
         </div>
@@ -218,14 +220,14 @@ Varianza explicada por la 1ª componente: 60.0%</pre>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
-          <p>Cambia <code>scale=0.75</code> por <code>scale=2.0</code> en la generación de los datos y vuelve a pulsar ▶. Con ese ruido los grupos se solapan y k-means deja de recuperarlos: los tamaños se desequilibran a <code>[124 125 111]</code> y la inercia sube a <code>1797.75</code>. El algoritmo no ha empeorado; es que la estructura que buscaba ha dejado de existir. Nota también que la varianza de la primera componente baja al 56,3 %: al inflar el ruido isótropo, las dos direcciones se igualan.</p>
+          <p>Cambia <code>scale=0.75</code> por <code>scale=2.0</code> en la generación de los datos y vuelve a pulsar ▶. Con ese ruido los grupos se solapan y k-means deja de recuperarlos: los tamaños se desequilibran a <code>[124 125 111]</code> y la inercia sube a <code>1797.75</code>. Lo interesante no es que falle, sino que no se entera: sigue acertando el grupo de origen del 80 % de los puntos —lo hemos comprobado guardando las etiquetas que el algoritmo nunca ve—, pero devuelve sus tres clústeres con la misma convicción que antes y nada en su salida distingue este caso del anterior. La inercia sube, sí, pero también sube cuando hay ruido y la estructura sigue intacta, así que no sirve de alarma. Detectar cuándo la estructura se ha diluido es un problema aparte: el <a href="08-validacion-clusteres.html">capítulo 8</a>. Nota también que la varianza de la primera componente baja al 56,3 %: al inflar el ruido isótropo, las dos direcciones se igualan.</p>
         </div>
 
         <h2 id="sin-respuesta-correcta">Por qué no hay una respuesta correcta</h2>
 
         <p>Aquí está la incomodidad fundamental del campo, y conviene mirarla de frente ya, en el capítulo 1, en vez de tropezar con ella en el 8. En supervisado hay una verdad: la etiqueta. Un modelo acierta o falla, y se puede medir. En no supervisado <strong>no existe esa verdad</strong>. Y no es que aún no la hayamos encontrado: es que estructuralmente no hay ninguna.</p>
 
-        <p>El ejemplo siguiente lo hace doloroso. Tienes clientes descritos por dos columnas: gasto en euros y antigüedad en años. Aplicamos el mismo algoritmo, con la misma semilla, buscando los mismos dos grupos. Lo único que cambia entre las dos ejecuciones es si normalizamos las columnas antes o no.</p>
+        <p>El ejemplo siguiente lo hace doloroso. Tienes clientes descritos por dos columnas: gasto en euros y antigüedad en años. Aplicamos el mismo algoritmo buscando los mismos dos grupos y quedándonos, en ambos casos, con el mejor de diez arranques, para que ninguna de las dos respuestas sea fruto de un mínimo local afortunado. Lo único que cambia entre las dos ejecuciones es si normalizamos las columnas antes o no.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -243,7 +245,8 @@ rng = np.random.default_rng(3)
 
 # Dos "bandas" en gasto (300 y 900 euros) y dos en antigüedad (1 y 9 años).
 gasto = np.concatenate([rng.normal(300, 60, 100), rng.normal(900, 60, 100)])
-antig = np.concatenate([rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50)] * 2)
+antig = np.concatenate([rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50),
+                        rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50)])
 X = np.column_stack([gasto, antig])
 
 
@@ -258,15 +261,26 @@ def kmeans(X, k, semilla=0, iters=100):
         if np.allclose(C_nuevo, C):
             break
         C = C_nuevo
-    return z
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return z, ((X - C[z]) ** 2).sum()          # partición e inercia alcanzada
+
+
+def mejor_kmeans(X, k, reinicios=10):
+    """El mejor de varios arranques: así el resultado no depende de la suerte."""
+    mejor = None
+    for s in range(reinicios):
+        z, sse = kmeans(X, k, semilla=s)
+        if mejor is None or sse &lt; mejor[1]:
+            mejor = (z, sse)
+    return mejor[0]
 
 
 # --- Respuesta A: unidades originales. El euro aplasta al año ---
-z_bruto = kmeans(X, k=2, semilla=0)
+z_bruto = mejor_kmeans(X, k=2)
 
 # --- Respuesta B: cada columna con media 0 y desviación 1 ---
 Z = (X - X.mean(axis=0)) / X.std(axis=0)
-z_norm = kmeans(Z, k=2, semilla=0)
+z_norm = mejor_kmeans(Z, k=2)
 
 # ¿Cuánto se parecen las dos particiones? Como las etiquetas 0/1 son arbitrarias,
 # medimos el acuerdo por PAREJAS: ¿los mismos dos puntos caen juntos en ambas?
@@ -305,18 +319,26 @@ plt.show()
           <pre>Reparto con unidades originales : [100 100]
 Reparto tras normalizar         : [100 100]
 Acuerdo por parejas entre ambas : 49.7%
-Sin normalizar, los centros difieren en   613.2 EUR y 0.00 anios
-Normalizando,   los centros difieren en     4.1 EUR y 8.25 anios</pre>
+Sin normalizar, los centros difieren en   613.2 EUR y 0.04 anios
+Normalizando,   los centros difieren en     4.1 EUR y 8.18 anios</pre>
         </div>
 
-        <p>Las dos particiones dividen la población en dos mitades exactas de cien, y coinciden en el <strong>49,7 %</strong> de las parejas: menos que si hubiéramos echado una moneda. Son respuestas ortogonales. Sin normalizar, el algoritmo separa por gasto (613 € entre centros, 0,00 años de diferencia): los euros son números grandes y dominan la distancia euclídea. Normalizando, separa por antigüedad (8,25 años, 4,1 € de diferencia). Ambas son <em>correctas</em>. Corresponden a preguntas de negocio distintas: «¿quién gasta más?» frente a «¿quién lleva más tiempo?».</p>
+        <p>Las dos particiones dividen la población en dos mitades exactas de cien, y coinciden en el <strong>49,7 %</strong> de las parejas. Ese número no es casual: $9900/19900$ es el <em>mínimo posible</em> para dos particiones equilibradas de 200 puntos en dos mitades, y se alcanza cuando cada mitad de una se reparte por igual entre las dos mitades de la otra —justo lo que ocurre aquí: las cuatro casillas de la tabla cruzada valen 50—. No es que se parezcan poco: es que no pueden parecerse menos. Sin normalizar, el algoritmo separa por gasto (613 € entre centros y 0,04 años, es decir, nada): los euros son números grandes y dominan la distancia euclídea. Normalizando, separa por antigüedad (8,18 años, 4,1 € de diferencia). Ambas son <em>correctas</em>. Corresponden a preguntas de negocio distintas: «¿quién gasta más?» frente a «¿quién lleva más tiempo?».</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El escalado no es preprocesado: es modelado</div>
           <p>Normalizar las columnas se enseña a menudo como un paso de higiene, junto a rellenar valores ausentes. No lo es. En no supervisado, <strong>elegir la escala es elegir qué preguntas puede responder el algoritmo</strong>, porque define qué significa «cerca». Es la decisión más consecuente que vas a tomar, y ningún criterio interno te la va a validar: la validación está fuera de los datos. Volveremos sobre ello en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</p>
         </div>
 
-        <p>Que esto no tiene arreglo no es una opinión: es un teorema. En 2002 Jon Kleinberg demostró que <strong>ninguna</strong> función de clústering puede satisfacer a la vez tres propiedades que cualquiera consideraría irrenunciables: <em>invariancia de escala</em> (multiplicar todas las distancias por una constante positiva no debe cambiar el resultado), <em>riqueza</em> (con las distancias adecuadas debe poder producirse cualquier partición) y <em>consistencia</em> (encoger las distancias dentro de los grupos y estirar las que van entre grupos no debe cambiar el resultado). Las tres a la vez son contradictorias. Todo algoritmo de clústering renuncia a alguna, y saber a cuál renuncia el tuyo es la mitad de entenderlo.</p>
+        <div class="callout intuition">
+          <div class="callout-title">🧠 ¿Y la KL no era «la distancia a la verdad»?</div>
+          <p>Parece que esto contradice lo de antes, y no lo hace. La divergencia $D_{\mathrm{KL}}(p^\star \| p_\theta)$ <em>no cambia</em> si reescalas las coordenadas: al pasar de $x$ a $Ax$ con $A$ invertible, la densidad verdadera y la del modelo adquieren el mismo jacobiano, y este se cancela dentro del logaritmo. El criterio es inmune a las unidades. Lo que no es inmune es la <strong>familia</strong>: si son gaussianas de covarianza completa, ajustar sobre $X$ o sobre $Z$ da el mismo modelo salvo el cambio de variable, y la misma KL; pero si impones covarianza esférica $\sigma^2 I$ —o si, como k-means, tu objetivo es la suma de distancias euclídeas al cuadrado—, las unidades se cuelan en el modelo por la puerta de atrás.</p>
+          <p>De ahí la asimetría entre las preguntas del principio. La primera, la densidad, tiene un criterio objetivo. La segunda, la estructura, no lo tiene, porque «grupo» no es una propiedad de $p^\star$ sino de $p^\star$ <em>más</em> una métrica. La arbitrariedad no está en las matemáticas: está en el sesgo inductivo, y ese siempre lo pones tú.</p>
+        </div>
+
+        <p>Y esto no es un accidente del escalado que se arregle fijando las unidades de una vez por todas. Aunque las fijaras, seguiría sin existir una función de clústering «neutral»: es un teorema. En 2002 Jon Kleinberg demostró que <strong>ninguna</strong> función de clústering puede satisfacer a la vez tres propiedades que cualquiera consideraría irrenunciables: <em>invariancia de escala</em> (multiplicar todas las distancias por una constante positiva no debe cambiar el resultado), <em>riqueza</em> (con las distancias adecuadas debe poder producirse cualquier partición) y <em>consistencia</em> (encoger las distancias dentro de los grupos y estirar las que van entre grupos no debe cambiar el resultado). Las tres a la vez son contradictorias. Todo algoritmo de clústering renuncia a alguna, y saber a cuál renuncia el tuyo es la mitad de entenderlo.</p>
+
+        <p>Conviene no confundir el teorema con el experimento de arriba. La invariancia de escala de Kleinberg habla de multiplicar <em>todas</em> las distancias por la misma constante $\alpha$, y eso k-means sí lo cumple: la inercia queda multiplicada por $\alpha^2$ y el mínimo no se mueve. Normalizar columna a columna es más agresivo —cambia la métrica, no la unidad—, y ningún método que use las distancias tal como le llegan puede ser invariante a eso: conseguirlo exige fijar uno mismo la escala, que es justo la decisión que estamos discutiendo. A lo que k-means renuncia, con su $k$ prefijado, es a la riqueza: toda partición cuyo número de grupos no sea $k$ le está vedada.</p>
 
         <h2 id="evaluacion">Entonces, ¿cómo se sabe si funciona?</h2>
 
@@ -355,6 +377,12 @@ Normalizando,   los centros difieren en     4.1 EUR y 8.25 anios</pre>
         <h2 id="mapa">Cómo está organizado el manual</h2>
 
         <p>El orden de los capítulos no es temático sino <em>acumulativo</em>: cada uno resuelve una limitación concreta del anterior. Si lees en orden, nunca te vas a encontrar con una herramienta cuya motivación no hayas sufrido antes.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Qué se da por sabido</div>
+          <p>El manual deriva todos sus algoritmos, pero no las matemáticas de base. Da por conocidos: <strong>álgebra lineal</strong> (producto escalar, traza, determinante, matrices simétricas y definidas positivas, autovalores y autovectores), <strong>cálculo multivariable</strong> (gradientes, regla de la cadena, multiplicadores de Lagrange) y <strong>probabilidad</strong> (densidades, esperanza y varianza, independencia, gaussiana multivariante, regla de Bayes).</p>
+          <p>Dos avisos sobre el orden. El <a href="07-clustering-espectral.html">capítulo 7</a> usa autovectores a fondo; quien los tenga oxidados hará bien en leer antes la primera sección del <a href="09-pca.html">capítulo 9</a>, que los deriva desde cero y no depende del resto de la parte III. Y la parte IV, del <a href="13-autoencoders.html">capítulo 13</a> en adelante, es la única que necesita redes neuronales: ese capítulo fija el vocabulario mínimo antes de usarlo, pero no enseña aprendizaje profundo desde cero.</p>
+        </div>
 
         <div class="table-wrap">
           <table>
@@ -413,7 +441,7 @@ Normalizando,   los centros difieren en     4.1 EUR y 8.25 anios</pre>
             <li>Sin etiquetas, el único objeto que existe es la densidad desconocida $p^\star(x)$. Las tres tareas canónicas —densidad, estructura y representación— son tres formas de agarrarla.</li>
             <li>Maximizar la verosimilitud es <em>exactamente</em> minimizar $D_{\mathrm{KL}}(p^\star\|p_\theta)$, porque la entropía $H(p^\star)$ no depende de los parámetros. No es una heurística: es minimizar la distancia a la verdad.</li>
             <li>En bits, $-\log_2 p_\theta(x)$ es una longitud de código. Aprender sin supervisión es comprimir, y cada algoritmo del manual es un códec con un diccionario distinto.</li>
-            <li>No hay respuesta correcta. La misma nube da particiones con un 49,7 % de acuerdo según se normalicen o no las columnas, y el teorema de Kleinberg garantiza que ningún algoritmo puede ser a la vez invariante de escala, rico y consistente.</li>
+            <li>No hay respuesta correcta. La misma nube da, según se normalicen o no las columnas, dos particiones con el mínimo acuerdo posible entre particiones equilibradas —un 49,7 % de las parejas—, y el teorema de Kleinberg garantiza que ningún algoritmo puede ser a la vez invariante de escala, rico y consistente.</li>
             <li>El escalado no es preprocesado: define qué significa «cerca» y, por tanto, qué pregunta estás haciendo. De eso trata el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</li>
           </ul>
         </div>

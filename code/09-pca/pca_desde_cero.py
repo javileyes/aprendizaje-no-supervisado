@@ -8,7 +8,7 @@ PCA desde cero por diagonalización de la covarianza, con tres comprobaciones.
   3. Reducir antes de agrupar mejora el clústering: los mismos datos, k-means
      antes y después de proyectar.
 
-Los datos son 400 puntos en 60 dimensiones cuya estructura real vive en un
+Los datos son 400 puntos en 200 dimensiones cuya estructura real vive en un
 subespacio de dimensión 3, ahogada en ruido isótropo.
 
 Ejecútalo con:  python code/09-pca/pca_desde_cero.py
@@ -100,7 +100,7 @@ fig, ax = plt.subplots(1, 3, figsize=(14, 4))
 ax[0].plot(val[:20], "o-", color="#5b8def")
 ax[0].set_xlabel("componente")
 ax[0].set_ylabel("autovalor (varianza)")
-ax[0].set_title("espectro: 3 grandes y una meseta")
+ax[0].set_title("espectro: 2 picos y una meseta de ruido")
 ax[1].plot(np.cumsum(val) / val.sum(), color="#43c59e")
 ax[1].axhline(0.9, ls=":", c="k")
 ax[1].set_xlabel("nº de componentes")

@@ -117,6 +117,12 @@
 
         <p>Es un resultado extraordinariamente fuerte: un problema de optimización sobre un conjunto no convexo y de dimensión enorme se resuelve <em>exactamente</em> con una descomposición. De él salen la compresión de imágenes, el análisis semántico latente en texto, y los sistemas de recomendación por factorización de matrices.</p>
 
+        <p>La mitad del teorema cabe en tres líneas, y es la del <a href="09-pca.html">capítulo 9</a> leída al revés. Restrinjámonos a las $B$ que son proyecciones de $X$ sobre un subespacio de dimensión $k$, es decir $B = XQQ^\top$ con $Q$ ortonormal de tamaño $d\times k$ —justo lo que compara el código de la sección siguiente—. Desarrollando la norma y usando $Q^\top Q = I_k$, los dos términos cruzados se funden en uno:</p>
+
+        <p>$$ \lVert X - XQQ^\top\rVert_F^2 \;=\; \lVert X\rVert_F^2 - 2\operatorname{tr}\big(Q^\top X^\top X Q\big) + \operatorname{tr}\big(Q^\top X^\top X Q\big) \;=\; \lVert X\rVert_F^2 - \operatorname{tr}\big(Q^\top X^\top X Q\big). $$</p>
+
+        <p>Minimizar el error es, pues, lo mismo que maximizar $\operatorname{tr}(Q^\top X^\top X Q)$ —otra vez «error mínimo = varianza máxima», la identidad de la <a href="09-pca.html#doble-lectura">doble lectura del capítulo 9</a>—, y ese máximo vale $\sigma_1^2+\cdots+\sigma_k^2$ y se alcanza en $Q = V_k$. Lo que Eckart y Young añadieron, y no es trivial, es que salirse de las proyecciones no ayuda: <em>ninguna</em> matriz de rango $\le k$, aunque no sea una proyección de $X$, lo hace mejor.</p>
+
         <p>Nótese la coherencia con el capítulo 9: allí el error de reconstrucción era $\sum_{j\gt k}\lambda_j$; aquí es $\sum_{j\gt k}\sigma_j^2$. Son la misma cantidad salvo el factor $n-1$.</p>
 
         <h2 id="ejemplo-svd">Comprobarlo, y comprimir una imagen</h2>
@@ -271,18 +277,28 @@ plt.show()
         <div class="callout math">
           <div class="callout-title">➗ Solución de máxima verosimilitud</div>
           <p>$$ \sigma^2_{\mathrm{ML}} = \frac{1}{d-k}\sum_{j=k+1}^{d} \lambda_j, \qquad W_{\mathrm{ML}} = U_k\big(\Lambda_k - \sigma^2_{\mathrm{ML}} I_k\big)^{1/2} R $$</p>
-          <p class="math-note">$U_k$ y $\Lambda_k$ son los $k$ primeros autovectores y autovalores de la covarianza muestral, y $R$ es <em>cualquier</em> matriz ortogonal $k\times k$. Léelo despacio: $\sigma^2$ es <strong>la varianza media de lo que tiras</strong>, exactamente el error de reconstrucción por dimensión. Y $W$ recoge las direcciones principales, con cada una escalada por $\sqrt{\lambda_j - \sigma^2}$: la varianza de esa componente <em>descontado el ruido</em>. La $R$ recuerda que $W$ no es único; lo determinado es el subespacio.</p>
+          <p class="math-note">$U_k$ y $\Lambda_k$ son los $k$ primeros autovectores y autovalores de la covarianza <strong>en su versión de máxima verosimilitud</strong>, $S_{\mathrm{ML}} = \frac{1}{n}\tilde X^\top\tilde X$. Ojo al cambio de normalización: aquí es $1/n$ y no el $1/(n-1)$ que veníamos usando, porque lo que se maximiza es la verosimilitud y su óptimo es el estimador sesgado; en términos de la SVD, $\lambda_j = \sigma_j^2/n$. Con $n=600$ la diferencia parece cosmética —$\sigma^2_{\mathrm{ML}} = 0{,}701024$ frente a $0{,}702194$—, pero es exactamente la que hace que EM aterrice sobre la fórmula cerrada sin diferencia apreciable: con $1/(n-1)$ la log-verosimilitud sale $-11492{,}2858$ en vez de $-11492{,}2808$, estrictamente peor. Y $R$ es <em>cualquier</em> matriz ortogonal $k\times k$. Léelo despacio: $\sigma^2$ es <strong>la varianza media de lo que tiras</strong>, exactamente el error de reconstrucción por dimensión. Y $W$ recoge las direcciones principales, con cada una escalada por $\sqrt{\lambda_j - \sigma^2}$: la varianza de esa componente <em>descontado el ruido</em>. La $R$ recuerda que $W$ no es único; lo determinado es el subespacio.</p>
         </div>
 
         <p>Y la posterior de la variable latente, que es lo que PCA no puede dar, también es gaussiana y explícita:</p>
 
         <p>$$ p(z\mid x) = \mathcal{N}\big(M^{-1}W^\top(x-\mu),\;\; \sigma^2 M^{-1}\big), \qquad M = W^\top W + \sigma^2 I_k . $$</p>
 
-        <p>Cuando $\sigma^2 \to 0$, la covarianza posterior $\sigma^2M^{-1}$ tiende a cero: la distribución colapsa sobre un punto y ese punto es la proyección de PCA. <strong>PCA es el límite determinista de PPCA</strong>, igual que k-means era el límite duro de la mixtura gaussiana en el <a href="04-gmm-y-em.html">capítulo 4</a>. La estructura del argumento es idéntica.</p>
+        <p>Cuando $\sigma^2 \to 0$, la covarianza posterior $\sigma^2M^{-1}$ tiende a cero: la distribución colapsa sobre un punto. Ese punto es la proyección de PCA <em>blanqueada</em>, $u_j^\top(x-\mu)/\sqrt{\lambda_j}$: basta sustituir $W_{\mathrm{ML}} = U_k(\Lambda_k-\sigma^2 I)^{1/2}$ en $M^{-1}W^\top(x-\mu)$, observar que entonces $M = \Lambda_k$ y hacer $\sigma^2\to 0$, con lo que queda $\Lambda_k^{-1/2}U_k^\top(x-\mu)$. Devuelta al espacio de los datos, esa media posterior reconstruye $WM^{-1}W^\top(x-\mu) \to U_kU_k^\top(x-\mu)$, la proyección de siempre. <strong>PCA es el límite determinista de PPCA</strong>, igual que k-means era el límite duro de la mixtura gaussiana en el <a href="04-gmm-y-em.html">capítulo 4</a>. La estructura del argumento es idéntica.</p>
 
         <h2 id="ejemplo-ppca">PPCA con EM, y lo que gana al ser un modelo</h2>
 
         <p>Aunque haya solución cerrada, merece la pena implementar EM: es lo que permite tratar datos ausentes, escalar a $d$ enormes sin diagonalizar nada y —sobre todo— es el mismo esqueleto que reaparecerá convertido en red neuronal en el <a href="14-vae.html">capítulo 14</a>.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ EM para PPCA</div>
+          <p>El esquema es el del <a href="04-gmm-y-em.html">capítulo 4</a> con el latente continuo en vez de discreto: paso E, calcular la posterior; paso M, maximizar la esperanza de la log-verosimilitud completa. La posterior ya la tenemos, así que el paso E es solo escribirla. Con $M = W^\top W + \sigma^2 I_k$:</p>
+          <p>$$ \mathbb{E}[z_i] = M^{-1}W^\top \tilde x_i, \qquad \mathbb{E}[z_iz_i^\top] = \sigma^2 M^{-1} + \mathbb{E}[z_i]\,\mathbb{E}[z_i]^\top $$</p>
+          <p>Y el paso M:</p>
+          <p>$$ W_{\text{nuevo}} = \Big(\textstyle\sum_i \tilde x_i\,\mathbb{E}[z_i]^\top\Big)\Big(\textstyle\sum_i \mathbb{E}[z_iz_i^\top]\Big)^{-1} $$</p>
+          <p>$$ \sigma^2_{\text{nuevo}} = \frac{1}{nd}\sum_i\Big( \lVert\tilde x_i\rVert^2 - 2\,\mathbb{E}[z_i]^\top W_{\text{nuevo}}^\top \tilde x_i + \operatorname{tr}\big(\mathbb{E}[z_iz_i^\top]\,W_{\text{nuevo}}^\top W_{\text{nuevo}}\big)\Big) $$</p>
+          <p class="math-note">Léelas por lo que son: el paso M de $W$ es una <strong>regresión por mínimos cuadrados</strong> de $x$ sobre las $z$ estimadas, y el de $\sigma^2$ es el <strong>residuo medio por dimensión</strong>. Lo único que las distingue de «alternar mínimos cuadrados a ojo» es el término $\sigma^2M^{-1}$ de $\mathbb{E}[z_iz_i^\top]$: la incertidumbre de la posterior, que penaliza fiarse de $z$ cuando el ruido es alto. Sin él el algoritmo deja de ser EM y deja de maximizar la verosimilitud; bórralo del código de abajo (<code>Ezz = Ez.T @ Ez</code>) y verás que la log-verosimilitud ya no sube de forma monótona y acaba en $-13880{,}83$ con $\sigma^2 = 0{,}5258$, en vez de $-11492{,}28$ con $0{,}7010$. Nótese además que en ninguna fórmula aparece una matriz $d\times d$: todo son productos $d\times k$ e inversas $k\times k$. Ahí está el «escalar a $d$ enormes sin diagonalizar nada».</p>
+        </div>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -487,6 +503,8 @@ plt.show()
 
         <p>El bloque 4 aísla lo que PPCA añade. Las dos primeras columnas coinciden porque la media posterior no es más que la proyección de PCA reescalada. Lo nuevo es la cuarta: la anchura de $p(z\mid x)$, que baja de 0,328 a <strong>0,002</strong> cuando $\sigma^2$ va de 3 a $10^{-4}$. PCA te da un punto; PPCA te da un punto <em>y su barra de error</em>, y esa barra se cierra exactamente en el límite determinista.</p>
 
+        <p>Un detalle que conviene no pasar por alto: la escala no tiende a 1 —la última fila se queda en 1,014024—. Es porque el barrido cambia el $\sigma^2$ de la posterior pero mantiene fija la $W_{\mathrm{ML}}$ construida con $\sigma^2_{\mathrm{ML}} = 0{,}701024$; el límite es entonces $\sqrt{\lambda_1/(\lambda_1-\sigma^2_{\mathrm{ML}})} = \sqrt{25{,}513531/24{,}812507} = 1{,}014028$. Si se rehiciera $W$ con cada $\sigma^2$, la escala iría exactamente a 1. El límite es limpio; lo que la tabla aísla es el efecto de la anchura de la posterior.</p>
+
         <p>El bloque 5 muestra la consecuencia más útil de tener densidad. Puntos generados por el modelo tienen log-densidad media $-19{,}2$; puntos que se salen del subespacio latente, $-72{,}4$. Poniendo el umbral en el percentil 5 de los normales se detecta el <strong>100 %</strong> de los anómalos. PCA a secas no puede hacer esto, porque no asigna probabilidades. Es la idea que desarrollará el <a href="18-deteccion-anomalias.html">capítulo 18</a>.</p>
 
         <h2 id="factorial">Un pariente cercano: el análisis factorial</h2>
@@ -527,7 +545,7 @@ plt.show()
             <li>Toda matriz admite $X = U\Sigma V^\top$. Para datos centrados, $V$ son las direcciones principales y $\lambda_j = \sigma_j^2/(n-1)$: SVD y PCA son el mismo cálculo, pero la SVD no eleva al cuadrado el número de condición.</li>
             <li>Eckart-Young: truncar la SVD da la mejor aproximación de rango $k$ que existe, con error $\sum_{j\gt k}\sigma_j^2$. Medido: con $k=5$, error 1104,8 frente a 31 490,8 del mejor de 2000 subespacios aleatorios.</li>
             <li>De ahí salen la compresión (8× conservando el 97,81 % de la energía), el análisis semántico latente y la factorización de matrices.</li>
-            <li>PPCA modela $x = Wz+\mu+\varepsilon$ con $\varepsilon\sim\mathcal{N}(0,\sigma^2I)$, de donde $C = WW^\top+\sigma^2I$. Su solución de máxima verosimilitud es PCA, con $\sigma^2 = \frac{1}{d-k}\sum_{j\gt k}\lambda_j$ (medido 0,701024 frente a un valor real de 0,7).</li>
+            <li>PPCA modela $x = Wz+\mu+\varepsilon$ con $\varepsilon\sim\mathcal{N}(0,\sigma^2I)$, de donde $C = WW^\top+\sigma^2I$. Su solución de máxima verosimilitud es PCA, con $\sigma^2 = \frac{1}{d-k}\sum_{j\gt k}\lambda_j$, siendo aquí $\lambda_j$ los autovalores de $\frac{1}{n}\tilde X^\top\tilde X$ y no de la versión con $1/(n-1)$ (medido 0,701024 frente a un valor real de 0,7).</li>
             <li>EM converge exactamente a esa solución, de forma monótona, y encuentra el mismo subespacio hasta $10^{-15}$. $W$ solo está determinada salvo rotación.</li>
             <li>Lo que aporta el modelo: la posterior $p(z\mid x)$ con su incertidumbre —que colapsa cuando $\sigma^2\to 0$, y ahí PPCA se vuelve PCA— y una densidad con la que puntuar datos nuevos (100 % de anómalos detectados).</li>
           </ul>

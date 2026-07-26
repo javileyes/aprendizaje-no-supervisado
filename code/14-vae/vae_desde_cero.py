@@ -163,8 +163,9 @@ print(f"   fracción media de píxeles encendidos: generado {muestras.mean():.3f
 def estructura(A):
     im = A.reshape(-1, LADO, LADO)
     return im.mean(axis=2).std(axis=1).mean()
+mf = np.tile(X.mean(axis=0), (600, 1))   # lo que daría un decodificador que ignora z
 print(f"   estructura (dispersión entre filas): generado {estructura(muestras):.3f} "
-      f"| real {estructura(X):.3f} | ruido puro {estructura(r.random((600, D))):.3f}")
+      f"| real {estructura(X):.3f} | decodificador que ignora z {estructura(mf):.3f}")
 
 # ---------------- 3) Colapso posterior ----------------
 print("\n3) Colapso posterior: qué pasa al subir beta")
@@ -177,6 +178,10 @@ for beta in [0.2, 1.0, 4.0, 20.0]:
     kl_por_dim = (-0.5 * (1 + lv - mu ** 2 - np.exp(lv))).mean(axis=0)
     activas = int((kl_por_dim > 0.01).sum())
     print(f"{beta:6.2f} {hb[-1][1]:11.4f} {hb[-1][2]:9.4f} {activas:15d}/{K}")
+# ¿Cuánto cuesta codificar las imágenes SIN latente, píxel a píxel con su frecuencia?
+p_marg = X.mean(axis=0)
+base = -(X_te * np.log(p_marg) + (1 - X_te) * np.log(1 - p_marg)).sum(1).mean()
+print(f"   referencia sin latente (Bernoulli independiente por píxel): {base:.4f}")
 print("   Con beta grande, la KL se hunde: q(z|x) se pega al prior, deja de")
 print("   depender de x y el latente no transporta NADA. El decodificador")
 print("   responde siempre lo mismo y la reconstrucción se degrada.")

@@ -63,8 +63,8 @@
         <div class="callout math">
           <div class="callout-title">➗ Cota de información mutua</div>
           <p>$$ I(v_1; v_2) \;\ge\; \log(N) - \mathcal{L}_{\mathrm{InfoNCE}} $$</p>
-          <p class="math-note">$N$ es el número de candidatos (el tamaño del lote, en la práctica). Minimizar la pérdida <em>sube</em> una cota inferior de la información mutua entre las dos vistas: la red aprende justo lo que las dos vistas comparten, que por construcción es lo que las transformaciones no destruyeron. Es la formalización exacta de «aprende a ignorar lo irrelevante».</p>
-          <p class="math-note">La cota tiene un límite duro que explica un fenómeno práctico muy conocido: como $I \ge \log N - \mathcal{L}$ y $\mathcal{L}\ge 0$, <strong>ninguna estimación puede superar $\log N$</strong>. Con lotes de 128 eso son 4,85 nats. De ahí que SimCLR necesitara lotes de 4096 y que MoCo inventara una cola de negativos para simular lotes enormes sin pagarlos en memoria.</p>
+          <p class="math-note">$N$ es el número de candidatos entre los que hay que acertar: en la forma simétrica de arriba, con un lote de $n$ datos, $N = 2n-1$. (En la formulación original de CPC hay un positivo y $N-1$ negativos, y entonces $N$ coincide con el tamaño del lote; de ahí que se vean las dos convenciones.) Minimizar la pérdida <em>sube</em> una cota inferior de la información mutua entre las dos vistas: la red aprende justo lo que las dos vistas comparten, que por construcción es lo que las transformaciones no destruyeron. Es la formalización exacta de «aprende a ignorar lo irrelevante».</p>
+          <p class="math-note">La cota tiene un límite duro que explica un fenómeno práctico muy conocido: como $I \ge \log N - \mathcal{L}$ y $\mathcal{L}\ge 0$, <strong>ninguna estimación puede superar $\log N$</strong>. Con lotes de 128 datos —255 candidatos— eso son 5,54 nats. De ahí que SimCLR necesitara lotes de 4096 y que MoCo inventara una cola de negativos para simular lotes enormes sin pagarlos en memoria.</p>
         </div>
 
         <h2 id="ejemplo">Contrastivo en numpy, con los gradientes derivados</h2>
@@ -72,6 +72,19 @@
         <p>Los datos son señales de longitud 64 caracterizadas por su <strong>frecuencia</strong>: seis clases, con frecuencias próximas entre sí y bastante ruido. Las transformaciones son un desplazamiento circular (cambia la fase), un reescalado (cambia la amplitud) y ruido añadido. Ninguna de las tres altera la frecuencia, así que al declararlas estamos diciéndole a la red exactamente qué debe ignorar.</p>
 
         <p>La evaluación es la estándar del campo: una <strong>sonda lineal</strong>, es decir, una regresión logística entrenada sobre la representación congelada. Mide cuánta información <em>linealmente accesible</em> sobre la clase hay en el código.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Aquí falta la cabeza de proyección</div>
+          <p>En SimCLR de verdad hay una pieza más. El codificador produce una representación $h$ y encima se coloca una pequeña <strong>cabeza de proyección</strong> $g$: la pérdida InfoNCE se calcula sobre $z = g(h)$, pero la sonda lineal se entrena sobre $h$. Parece un capricho y no lo es. La capa donde vive la pérdida se hace invariante a las aumentaciones, o sea que <em>tira</em> deliberadamente el color y la orientación, justo lo que la tarea posterior podría necesitar. Poner una capa de por medio deja que sea $z$ quien pague ese precio y $h$ no: en ImageNet, sondear $h$ en vez de $z$ vale más de diez puntos (Chen et al., 2020). Aquí prescindimos de $g$ para que el código quepa en una pantalla —contrastamos y sondeamos la misma capa—, pero tenlo en cuenta si lo llevas a un problema real.</p>
+        </div>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Los tres pasos del gradiente</div>
+          <p>Escribe $S_{ij} = z_i^\top z_j/\tau$ y llama $G = \partial\mathcal{L}/\partial S$.</p>
+          <p class="math-note"><strong>(1)</strong> Como $\mathcal{L} = \frac{1}{2n}\sum_i\big[-S_{i,p(i)} + \log\sum_{j \ne i} e^{S_{ij}}\big]$, sale el gradiente de siempre de softmax con entropía cruzada: $G_{ij} = \frac{1}{2n}(P_{ij} - \delta_{j,p(i)})$ para $j \ne i$, con $P$ el softmax por filas; en la diagonal, $0$.</p>
+          <p class="math-note"><strong>(2)</strong> Al bajar de $S$ a $z$ hay que contar dos veces, porque $S_{ij}$ depende de $z_i$ <em>y</em> de $z_j$: $\partial\mathcal{L}/\partial z_k = \frac{1}{\tau}\sum_j (G_{kj} + G_{jk})\,z_j$, que en matrices es $(G + G^\top)Z/\tau$. De ahí el <code>dS + dS.T</code> del código.</p>
+          <p class="math-note"><strong>(3)</strong> Falta deshacer la normalización $z = h/\lVert h\rVert$, cuyo jacobiano es $\frac{1}{\lVert h\rVert}(I - zz^\top)$: hay que <em>quitar</em> la componente radial, $\partial\mathcal{L}/\partial h = \big(\partial\mathcal{L}/\partial z - z\,(z^\top\partial\mathcal{L}/\partial z)\big)/\lVert h\rVert$. Tiene sentido geométrico: como la pérdida solo mira direcciones, el gradiente vive en el plano tangente a la esfera. Este tercer paso es el que más se olvida, y por eso el script lo comprueba con diferencias finitas: error relativo máximo $1{,}18\cdot 10^{-7}$.</p>
+        </div>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -248,8 +261,8 @@ par_c, hist = entrena_contrastivo()
 print(f"{'época':&gt;7} {'InfoNCE':&gt;10}")
 for ep, L in hist:
     print(f"{ep:7d} {L:10.4f}")
-print(f"  (una pérdida de log(2*128-1) = {np.log(255):.4f} sería no haber "
-      f"aprendido nada)")
+print(f"  (la cifra es la del último lote de la época, que tiene 64 datos;")
+print(f"   log(2*64-1) = {np.log(127):.4f} sería no haber aprendido nada)")
 
 Z_tr = normaliza(adelante(par_c, X)[-1])[0]
 Z_te = normaliza(adelante(par_c, X_te)[-1])[0]
@@ -325,7 +338,8 @@ Entrenando el modelo contrastivo...
      80     2.7922
     100     2.8585
     119     2.7938
-  (una pérdida de log(2*128-1) = 5.5413 sería no haber aprendido nada)
+  (la cifra es la del último lote de la época, que tiene 64 datos;
+   log(2*64-1) = 4.8442 sería no haber aprendido nada)
 
 representación                    dimensión   sonda lineal
 señal en bruto                           64         27.0%
@@ -353,7 +367,7 @@ Efecto de la temperatura tau:
 
         <div class="callout warn">
           <div class="callout-title">⚠️ Las transformaciones son el modelo</div>
-          <p>Si hubiéramos incluido el reescalado temporal entre las transformaciones, la red habría aprendido a ignorar la frecuencia y la sonda lineal daría el 17 %. <strong>Elegir las aumentaciones es declarar qué información es irrelevante</strong>, y es la decisión más consecuente de todo el método —igual que la métrica en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> o el grafo en el <a href="07-clustering-espectral.html">capítulo 7</a>—. En visión, el recorte aleatorio y la distorsión de color hacen casi todo el trabajo; en otros dominios, encontrar las buenas es el problema abierto.</p>
+          <p>Si hubiéramos incluido un reescalado <em>temporal</em> —estirar o comprimir la señal en el tiempo— le estaríamos diciendo a la red que la frecuencia tampoco importa, y la frecuencia <em>es</em> la clase. Medido: con un reescalado circular por interpolación de factor entre 0,5 y 2, la sonda baja del 98,0 % al <strong>66,5 %</strong>; con uno tan agresivo que solape del todo las seis clases, factor entre 0,32 y 3,1, cae al <strong>35,8 %</strong>. No llega al azar porque la sonda se entrena sobre señales limpias y el codificador conserva rastro de la frecuencia, pero el destrozo es nuestro, por declarar una invariancia falsa. <strong>Elegir las aumentaciones es declarar qué información es irrelevante</strong>, y es la decisión más consecuente de todo el método —igual que la métrica en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> o el grafo en el <a href="07-clustering-espectral.html">capítulo 7</a>—. En visión, el recorte aleatorio y la distorsión de color hacen casi todo el trabajo; en otros dominios, encontrar las buenas es el problema abierto.</p>
         </div>
 
         <p>La tabla de la temperatura confirma su papel: con $\tau$ entre 0,05 y 0,5 el resultado es estable (97,5 % a 98,2 %), pero con $\tau = 2$ se desploma al <strong>38,0 %</strong>. Con la distribución tan aplanada, el positivo apenas destaca sobre los negativos y el gradiente deja de discriminar. Es un hiperparámetro con un rango útil ancho y un acantilado al final.</p>
@@ -367,6 +381,13 @@ Efecto de la temperatura tau:
         <h2 id="colapso">El colapso, y cómo lo evita cada método</h2>
 
         <p>Si solo pidiéramos «que las dos vistas se parezcan», la solución óptima sería devolver siempre el mismo vector: pérdida cero, representación inútil. Es el <strong>colapso</strong>, y toda la familia se organiza en torno a cómo evitarlo.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Provócalo. En <code>nt_xent</code>, cambia <code>dS = P.copy()</code> por <code>dS = P.copy() * 0.0</code>: el gradiente conserva solo el término del positivo y desaparece por completo la presión de los negativos. La red hace entonces lo obvio, mandarlo todo al mismo punto de la esfera, y verás cuatro síntomas a la vez.</p>
+          <p>El coseno entre dos vistas del mismo dato sube a <strong>0,9999</strong> —invariancia perfecta—, pero el coseno entre <em>datos distintos</em> también es <strong>0,9999</strong>: la representación entera es un punto, y el primer valor singular de la matriz de códigos se lleva el <strong>97 %</strong> de la suma de todos. La sonda lineal cae al <strong>14,8 %</strong>, por debajo del azar. Y la pérdida se estanca en <strong>4,8442</strong>, que es exactamente $\log(2\cdot 64 - 1)$: el valor de quien no ha aprendido nada.</p>
+          <p>Ahí está la lección del capítulo en una cifra: la invariancia sola no vale nada; hace falta además que las cosas distintas queden distintas. (La comprobación de gradiente de arriba dejará de pasar, con un error del orden de 10, y es normal: ya no estás derivando la pérdida que imprimes.)</p>
+        </div>
 
         <div class="table-wrap">
           <table>

@@ -73,8 +73,9 @@ def lof(X, k=20):
 def c_factor(n):
     """Longitud media de camino en un árbol de búsqueda binario con n nodos."""
     if n <= 1:
-        return 1.0
-    return 2.0 * (np.log(n - 1) + 0.5772156649) - 2.0 * (n - 1) / n
+        return 0.0                                       # ya aislado: 0 cortes más
+    H = np.sum(1.0 / np.arange(1, n))                     # H_{n-1} exacto
+    return 2.0 * H - 2.0 * (n - 1) / n
 
 
 def camino(X, idx, prof, prof_max, r):

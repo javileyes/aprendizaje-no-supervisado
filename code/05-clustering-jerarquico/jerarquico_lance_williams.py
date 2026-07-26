@@ -1,11 +1,12 @@
 """
-Clústering jerárquico aglomerativo con los cuatro enlaces clásicos, todos
+Clústering jerárquico aglomerativo con los cinco enlaces del capítulo, todos
 implementados con la MISMA recurrencia de Lance-Williams.
 
 Comprobamos tres cosas:
   1. que la fórmula de Ward, Delta = nA*nB/(nA+nB) * ||muA - muB||^2, coincide
      con el aumento REAL de la suma de cuadrados intra-grupo al fusionar;
-  2. que Lance-Williams reproduce ese mismo Delta sin recalcular medias;
+  2. que Lance-Williams reproduce las alturas de los cinco enlaces sin volver a
+     mirar los datos, comparándolas con la definición de cada uno;
   3. que el enlace por centroide puede producir INVERSIONES (una fusión más
      baja que la anterior), y que los otros cuatro no.
 
@@ -104,7 +105,42 @@ print(f"   aumento real de la suma de cuadrados : {real:.10f}")
 print(f"   fórmula nA*nB/(nA+nB)*||muA-muB||^2  : {formula:.10f}")
 print(f"   diferencia                           : {abs(real - formula):.2e}\n")
 
-# ---------------- 2) Los cuatro enlaces sobre los mismos datos ----------------
+# ------- 1 bis) Lance-Williams frente a la definición directa de cada enlace -------
+def directo(X, enlace):
+    """La misma búsqueda de mínimos, pero recalculando cada distancia DESDE los datos."""
+    grupos, alturas = [[i] for i in range(len(X))], []
+
+    def d(A, B):
+        P, Q = X[A], X[B]
+        M = np.sqrt(((P[:, None] - Q[None]) ** 2).sum(-1))
+        if enlace == "simple":
+            return M.min()
+        if enlace == "completo":
+            return M.max()
+        if enlace == "medio":
+            return M.mean()
+        if enlace == "centroide":
+            return np.linalg.norm(P.mean(0) - Q.mean(0))
+        return np.sqrt(2 * len(A) * len(B) / (len(A) + len(B))
+                       * ((P.mean(0) - Q.mean(0)) ** 2).sum())      # Ward: sqrt(2*Delta)
+
+    while len(grupos) > 1:
+        h, i, j = min((d(grupos[a], grupos[b]), a, b)
+                      for a in range(len(grupos)) for b in range(a + 1, len(grupos)))
+        alturas.append(h)
+        grupos = [g for k, g in enumerate(grupos) if k not in (i, j)] + [grupos[i] + grupos[j]]
+    return np.array(alturas)
+
+
+nube = np.random.default_rng(7).normal(size=(30, 3))   # generador propio: no desplaza a rng
+print("1 bis) Lance-Williams frente a la definición directa de cada enlace")
+print(f"   {'enlace':<10} {'max |LW - definición|':>24}")
+for enlace in ["simple", "completo", "medio", "centroide", "ward"]:
+    dif = np.abs(aglomerativo(nube, enlace)[:, 2] - directo(nube, enlace)).max()
+    print(f"   {enlace:<10} {dif:24.2e}")
+print()
+
+# ---------------- 2) Los cinco enlaces sobre los mismos datos ----------------
 centros = np.array([[0.0, 0.0], [4.0, 0.5], [2.0, 4.0]])
 X = np.vstack([c + rng.normal(scale=0.7, size=(40, 2)) for c in centros])
 y = np.repeat([0, 1, 2], 40)

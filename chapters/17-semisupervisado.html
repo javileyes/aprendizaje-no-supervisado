@@ -35,14 +35,14 @@
 
         <h2 id="cuando">Cuándo ayudan los datos sin etiquetar</h2>
 
-        <p>La pregunta no es retórica. Los datos sin etiquetar informan sobre $p(x)$, y lo que queremos es $p(y\mid x)$. Sin un puente entre ambas cosas, $p(x)$ no dice absolutamente nada sobre las etiquetas. Ese puente hay que ponerlo como <strong>hipótesis</strong>, y hay tres formulaciones equivalentes:</p>
+        <p>La pregunta no es retórica. Los datos sin etiquetar informan sobre $p(x)$, y lo que queremos es $p(y\mid x)$. Sin un puente entre ambas cosas, $p(x)$ no dice absolutamente nada sobre las etiquetas. Ese puente hay que ponerlo como <strong>hipótesis</strong>, y hay tres formulaciones, emparentadas pero no intercambiables:</p>
 
         <div class="callout math">
           <div class="callout-title">➗ Las hipótesis del aprendizaje semisupervisado</div>
           <p><strong>Suavidad:</strong> si $x_1$ y $x_2$ están próximos <em>en una región densa</em>, sus etiquetas coinciden.</p>
           <p><strong>Clúster:</strong> los puntos de un mismo clúster comparten etiqueta. Equivalentemente, la <em>frontera de decisión pasa por zonas de baja densidad</em>.</p>
           <p><strong>Variedad:</strong> los datos viven sobre una variedad de dimensión baja y la etiqueta varía suavemente sobre ella.</p>
-          <p class="math-note">Las tres dicen lo mismo desde ángulos distintos, y las tres pueden ser falsas. Cuando lo son, <strong>los datos sin etiquetar no solo no ayudan: hacen daño</strong>. Es un hecho medible y lo vamos a medir.</p>
+          <p class="math-note">La de suavidad es la general. La del clúster es un caso particular suyo: pedir que la etiqueta sea constante dentro de cada clúster es exactamente pedir que la frontera pase por baja densidad. La de la variedad no cambia el criterio sino la <em>métrica</em>: dice que la distancia que importa es la geodésica sobre la variedad y no la euclídea del espacio ambiente, y por eso ni implica ni está implicada por las otras dos —dos gaussianas bien separadas en el plano cumplen la del clúster y no la de la variedad—. Y las tres pueden ser falsas. Cuando lo son, <strong>los datos sin etiquetar no solo no ayudan: hacen daño</strong>. Es un hecho medible y lo vamos a medir.</p>
         </div>
 
         <div class="callout intuition">
@@ -86,7 +86,10 @@
           <p>Partiendo $L$ en bloques según etiquetados ($\mathcal{L}$) y no etiquetados ($\mathcal{U}$), la derivada respecto a $f_\mathcal{U}$ da $L_{\mathcal{U}\mathcal{U}} f_\mathcal{U} + L_{\mathcal{U}\mathcal{L}} y_\mathcal{L} = 0$, es decir:</p>
           <p>$$ f_{\mathcal{U}} \;=\; \big(D_{\mathcal{U}\mathcal{U}} - W_{\mathcal{U}\mathcal{U}}\big)^{-1} W_{\mathcal{U}\mathcal{L}}\, y_{\mathcal{L}} $$</p>
           <p class="math-note">Un único sistema lineal: sin iteraciones, sin semillas, sin mínimos locales. La solución se llama <strong>armónica</strong> porque cumple $f_i = \frac{1}{d_i}\sum_j w_{ij} f_j$ en todo nodo no etiquetado: cada valor es exactamente la media ponderada de sus vecinos. Es la versión discreta de una función armónica, la que resuelve la ecuación de Laplace. También se puede leer como la probabilidad de que un paseo aleatorio que arranque en $i$ llegue antes a una etiqueta positiva que a una negativa.</p>
+          <p class="math-note">Con una condición: $L_{\mathcal{U}\mathcal{U}}$ es invertible si y solo si cada componente conexa del grafo contiene al menos un punto etiquetado. Si una componente queda huérfana, nada la ancla —cualquier constante minimiza la energía dentro de ella— y el sistema es singular. El $10^{-9}I$ que le suma el código es un parche: devuelve $f=0$ en esa componente, y el <code>argmax</code> de un vector nulo asigna la clase 0 sin avisar. Con $k=3$ vecinos en lugar de 12, el grafo de las lunas se rompe en seis componentes y, con una etiqueta por clase, 228 de los 398 puntos no etiquetados caen en ese caso y el acierto baja al 81,9 % sin ninguna señal de alarma.</p>
         </div>
+
+        <p>¿Y por qué se llama <em>propagación</em>, si aquí no se propaga nada? Porque la condición armónica $f_i=\frac{1}{d_i}\sum_j w_{ij}f_j$ se puede usar como regla de actualización en vez de como ecuación: parte de $f=0$, sustituye cada valor no etiquetado por la media de sus vecinos, vuelve a fijar las etiquetas conocidas, repite. Eso es el método de Jacobi aplicado a este mismo sistema, y converge a la misma solución: en las lunas, con cuatro etiquetas, ya acierta el 100 % en la sexta pasada, aunque a las cuatro mil pasadas todavía esté a $1{,}6\times10^{-3}$ de la solución cerrada. Esa es la imagen mental correcta —las etiquetas difundiéndose por el grafo desde los pocos nodos anclados, como calor desde unos focos—, y la forma cerrada es el estado final de esa difusión calculado de golpe. En grafos grandes se usa la iteración, precisamente porque solo necesita multiplicar por $W$ disperso en lugar de resolver un sistema denso.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -287,7 +290,7 @@ es que su respuesta deja de tener que ver con los datos.</pre>
 
         <p>Fíjate también en cómo la ventaja se estrecha: +22,2 % con 2 etiquetas, +2,6 % con 20, +0,0 % con 50. <strong>El aprendizaje semisupervisado vale exactamente lo que escasean las etiquetas.</strong> Con suficientes, el supervisado ya resuelve el problema y toda esta maquinaria sobra.</p>
 
-        <p>La comprobación intermedia confirma la teoría: el máximo de $|f_i - \frac{1}{d_i}\sum_j w_{ij}f_j|$ vale $2{,}23\times10^{-10}$, es decir, la solución es armónica hasta la precisión del solucionador lineal.</p>
+        <p>La comprobación intermedia confirma la teoría: el máximo de $|f_i - \frac{1}{d_i}\sum_j w_{ij}f_j|$ vale $2{,}23\times10^{-10}$. Ese residuo no es error del solucionador —sin regularizar sale $1{,}7\times10^{-15}$, precisión de máquina—, sino el precio del término $10^{-9}I$ que el código suma a $L_{\mathcal{U}\mathcal{U}}$ para que el sistema sea invertible siempre; el residuo escala linealmente con él. La solución es armónica, en la práctica, hasta donde se lo permite esa regularización.</p>
 
         <h3>Y ahora, el reverso</h3>
 
@@ -302,7 +305,7 @@ es que su respuesta deja de tener que ver con los datos.</pre>
 
         <h2 id="autoentrenamiento">Autoentrenamiento y consistencia</h2>
 
-        <p>La propagación necesita construir un grafo con todos los puntos, lo que cuesta $O(n^2)$ y no escala. La familia dominante hoy es otra, basada en dos ideas que se combinan.</p>
+        <p>La propagación necesita construir un grafo con todos los puntos, lo que cuesta $O(n^2)$ de memoria, y resolver el sistema denso, $O(n^3)$: no escala. La familia dominante hoy es otra, basada en dos ideas que se combinan.</p>
 
         <p><strong>Autoentrenamiento (pseudo-etiquetas).</strong> Entrena con lo poco etiquetado, predice sobre lo no etiquetado, quédate con las predicciones más seguras como si fueran etiquetas verdaderas y reentrena. Es exactamente el mecanismo de DEC del <a href="15-deep-clustering.html">capítulo 15</a>, y comparte su patología: <em>sesgo de confirmación</em>. Los errores que el modelo comete con confianza se convierten en etiquetas y se cimentan.</p>
 
@@ -312,6 +315,7 @@ es que su respuesta deja de tener que ver con los datos.</pre>
           <div class="callout-title">➗ Pérdida de consistencia</div>
           <p>$$ \mathcal{L}_{\text{cons}} = \mathbb{E}_{x\sim \mathcal{U}}\; \big\lVert f_\theta(x) - f_\theta\big(\mathrm{aug}(x)\big) \big\rVert^2 $$</p>
           <p class="math-note">Es la misma declaración de invariancia del <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>, aplicada ahora a la salida del clasificador en vez de a una representación. Y tiene una lectura geométrica: obliga a que la función sea plana alrededor de cada dato, lo que empuja la frontera de decisión <em>lejos</em> de las zonas densas. Es decir, implementa la hipótesis del clúster por la vía del gradiente en lugar de por la vía del grafo.</p>
+          <p class="math-note">Y con ella vuelve el fantasma del capítulo 16: $\mathcal{L}_{\text{cons}}$ sola tiene el mismo mínimo trivial —predecir siempre lo mismo da pérdida cero—, que es el colapso otra vez. Aquí lo impiden dos cosas. La primera, que nunca se usa sola: va sumada a la pérdida supervisada, y esas pocas etiquetas anclan la salida. La segunda, más sutil, es lo que hace FixMatch al quedarse con el <code>argmax</code> en lugar de con la distribución: exigir una etiqueta <em>dura</em> es pedir que la predicción sea de baja entropía, y eso es minimización de entropía —la tercera fila de la tabla del panorama— colada dentro de un método de consistencia. Por eso la familia funciona: no impone solo invariancia, impone invariancia <em>y</em> decisión.</p>
         </div>
 
         <p><strong>FixMatch</strong> (Sohn et al., 2020) combina las dos con una simplicidad casi insultante, y funciona mejor que métodos mucho más elaborados:</p>
@@ -323,6 +327,8 @@ es que su respuesta deja de tener que ver con los datos.</pre>
         </ol>
 
         <p>La asimetría entre las dos aumentaciones es lo que lo hace funcionar: la pseudo-etiqueta se genera en condiciones fáciles y se exige en condiciones difíciles.</p>
+
+        <p>Dos diferencias respecto al artículo, para que las cifras signifiquen lo que parecen. FixMatch fija el lote sin etiquetar en $\mu=7$ veces el etiquetado; aquí el lote sin etiquetar es siempre de 64 y el etiquetado es el conjunto de etiquetas entero —de 6 a 60 muestras—, así que la proporción cambia con cada fila de la tabla. Y el artículo normaliza la pérdida no supervisada por el lote entero, no por las muestras que pasan el filtro: así, subir el umbral no solo tira datos, también <em>debilita</em> el término no supervisado. Aquí lo dividimos por las aceptadas para aislar el efecto de la calidad del de la cantidad. Con la normalización del artículo la tabla del umbral sale 87,6 / 86,9 / 85,8 / 82,9 / 70,7: la misma historia.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -529,7 +535,7 @@ No des por hecho que un umbral alto es siempre mejor: mídelo.</pre>
 
         <h3>El umbral: un resultado que contradice la intuición</h3>
 
-        <p>La segunda tabla merece atención porque el resultado no es el esperable. La última columna mide la <em>calidad</em> de las pseudo-etiquetas: cuántas de las que el modelo usa son realmente correctas. Sube monótonamente con el umbral, del <strong>70,3 % al 83,9 %</strong>, exactamente como promete la teoría. Y la columna anterior mide la <em>cantidad</em>: cae del 100 % al 5,6 %.</p>
+        <p>La segunda tabla merece atención porque el resultado no es el esperable. La última columna mide la <em>calidad</em> de las pseudo-etiquetas: cuántas de las que el modelo usa son realmente correctas. Sube con el umbral, del <strong>70,3 % al 83,9 %</strong> —no de forma estrictamente monótona: en 0,50 hay un bache de 1,8 puntos, dentro del ruido de las dos semillas que promediamos—, en la dirección que promete la teoría. Y la columna anterior mide la <em>cantidad</em>: cae del 100 % al 5,6 %.</p>
 
         <p>Pero el acierto final <strong>empeora</strong> al subir el umbral: 87,6 % con umbral 0 frente a 72,8 % con 0,99. En esta tarea gana la cantidad. Con pseudo-etiquetas correctas el 70 % de las veces y una aumentación fuerte que ya regulariza mucho, filtrar solo sirve para tirar datos.</p>
 
@@ -552,7 +558,7 @@ No des por hecho que un umbral alto es siempre mejor: mídelo.</pre>
             </thead>
             <tbody>
               <tr><td><strong>Generativa</strong></td><td>Modelar $p(x,y)$; los datos sin etiquetar informan sobre $p(x)$ y con ella sobre las componentes de la mixtura</td><td>Principiada; usa EM del <a href="04-gmm-y-em.html">capítulo 4</a> directamente</td><td>Si el modelo generativo está mal especificado, empeora</td></tr>
-              <tr><td><strong>Basada en grafos</strong></td><td>Propagación armónica sobre el laplaciano</td><td>Solución cerrada, sin hiperparámetros de optimización</td><td>$O(n^2)$; no vale para datos nuevos</td></tr>
+              <tr><td><strong>Basada en grafos</strong></td><td>Propagación armónica sobre el laplaciano</td><td>Solución cerrada, sin hiperparámetros de optimización</td><td>$O(n^2)$ de memoria y $O(n^3)$ el sistema denso; no vale para datos nuevos</td></tr>
               <tr><td><strong>Baja densidad</strong></td><td>Empujar la frontera fuera de las zonas densas (S3VM, minimización de entropía)</td><td>Implementa la hipótesis directamente</td><td>Optimización no convexa</td></tr>
               <tr><td><strong>Consistencia</strong></td><td>Invariancia frente a perturbaciones (Π-model, Mean Teacher, VAT, FixMatch)</td><td>Escala, y es el estado del arte</td><td>Depende por completo de las aumentaciones</td></tr>
               <tr><td><strong>Preentrenar y afinar</strong></td><td>Contrastivo (<a href="16-autosupervisado-contrastivo.html">cap. 16</a>) sin etiquetas y luego afinar con las pocas que haya</td><td>El enfoque dominante hoy; separa los dos problemas</td><td>Necesita mucho cómputo en el preentrenamiento</td></tr>

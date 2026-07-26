@@ -33,9 +33,9 @@
         <h1>¿Cuántos clústeres? Validar sin etiquetas</h1>
         <p class="lead">Llevamos cinco capítulos aplazando la pregunta: he ejecutado el algoritmo y me ha devuelto seis grupos, ¿son reales? Este capítulo da las herramientas que existen, las implementa desde cero y, sobre todo, enseña dónde mienten. Porque van a mentir: el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> ya advertía de que ningún criterio interno puede validar lo que no tiene verdad.</p>
 
-        <h2 id="tres-familias">Tres familias de criterios</h2>
+        <h2 id="tres-familias">Cuatro familias de criterios</h2>
 
-        <p>La tabla del capítulo 1 vuelve, ahora con contenido. Hay tres formas de evaluar una partición, y solo la primera está siempre disponible.</p>
+        <p>La tabla del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> vuelve, ahora con contenido y con una familia más. Allí distinguíamos criterios internos, externos y de tarea; aquí desdoblamos los internos, porque hay una idea intermedia que no usa etiquetas ni supone forma: la estabilidad. De las cuatro, las dos primeras están siempre disponibles porque solo necesitan los datos; la de tarea sigue siendo la más honesta, y vuelve al final del capítulo, en la receta, y en la parte IV.</p>
 
         <div class="callout intuition">
           <div class="callout-title">🧠 Intuición</div>
@@ -52,6 +52,7 @@
               <tr><td><strong>Interna</strong></td><td>Solo los datos y la partición</td><td>¿Es geométricamente coherente?</td><td>Premia la forma de grupo que ella misma supone. Circular.</td></tr>
               <tr><td><strong>De estabilidad</strong></td><td>Los datos, remuestreados</td><td>¿Se repite si cambio la muestra?</td><td>Un artefacto estable sigue siendo estable.</td></tr>
               <tr><td><strong>Externa</strong></td><td>Etiquetas de referencia</td><td>¿Coincide con lo que ya sabía?</td><td>Rara vez disponibles. Y si lo están, ¿por qué agrupas?</td></tr>
+              <tr><td><strong>De tarea</strong></td><td>El problema posterior</td><td>¿Mejora lo que viene después?</td><td>Cara, y solo aplicable si hay un problema posterior. Parte IV.</td></tr>
             </tbody>
           </table>
         </div>
@@ -295,6 +296,8 @@ En las lunas, comparemos la partición de k-means con la verdadera:
 
         <p>En el conjunto B, los tres se equivocan y se equivocan <em>juntos</em>: los tres eligen $k=6$ para unos datos con dos grupos. No es que uno falle y otro acierte: comparten la misma hipótesis, y por eso comparten el error. <strong>Que tres índices coincidan no es una confirmación.</strong></p>
 
+        <p>Y ahora mira la columna de la inercia, que es el método del codo. En el conjunto A el codo está donde tiene que estar y se ve a un kilómetro: de $k=2$ a $k=3$ la inercia cae un 78 %, y a partir de ahí un 12 %, un 7 %, un 16 % y un 15 %. En el conjunto B las caídas sucesivas son 37 %, 44 %, 27 %, 31 % y 13 %: no solo no hay escalón, es que la mayor caída no es la primera sino la segunda. La curva es un tobogán liso, y ante un tobogán dos personas razonables señalarán dos $k$ distintas. Esa es la diferencia entre un criterio que puede fallar y un criterio que ni siquiera es una función: el codo no devuelve un número, devuelve una opinión.</p>
+
         <p>El bloque final es todavía peor y conviene leerlo dos veces. Con $k=2$ fijo, comparamos la partición de k-means (que ya sabemos incorrecta) con la <em>verdadera</em>. La silueta le da 0,457 a la incorrecta y <strong>0,361 a la correcta</strong>; Calinski-Harabasz, 394,66 frente a 219,06. Es decir: si usaras estos índices para elegir entre dos algoritmos, elegirías el peor. No están midiendo acierto. Están midiendo <em>compacidad</em>, y las lunas correctas no son compactas.</p>
 
         <div class="callout warn">
@@ -312,6 +315,7 @@ En las lunas, comparemos la partición de k-means con la verdadera:
           <div class="callout-title">➗ Estadístico de hueco (gap)</div>
           <p>$$ \mathrm{Gap}(k) \;=\; \mathbb{E}^{*}\!\big[\log W_k\big] \;-\; \log W_k $$</p>
           <p class="math-note">$W_k$ es la inercia obtenida con $k$ grupos en tus datos, y $\mathbb{E}^{*}$ la esperanza de la misma cantidad sobre conjuntos de <em>referencia</em> generados sin estructura (uniformes dentro de la envolvente de tus datos), estimada con $B$ repeticiones. El «hueco» mide cuánto mejor agrupan tus datos que el ruido. Con $s_k = \mathrm{sd}^*(\log W_k)\sqrt{1 + 1/B}$ como error típico, la regla es quedarse con el <strong>menor $k$ tal que $\mathrm{Gap}(k) \ge \mathrm{Gap}(k+1) - s_{k+1}$</strong>: el primer $k$ a partir del cual añadir grupos ya no aporta nada por encima del ruido.</p>
+          <p class="math-note">Y el logaritmo no es cosmético. Si multiplicas todos tus datos por 1000, la inercia se multiplica por $10^6$ y la de las referencias también; en escala logarítmica ambas se desplazan exactamente $2\log 1000 = 13{,}8155$, y la resta no se entera: el gap sale idéntico, salvo redondeo de coma flotante. Una diferencia de inercias crudas, en cambio, se multiplicaría por $10^6$ y no significaría nada. El logaritmo es lo que convierte el gap en una cantidad sin unidades, comparable entre conjuntos de datos: la misma invariancia de escala que el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> ponía en el teorema de Kleinberg como una de las tres propiedades irrenunciables e incompatibles.</p>
         </div>
 
         <p>La virtud decisiva es que $k=1$ es un candidato legítimo. Vamos a comprobarlo con dos conjuntos: uno con cuatro grupos claros y otro que es literalmente ruido uniforme.</p>
@@ -441,7 +445,7 @@ uniforme (sin grupos)   (respuesta correcta: k = 1)
 
         <p>En el primer conjunto el gap salta de 0,205 a <strong>1,135</strong> exactamente en $k=4$, y a partir de ahí baja. La regla se para ahí y acierta. Fíjate en que $\log W_k$ por sí solo no habría dicho nada: baja monótonamente de 8,70 a 5,77, como siempre.</p>
 
-        <p>En el segundo conjunto —300 puntos uniformes, sin la menor estructura— el gap se queda <strong>pegado a cero para todo $k$</strong>: los valores oscilan entre $-0{,}054$ y $+0{,}032$, todos dentro del error típico $s_k \approx 0{,}03$. La regla se detiene en $k=1$ y declara, correctamente, que no hay grupos. Ese es el resultado que ningún índice interno del apartado anterior podía dar.</p>
+        <p>En el segundo conjunto —300 puntos uniformes, sin la menor estructura— el gap se queda <strong>pegado a cero para todo $k$</strong>: los valores oscilan entre $-0{,}054$ y $+0{,}032$, todos del mismo orden que el error típico de las referencias ($s_k$ va de 0,030 a 0,077, y ninguno lo supera en más de vez y media). Ninguna $k$ destaca sobre las demás: el gap es plano y compatible con cero en todo el rango. La regla se detiene en $k=1$ y declara, correctamente, que no hay grupos. Ese es el resultado que ningún índice interno del apartado anterior podía dar.</p>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
@@ -453,7 +457,7 @@ uniforme (sin grupos)   (respuesta correcta: k = 1)
 
         <p>Hay una intuición distinta y muy potente, formulada por Ben-Hur, Elisseeff y Guyon (2002): <strong>una estructura real se repite; un artefacto, no</strong>. Toma dos submuestras al azar de tus datos, agrupa cada una por separado y mira si coinciden en los puntos que comparten. Repítelo muchas veces y para cada $k$.</p>
 
-        <p>La ventaja es que el criterio no supone nada sobre la <em>forma</em> de los grupos: sirve igual para k-means, DBSCAN o el espectral. Es el único de los tres que no arrastra una hipótesis geométrica.</p>
+        <p>La ventaja es que el criterio no supone nada sobre la <em>forma</em> de los grupos: sirve igual para k-means, DBSCAN o el espectral. Es el único criterio aplicable sin etiquetas que no arrastra una hipótesis geométrica.</p>
 
         <div class="callout math">
           <div class="callout-title">➗ Estabilidad por remuestreo</div>
@@ -599,11 +603,11 @@ al gap statistic, que sí sabe decir «aquí no hay nada», pero no lo sustituye
 
         <p>En el conjunto fácil funciona de maravilla: pico nítido en $k=3$ con <strong>0,989</strong> y una desviación de solo 0,048. Ningún índice interno hace falta.</p>
 
-        <p>En las lunas vuelve a elegir $k=4$, igual que la silueta y Calinski-Harabasz. Y la razón es instructiva: partir cada luna en dos trozos es una operación <em>muy reproducible</em>: cualquier submuestra da los mismos cuatro pedazos. La estabilidad no mide si la partición es correcta, mide si es <em>repetible</em>, y una manera sistemáticamente equivocada de partir los datos es perfectamente repetible.</p>
+        <p>En las lunas vuelve a fallar por exceso: elige $k=4$ donde hay 2, igual que la silueta y Calinski-Harabasz se iban a 6. Y la razón es instructiva: partir cada luna en dos trozos es una operación <em>muy reproducible</em>: cualquier submuestra da los mismos cuatro pedazos. La estabilidad no mide si la partición es correcta, mide si es <em>repetible</em>, y una manera sistemáticamente equivocada de partir los datos es perfectamente repetible.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El punto ciego, medido</div>
-          <p>La tercera columna es la prueba que faltaba. Son <strong>300 puntos uniformes en un cuadrado</strong>, sin la menor estructura, y la estabilidad no baja de 0,761 y llega a <strong>0,939</strong>. Comparado con el 0,989 del conjunto que sí tiene tres grupos, la diferencia es de tres centésimas: indistinguible en la práctica.</p>
+          <p>La tercera columna es la prueba que faltaba. Son <strong>300 puntos uniformes en un cuadrado</strong>, sin la menor estructura, y la estabilidad no baja de 0,761 y llega a <strong>0,939</strong>. Comparado con el 0,989 del conjunto que sí tiene tres grupos, la diferencia es de cinco centésimas, con desviaciones de 0,081 y 0,048: indistinguible en la práctica.</p>
           <p>El motivo es transparente: k-means sobre un cuadrado uniforme siempre lo corta por los mismos sitios —en cuatro cuadrantes, por ejemplo—, y eso es reproducible al 100&nbsp;%. <strong>Reproducible no es lo mismo que real.</strong> Por eso la estabilidad complementa al estadístico de hueco, que sí sabe decir «aquí no hay nada», pero no lo sustituye.</p>
         </div>
 
@@ -725,7 +729,16 @@ fina[:50] = 3                      # partimos el grupo 0 en dos mitades
 print(f"   verdad: 3 grupos de 100. Propuesta: 4 grupos (el primero, partido).")
 print(f"   Rand {rand_index(verdad, fina):.4f} | ARI {ari(verdad, fina):.4f} "
       f"| NMI {nmi(verdad, fina):.4f}")
-print("   Ningún índice llega a 1: una subdivisión pura se penaliza igual que un error.")
+
+mal = verdad.copy()
+mal[:50] = 1                       # los MISMOS 50 puntos, pero mezclados con el grupo 1
+print("   Y ahora un error de verdad sobre esos mismos 50 puntos: al grupo 1.")
+print(f"   Rand {rand_index(verdad, mal):.4f} | ARI {ari(verdad, mal):.4f} "
+      f"| NMI {nmi(verdad, mal):.4f}")
+print("   Ningún índice llega a 1 con la subdivisión, así que tampoco la aprueban.")
+print(f"   Pero el error cuesta más: el ARI baja de {ari(verdad, fina):.4f} a "
+      f"{ari(verdad, mal):.4f}. Los índices")
+print("   distinguen refinamiento de error en grado, no en clase.")
 
 fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 ax[0].plot([2, 5, 10, 20],
@@ -775,7 +788,11 @@ plt.show()
 3) ¿Y si la partición es CORRECTA pero más fina que la verdad?
    verdad: 3 grupos de 100. Propuesta: 4 grupos (el primero, partido).
    Rand 0.9443 | ARI 0.8686 | NMI 0.9049
-   Ningún índice llega a 1: una subdivisión pura se penaliza igual que un error.</pre>
+   Y ahora un error de verdad sobre esos mismos 50 puntos: al grupo 1.
+   Rand 0.8328 | ARI 0.6379 | NMI 0.7397
+   Ningún índice llega a 1 con la subdivisión, así que tampoco la aprueban.
+   Pero el error cuesta más: el ARI baja de 0.8686 a 0.6379. Los índices
+   distinguen refinamiento de error en grado, no en clase.</pre>
         </div>
 
         <p>El primer bloque es el argumento entero a favor del ajuste. Con dos particiones <em>completamente aleatorias e independientes</em> en 20 grupos, el índice de Rand crudo da <strong>0,9048</strong>. Cualquiera que leyera «90 % de acuerdo» pensaría que ha descubierto algo, y no hay absolutamente nada. La razón es combinatoria: con 20 grupos, casi todas las parejas están separadas en ambas particiones, y esas coincidencias triviales cuentan como aciertos. El ARI, que resta esa expectativa, se queda en $-0{,}0002$.</p>
@@ -784,7 +801,7 @@ plt.show()
 
         <p>El segundo bloque muestra la sensibilidad. Al estropear el 10 % de las etiquetas, el Rand solo baja a 0,907 —apenas se entera— mientras que el ARI cae a 0,791 y el NMI a 0,719. El ARI discrimina; el Rand comprime todo el rango interesante entre 0,55 y 1,00.</p>
 
-        <p>El tercer bloque señala un límite que afecta a los tres. Si tu partición es <em>correcta pero más fina</em> —encuentras 4 grupos donde había 3, sin mezclar nada—, ninguno llega a 1: ARI 0,869, NMI 0,905. Puede que hayas descubierto una subestructura real que las etiquetas de referencia no recogían, y el índice te penaliza igual que si te hubieras equivocado. Es la razón de que en la práctica se reporte también la matriz de contingencia.</p>
+        <p>El tercer bloque señala un límite que afecta a los tres. Si tu partición es <em>correcta pero más fina</em> —encuentras 4 grupos donde había 3, sin mezclar nada—, ninguno llega a 1: ARI 0,869, NMI 0,905. Puede que hayas descubierto una subestructura real que las etiquetas de referencia no recogían, y el índice te lo cobra igualmente. Lo cobra menos que un error de verdad: si en lugar de partir el grupo 0 hubieras mezclado esos mismos 50 puntos con el grupo 1, el ARI habría caído a <strong>0,638</strong>. Pero eso es una diferencia de grado, no de clase: por debajo de 1, el número por sí solo no te dice si has fallado o si has visto de más. Es la razón de que en la práctica se reporte también la matriz de contingencia, donde un refinamiento se reconoce de un vistazo porque cada grupo de referencia se reparte entre filas puras.</p>
 
         <h2 id="receta">Una receta razonable</h2>
 
@@ -806,7 +823,7 @@ plt.show()
             <li>Ninguno admite $k=1$, así que siempre encuentran grupos. El estadístico de hueco sí: en 300 puntos uniformes se queda pegado a cero y elige $k=1$; en cuatro grupos reales salta a 1,135 en $k=4$.</li>
             <li>La estabilidad por remuestreo no supone ninguna forma de grupo y acierta $k=3$ con 0,989 en el caso fácil. Pero es ciega a los sesgos sistemáticos: sobre 300 puntos uniformes <em>sin estructura</em> llega a 0,939, indistinguible del caso real.</li>
             <li>El índice de Rand sin ajustar está inflado: dos particiones aleatorias en 20 grupos dan 0,9048. El ARI corrige la línea base y da $-0{,}0002$. El NMI queda a medio camino (0,2259) y también favorece a quien proponga más grupos.</li>
-            <li>Una subdivisión correcta pero más fina penaliza igual que un error: ARI 0,869. Los índices resumen; la matriz de contingencia informa.</li>
+            <li>Una subdivisión correcta pero más fina también penaliza: ARI 0,869, frente a 0,638 si esos mismos 50 puntos se hubieran mezclado con otro grupo. Penaliza menos, pero penaliza: los índices resumen; la matriz de contingencia informa.</li>
           </ul>
         </div>
 
@@ -827,7 +844,7 @@ plt.show()
 <span class="prompt">$</span> python code/08-validacion-clusteres/estabilidad_remuestreo.py</pre>
         </div>
 
-        <p>Con esto se cierra la parte II. Hemos visto cinco familias de algoritmos de clústering y hemos aprendido a desconfiar de las tres formas de validarlos. Todos comparten una limitación que no hemos tocado: <strong>trabajan en el espacio original</strong>, ese mismo espacio del que el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> demostró que en dimensión alta es casi inservible. La parte III se dedica a construir un espacio mejor, y empieza por la herramienta más antigua y más usada de todas: el <a href="09-pca.html">análisis de componentes principales</a>.</p>
+        <p>Con esto se cierra la parte II. Hemos visto cinco familias de algoritmos de clústering y hemos aprendido a desconfiar de las tres formas de validarlos que no exigen esperar a la tarea final. Todos comparten una limitación que no hemos tocado: <strong>trabajan en el espacio original</strong>, ese mismo espacio del que el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> demostró que en dimensión alta es casi inservible. La parte III se dedica a construir un espacio mejor, y empieza por la herramienta más antigua y más usada de todas: el <a href="09-pca.html">análisis de componentes principales</a>.</p>
 
         <div class="chapter-nav" id="chapter-nav"></div>
       </main>

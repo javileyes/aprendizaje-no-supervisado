@@ -15,7 +15,8 @@ rng = np.random.default_rng(3)
 
 # Dos "bandas" en gasto (300 y 900 euros) y dos en antigüedad (1 y 9 años).
 gasto = np.concatenate([rng.normal(300, 60, 100), rng.normal(900, 60, 100)])
-antig = np.concatenate([rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50)] * 2)
+antig = np.concatenate([rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50),
+                        rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50)])
 X = np.column_stack([gasto, antig])
 
 
@@ -30,15 +31,26 @@ def kmeans(X, k, semilla=0, iters=100):
         if np.allclose(C_nuevo, C):
             break
         C = C_nuevo
-    return z
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return z, ((X - C[z]) ** 2).sum()          # partición e inercia alcanzada
+
+
+def mejor_kmeans(X, k, reinicios=10):
+    """El mejor de varios arranques: así el resultado no depende de la suerte."""
+    mejor = None
+    for s in range(reinicios):
+        z, sse = kmeans(X, k, semilla=s)
+        if mejor is None or sse < mejor[1]:
+            mejor = (z, sse)
+    return mejor[0]
 
 
 # --- Respuesta A: unidades originales. El euro aplasta al año ---
-z_bruto = kmeans(X, k=2, semilla=0)
+z_bruto = mejor_kmeans(X, k=2)
 
 # --- Respuesta B: cada columna con media 0 y desviación 1 ---
 Z = (X - X.mean(axis=0)) / X.std(axis=0)
-z_norm = kmeans(Z, k=2, semilla=0)
+z_norm = mejor_kmeans(Z, k=2)
 
 # ¿Cuánto se parecen las dos particiones? Como las etiquetas 0/1 son arbitrarias,
 # medimos el acuerdo por PAREJAS: ¿los mismos dos puntos caen juntos en ambas?

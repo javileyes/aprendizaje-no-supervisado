@@ -71,6 +71,8 @@
 
         <p><strong>Isomap</strong> (Tenenbaum, de Silva y Langford, 2000) hace un cambio mínimo con consecuencias enormes: construye el grafo de $k$ vecinos, calcula las distancias como <em>caminos más cortos</em> por ese grafo —una aproximación discreta de la geodésica— y le pasa esa matriz al MDS clásico. Solo se fía de las distancias cortas, que son las únicas fiables sobre una variedad curva; las largas las reconstruye encadenando saltos cortos.</p>
 
+        <p>Hay una letra pequeña que conviene no esconder. La tabla del final de este capítulo le atribuye al MDS clásico conservar «todas las distancias», pero ese «todas» solo vale si $D$ es euclídea, y una matriz de distancias geodésicas <em>no</em> lo es: la $B$ del doble centrado deja de ser semidefinida positiva y aparecen autovalores negativos. En este ejemplo, con 20 vecinos, son 305 de los 600 —el que falta es el cero que el doble centrado produce siempre—, aunque en masa suman 7 171 frente a los 425 822 de los positivos, un 1,7 %. Isomap se queda con los $k$ mayores, que aquí son positivos, y descarta el resto; el <code>np.maximum(val, 0)</code> de <code>mds_clasico</code> es solo la red de seguridad por si alguno de esos $k$ saliera negativo. El resultado, por tanto, ya no es una incrustación exacta de las distancias sino la mejor aproximación por mínimos cuadrados a la $B$ del doble centrado, y que la masa negativa sea pequeña es precisamente la señal de que la lámina se está desenrollando bien.</p>
+
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
             <span class="file-name">isomap_swissroll.py</span>
@@ -313,6 +315,7 @@ de lo que están sobre la lámina: eso es lo que engaña a PCA.</pre>
           <div class="callout-title">➗ Objetivo y gradiente</div>
           <p>$$ C = D_{\mathrm{KL}}(P\,\Vert\,Q) = \sum_{i \ne j} p_{ij}\log\frac{p_{ij}}{q_{ij}}, \qquad \frac{\partial C}{\partial y_i} = 4\sum_{j} (p_{ij} - q_{ij})\,(y_i - y_j)\,\big(1 + \lVert y_i-y_j\rVert^2\big)^{-1} $$</p>
           <p class="math-note">Es un sistema de muelles: si $p_{ij} \gt q_{ij}$ —están más cerca en el original que en el mapa— el término tira de $y_i$ hacia $y_j$; si $p_{ij} \lt q_{ij}$, lo empuja. <strong>La asimetría de la KL es decisiva</strong>: el término $p_{ij}\log(p_{ij}/q_{ij})$ castiga muchísimo poner lejos lo que estaba cerca ($p$ grande, $q$ pequeño) y casi no castiga poner cerca lo que estaba lejos. De ahí que t-SNE conserve la estructura local y maltrate la global.</p>
+          <p class="math-note"><strong>De dónde sale el gradiente.</strong> Escribe $s_{kl} = \big(1+\lVert y_k-y_l\rVert^2\big)^{-1}$ y $z = \sum_{k\ne l} s_{kl}$, de modo que $q_{kl} = s_{kl}/z$. Como $\sum_{k\ne l} p_{kl} = 1$, el coste se parte en dos: $C = -\sum_{k\ne l} p_{kl}\log s_{kl} + \log z + \text{cte}$. El punto $y_i$ solo aparece en los pares $(i,j)$ y $(j,i)$, y $\partial \lVert y_i-y_j\rVert^2/\partial y_i = 2(y_i-y_j)$; como cada par cuenta dos veces en la suma simétrica, ese 2 se convierte en el 4 del enunciado. Del primer término, usando $\partial \log s_{ij}/\partial \lVert y_i-y_j\rVert^2 = -s_{ij}$, sale $+4\,p_{ij}\,s_{ij}\,(y_i-y_j)$; del $\log z$ —que depende de <em>todos</em> los pares— sale $-4\,q_{ij}\,s_{ij}\,(y_i-y_j)$. Sumando queda la resta $(p_{ij}-q_{ij})$. Fíjate en la asimetría de coste: la parte atractiva es local, porque solo pesa donde $p_{ij}$ es apreciable, es decir entre vecinos; la repulsiva actúa entre todos los pares. Es literalmente un problema de $N$ cuerpos, y por eso se le puede aplicar la misma aproximación de Barnes-Hut que se usa en simulación gravitatoria.</p>
         </div>
 
         <h2 id="ejemplo-tsne">t-SNE desde cero, y sus tres advertencias medidas</h2>
@@ -532,6 +535,12 @@ Misma nube, distintas perplejidades:
           <p>Cuidado también al medirla: la cantidad $\sum_{ij} 4p_{ij}\log(4p_{ij}/q_{ij})$ <strong>no es una divergencia KL</strong>, porque $4P$ suma 4 y no 1. Para que la columna sea comparable a lo largo de todo el entrenamiento hay que evaluarla siempre con la $P$ de verdad, que es lo que hace el código. El desplome de la iteración 100 a la 150 es exactamente el momento en que la exageración se apaga y el optimizador vuelve a perseguir el objetivo real.</p>
         </div>
 
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Quita la exageración temprana: cambia <code>exagera = 4.0 if it &lt; 100 else 1.0</code> por <code>exagera = 1.0</code>. La columna deja de tener sobresaltos y baja sin más: 2,26187 · 1,05751 · 1,01242 · 0,99550… hasta <strong>0,94751</strong>. Y ahí está lo incómodo: <strong>0,94751 es menor que el 0,94801 que consigue el ajuste con exageración</strong>. La exageración temprana no sirve para bajar la KL —aquí la empeora un poco—, sino para escapar de los mínimos locales en los que cae t-SNE cuando hay muchos grupos y todos arrancan amontonados en el origen. Con tres grupos tan separados como estos no hay de qué escapar, y el truco solo cuesta.</p>
+          <p>La moraleja es la de siempre con los hiperparámetros heredados: casi todos son remedios para un problema concreto, y fuera de ese problema no son gratis.</p>
+        </div>
+
         <h3>Advertencia 1: las distancias entre grupos no significan nada</h3>
 
         <p>Los grupos 0 y 1 están a 10,13 unidades en los datos; los grupos 1 y 2, a 49,94, casi cinco veces más. En el dibujo salen a 12,25 y 25,91: <strong>solo el doble</strong>. Si t-SNE conservara distancias, los tres cocientes de la tabla serían iguales; van de 0,4335 a 1,2093, un factor 2,8. Medir con una regla sobre un dibujo de t-SNE para decir «este grupo está más cerca de aquel» no tiene fundamento.</p>
@@ -571,6 +580,8 @@ Misma nube, distintas perplejidades:
         </div>
 
         <p>UMAP conserva mejor la estructura global que t-SNE, pero <strong>las tres advertencias siguen aplicándose</strong>, solo que algo atenuadas. Las distancias en un UMAP tampoco son distancias, y sus parámetros también cambian el dibujo. La regla práctica es la misma: usarlo para <em>mirar</em>, nunca para <em>medir</em>, y validar cualquier hipótesis que sugiera con métodos que operen en el espacio original.</p>
+
+        <p>Conviene matizar la primera afirmación, que es la más repetida sobre UMAP. Kobak y Linderman (2021) mostraron que buena parte de su ventaja global no viene de la función de coste, sino de que UMAP arranca de una incrustación espectral en lugar de ruido aleatorio: t-SNE inicializado con las dos primeras componentes de PCA recupera casi toda esa estructura global. Nuestro programa inicializa con ruido —<code>Y = r.normal(scale=1e-4, ...)</code>—, como la implementación original. Es un buen recordatorio de que muchas comparaciones entre métodos comparan en realidad detalles de implementación.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ No agrupes sobre un t-SNE o un UMAP</div>
@@ -618,7 +629,7 @@ Misma nube, distintas perplejidades:
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
             <li>Sobre una variedad curva, la distancia que importa es la geodésica. Medido en el rollo suizo: hay pares de puntos 11 veces más cerca en línea recta que sobre la lámina.</li>
-            <li>MDS clásico con distancias euclídeas <em>es</em> PCA (verificado con diferencia 0,0000). Isomap cambia esas distancias por caminos mínimos en el grafo de vecinos y pasa de una correlación de 0,25 a 1,0000.</li>
+            <li>MDS clásico con distancias euclídeas <em>es</em> PCA (verificado con diferencia 0,0000). Isomap cambia esas distancias por caminos mínimos en el grafo de vecinos y pasa de una correlación de 0,25 a 1,0000 —0,9999726 sin el redondeo a cuatro decimales—. Pero es un método frágil: con 40 vecinos el grafo se cortocircuita y vuelve a caer al 0,27.</li>
             <li>t-SNE convierte distancias en probabilidades, usa una $\sigma_i$ por punto fijada por la perplejidad y una t de Student en el mapa para resolver el apiñamiento; minimiza $D_{\mathrm{KL}}(P\Vert Q)$, cuya asimetría hace que conserve lo local y destroce lo global.</li>
             <li>Medido: las distancias entre grupos se deforman por un factor 2,8; una diferencia real de anchura de 6,7× se comprime a 1,3×; y el cociente de separaciones varía de 0,907 a 0,234 solo cambiando la perplejidad, sin acercarse nunca al 0,203 real.</li>
             <li>UMAP mejora la estructura global, escala mucho mejor y admite datos nuevos, pero las advertencias siguen valiendo.</li>

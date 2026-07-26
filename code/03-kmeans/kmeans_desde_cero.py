@@ -2,7 +2,8 @@
 k-means desde cero, con inicialización k-means++ y traza de la inercia.
 
 El objetivo es ver dos cosas con los ojos:
-  - que la inercia BAJA en cada medio paso (asignar y recolocar), sin excepción;
+  - que la inercia NO SUBE en ningún medio paso (asignar y recolocar), y que
+    baja siempre que algo se mueve;
   - que el algoritmo se para solo, en pocas iteraciones, porque solo hay un
     número finito de particiones posibles.
 
@@ -44,7 +45,8 @@ def lloyd(X, C, iters=20):
     """Descenso por bloques de coordenadas: asignar, recolocar, repetir."""
     historia = []
     z = dist2(X, C).argmin(axis=1)
-    historia.append(("inicial", inercia(X, C, z), C.copy(), z.copy()))
+    J0 = inercia(X, C, z)
+    historia.append(("inicial", J0, J0, C.copy(), z.copy()))
     for t in range(iters):
         # PASO 1 (asignación): con C fijo, la z óptima es el centro más próximo
         z = dist2(X, C).argmin(axis=1)
@@ -53,7 +55,7 @@ def lloyd(X, C, iters=20):
         C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
                             for j in range(k)])
         J_act = inercia(X, C_nuevo, z)
-        historia.append((f"iter {t+1}", J_asig, C.copy(), z.copy()))
+        historia.append((f"iter {t+1}", J_asig, J_act, C_nuevo.copy(), z.copy()))
         if np.allclose(C_nuevo, C):
             print(f"Convergió en la iteración {t+1}: los centros ya no se mueven.")
             C = C_nuevo
@@ -65,12 +67,9 @@ def lloyd(X, C, iters=20):
 C0 = init_pp(X, k, rng)
 C, z, historia = lloyd(X, C0)
 
-print(f"\n{'paso':>10} {'inercia':>12}   (asignación) -> (recolocación)")
-J_prev = np.inf
-for nombre, J, _, _ in historia:
-    flecha = "  ↓" if J < J_prev else ""
-    print(f"{nombre:>10} {J:12.3f}{flecha}")
-    J_prev = J
+print(f"\n{'paso':>10} {'tras asignar':>14} {'tras recolocar':>16}")
+for nombre, J_a, J_b, _, _ in historia:
+    print(f"{nombre:>10} {J_a:14.3f} {J_b:16.3f}")
 print(f"\nInercia final: {inercia(X, C, z):.3f}")
 print(f"Tamaños de los grupos: {np.bincount(z, minlength=k)}")
 
@@ -87,13 +86,13 @@ print(f"  intra + inter   : {intra + inter:10.3f}  <- coincide con el total")
 # --- Dibujo: tres instantáneas y la curva de la inercia ---
 fig, ax = plt.subplots(1, 4, figsize=(15, 3.7))
 for a, idx in zip(ax[:3], [0, 1, len(historia) - 1]):
-    nombre, J, Ct, zt = historia[idx]
+    nombre, _, J, Ct, zt = historia[idx]
     a.scatter(X[:, 0], X[:, 1], c=zt, cmap="viridis", s=14, edgecolors="none")
     a.scatter(Ct[:, 0], Ct[:, 1], marker="X", s=180, c="red", edgecolors="k")
     a.set_title(f"{nombre} · J = {J:.0f}")
     a.set_xticks([])
     a.set_yticks([])
-ax[3].plot([h[1] for h in historia], "o-", color="#ef476f")
+ax[3].plot([h[2] for h in historia], "o-", color="#ef476f")
 ax[3].set_xlabel("iteración")
 ax[3].set_ylabel("inercia J")
 ax[3].set_title("J nunca sube")

@@ -155,24 +155,24 @@
 
         <figure class="figure">
           <svg viewBox="0 0 660 250" width="100%" role="img" aria-label="EM sube por una sucesión de cotas inferiores tangentes">
-            <path d="M 50 200 Q 200 190 320 120 Q 450 40 610 30" fill="none" stroke="#5b8def" stroke-width="3"/>
-            <text x="560" y="60" font-size="13" fill="#5b8def" font-weight="700">log-verosimilitud</text>
+            <path d="M 50 215 Q 330 35 610 45" fill="none" stroke="#5b8def" stroke-width="3"/>
+            <text x="420" y="28" font-size="13" fill="#5b8def" font-weight="700">log-verosimilitud</text>
 
-            <path d="M 70 232 Q 150 178 250 205" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
-            <path d="M 210 175 Q 300 108 400 145" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
-            <path d="M 380 118 Q 470 52 570 88" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+            <path d="M 75 206 Q 210 100 345 121" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+            <path d="M 225 124 Q 370 53 515 66" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+            <path d="M 395 67 Q 492 41 590 49" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
 
-            <circle cx="150" cy="196" r="5" fill="#ef476f"/>
-            <circle cx="300" cy="128" r="5" fill="#ef476f"/>
-            <circle cx="470" cy="63" r="5" fill="#ef476f"/>
+            <circle cx="150" cy="157" r="5" fill="#ef476f"/>
+            <circle cx="300" cy="92" r="5" fill="#ef476f"/>
+            <circle cx="470" cy="52" r="5" fill="#ef476f"/>
 
-            <line x1="150" y1="196" x2="150" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
-            <line x1="300" y1="128" x2="300" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
-            <line x1="470" y1="63" x2="470" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="150" y1="157" x2="150" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="300" y1="92" x2="300" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="470" y1="52" x2="470" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
             <text x="150" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ⁰</text>
             <text x="300" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ¹</text>
             <text x="470" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ²</text>
-            <text x="330" y="222" font-size="12" fill="#43c59e">cotas ELBO, tangentes en cada θ</text>
+            <text x="62" y="62" font-size="12" fill="#43c59e">cotas ELBO, tangentes en cada θ</text>
           </svg>
           <figcaption>El paso E construye una cota que toca la curva en el punto actual; el paso M sube hasta el máximo de esa cota. Como la cota nunca supera a la curva, la curva ha subido al menos otro tanto.</figcaption>
         </figure>
@@ -355,7 +355,7 @@ Entropía media de la asignación: 0.0091 nats (el máximo posible con k=2 es 0.
           <p class="math-note">Es un <em>softmax</em> de las distancias al cuadrado con temperatura $2\sigma^2$. Cuando $\sigma \to 0$, la temperatura tiende a cero: la exponencial del término más pequeño domina a todas las demás y $\gamma_{ij} \to 1$ para el centroide más próximo y $\to 0$ para el resto. La asignación blanda se congela en una dura.</p>
         </div>
 
-        <p>Y en el paso M, el objetivo se convierte en $\sum_{i}\sum_j \gamma_{ij}\lVert x_i - \mu_j\rVert^2 / (2\sigma^2)$ más constantes; con $\gamma$ ya binaria, eso es exactamente la inercia $J$ dividida por $2\sigma^2$. <strong>Maximizar la verosimilitud se convierte en minimizar la inercia.</strong> k-means es el caso degenerado en que el modelo ha renunciado a expresar incertidumbre y a expresar forma.</p>
+        <p>Y en el paso M, el objetivo que se <em>maximiza</em> se convierte en $-\sum_{i}\sum_j \gamma_{ij}\lVert x_i - \mu_j\rVert^2 / (2\sigma^2)$ más constantes; con $\gamma$ ya binaria, ese sumatorio es exactamente la inercia $J$, así que el objetivo es $-J/(2\sigma^2)$. Subir por él es bajar por $J$: <strong>maximizar la verosimilitud se convierte en minimizar la inercia.</strong> k-means es el caso degenerado en que el modelo ha renunciado a expresar incertidumbre y a expresar forma.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -467,6 +467,9 @@ plt.show()
 
 Con k=3, la entropía máxima (duda total) es log(3) = 1.0986 nats.
 Cuando sigma -&gt; 0 la entropía tiende a 0: la asignación blanda se vuelve dura.
+El argmax, en cambio, NO cambia nunca con sigma: coincide con k-means en el 100% de los puntos para todo sigma,
+porque dividir todos los logits por una constante positiva no altera cuál es
+el mayor. Lo que sigma controla es la CONFIANZA, no la decisión.
 sigma= 1.00 -&gt; suma ponderada de distancias^2 =   838.649 (inercia de k-means: 801.762)
 sigma= 0.10 -&gt; suma ponderada de distancias^2 =   801.762 (inercia de k-means: 801.762)
 sigma= 0.02 -&gt; suma ponderada de distancias^2 =   801.762 (inercia de k-means: 801.762)</pre>
@@ -609,6 +612,9 @@ plt.show()
      1e-10            -468.163            -514.215
      1e-12            -458.953            -514.215
      1e-14            -449.743            -514.215
+La tercera columna se estabiliza: eso significa que la log-verosimilitud
+vale una constante MENOS d*log(sigma), y por tanto diverge a +infinito
+cuando sigma -&gt; 0. No hay máximo global que alcanzar.
 
 Parte B · EM sin regularización (reg = 0)
  iter   log-verosimilitud    det(Sigma_0)   puntos en comp. 0
@@ -764,7 +770,9 @@ plt.show()
   6             35       -1765.11     3747.74     3600.23
   7             41       -1765.08     3784.95     3612.16
 
-BIC elige k = 3   |   AIC elige k = 5   |   verdad: k = 3</pre>
+BIC elige k = 3   |   AIC elige k = 5   |   verdad: k = 3
+La log-verosimilitud, en cambio, no deja de subir: por sí sola nunca
+elegiría un k finito. La penalización es lo que decide.</pre>
         </div>
 
         <p>La columna de la log-verosimilitud confirma el diagnóstico: sube siempre, de $-2441{,}50$ a $-1765{,}08$, y nunca se daría la vuelta. Pero mira el salto: de $k=3$ a $k=4$ solo gana 3,4 nats a cambio de 6 parámetros nuevos. El BIC, que cobra $\log 500 = 6{,}21$ por parámetro, no acepta ese trato y <strong>elige $k=3$, la verdad</strong>.</p>

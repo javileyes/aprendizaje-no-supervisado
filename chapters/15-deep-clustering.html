@@ -60,14 +60,19 @@
           <div class="callout-title">➗ La distribución objetivo</div>
           <p>$$ p_{ij} \;=\; \frac{q_{ij}^2 \,/\, f_j}{\sum_{j'} q_{ij'}^2 \,/\, f_{j'}}, \qquad f_j = \sum_{i} q_{ij} $$</p>
           <p class="math-note">Dos ingredientes. El <strong>cuadrado</strong> exagera las diferencias: si $q_i = (0{,}6,\, 0{,}4)$, elevar al cuadrado y renormalizar da $(0{,}69,\, 0{,}31)$ — la asignación se vuelve más segura. La división por $f_j$, la «frecuencia» del grupo $j$, <strong>equilibra los tamaños</strong>: un grupo que se está tragando a todo el mundo ve reducida su influencia, y los puntos dudosos se empujan hacia los grupos menos poblados.</p>
-          <p class="math-note">Conviene decir también lo que $f_j$ <em>no</em> hace, porque es un malentendido extendido: no impide el colapso. Si todas las filas de $q$ fueran idénticas, la normalización por $f_j$ es la misma para todas y $p$ sale exactamente igual a $q$, con lo que $D_{\mathrm{KL}}(P\Vert Q) = 0$ — un mínimo global perfecto. Comprobado numéricamente: con 200 filas iguales a $(0{,}97;\,0{,}01;\,0{,}01;\,0{,}01)$ la función objetivo del propio programa devuelve $p = q$ y una KL de $3{,}5\times10^{-14}$, cero en doble precisión. Lo que de verdad mantiene poblados los cuatro grupos es de dónde se parte, no el denominador.</p>
+          <p class="math-note">Ese empujón del cuadrado parece pequeño, y de una vez lo es. La fuerza del método está en que $P$ se recalcula una y otra vez —22 veces en el programa, una cada 140 iteraciones—, así que lo que actúa no es el cuadrado sino su <em>iteración</em>: el mapa $q_j \mapsto q_j^2 / \sum_{j'} q_{j'}^2$ eleva al cuadrado el cociente entre dos componentes en cada paso, de modo que se acerca a un vector one-hot a velocidad doblemente exponencial. Desde $(0{,}6,\, 0{,}4)$: $0{,}69 \to 0{,}835 \to 0{,}962 \to 0{,}998 \to 1$. Incluso desde un casi empate, $(0{,}55,\, 0{,}45)$, bastan seis pasos. En el programa la iteración no es exactamente ésta —falta el denominador $f_j$, y entre recálculo y recálculo la red solo se <em>acerca</em> a $P$, y de paso estira el latente, cuya dispersión pasa de 3,83 a 5,44, lo que afila $q$ todavía más—, pero la conclusión es la misma: el afilado se acumula. Y el mapa no sabe si la decisión que está cimentando era la correcta.</p>
+          <p class="math-note">Conviene decir también lo que $f_j$ <em>no</em> hace, porque es un malentendido extendido: no impide el colapso. Si todas las filas de $q$ fueran idénticas, la normalización por $f_j$ es la misma para todas y $p$ sale exactamente igual a $q$, con lo que $D_{\mathrm{KL}}(P\Vert Q) = 0$ — un mínimo global perfecto. Comprobado numéricamente: con 200 filas iguales a $(0{,}97;\,0{,}01;\,0{,}01;\,0{,}01)$ la función objetivo del propio programa devuelve $p = q$ y una KL de $3{,}5\times10^{-14}$, cero en doble precisión. Lo que $f_j$ cambia no es eso —ese mínimo sigue estando ahí— sino la <em>dinámica</em>: en cuanto un grupo crece, su $f_j$ crece, $p$ le quita masa y devuelve los puntos dudosos a los grupos pequeños. Es una fuerza real —la mediremos—, pero no una garantía.</p>
         </div>
 
         <p>Y la pérdida es la divergencia de siempre, con $P$ tratada como constante (se recalcula solo cada cierto número de iteraciones, no en cada paso):</p>
 
         <p>$$ \mathcal{L}_{\mathrm{clu}} = D_{\mathrm{KL}}(P \,\Vert\, Q) = \sum_i\sum_j p_{ij}\log\frac{p_{ij}}{q_{ij}} . $$</p>
 
-        <p>Los gradientes salen de derivar directamente y tienen la misma forma de muelles que en t-SNE. Con $\alpha=1$:</p>
+        <p>Merece la pena derivar los gradientes, porque el paso clave reaparece cada vez que hay que derivar un softmax. Con $\alpha=1$ escribimos $k_{ij} = \big(1+\lVert z_i-\mu_j\rVert^2\big)^{-1}$ y $S_i = \sum_{j'} k_{ij'}$, de modo que $q_{ij} = k_{ij}/S_i$. Como $P$ se mantiene fija, su entropía no depende de los parámetros y en la KL solo cuenta el término cruzado:</p>
+
+        <p>$$ -\sum_j p_{ij}\log q_{ij} \;=\; -\sum_j p_{ij}\log k_{ij} \;+\; \log S_i . $$</p>
+
+        <p>El $\log S_i$ ha salido del sumatorio precisamente porque $\sum_j p_{ij}=1$: la normalización de $q$ aporta un único término, el mismo para todos los grupos. Lo que queda son dos derivadas fáciles, $\partial \log k_{ij}/\partial z_i = -2\,k_{ij}\,(z_i-\mu_j)$ y $\partial \log S_i/\partial z_i = -2\sum_j q_{ij}k_{ij}\,(z_i-\mu_j)$, esta última usando que $k_{ij}^2/S_i = q_{ij}k_{ij}$. Al restarlas, los dos sumatorios se funden en uno y aparece la diferencia $p_{ij}-q_{ij}$, que es lo que le da a todo esto la forma de muelles de t-SNE. Y como todo depende de $z_i$ y $\mu_j$ solo a través de $z_i-\mu_j$, el gradiente respecto al centroide es el mismo con el signo cambiado, sumando sobre los puntos en vez de sobre los grupos:</p>
 
         <div class="callout math">
           <div class="callout-title">➗ Gradientes de DEC</div>
@@ -128,6 +133,7 @@
           <div class="callout-title">➗ El objetivo de IDEC</div>
           <p>$$ \mathcal{L} \;=\; \underbrace{\big\lVert x - g_\phi(f_\theta(x))\big\rVert^2}_{\text{reconstrucción}} \;+\; \gamma\, \underbrace{D_{\mathrm{KL}}(P\,\Vert\,Q)}_{\text{clústering}} $$</p>
           <p class="math-note">El primer término ancla la representación a los datos: por muy conveniente que fuera colapsarla, el decodificador tiene que seguir siendo capaz de reconstruir. $\gamma$ regula el equilibrio. Es la misma estructura de siempre —un objetivo que quiere algo y un regularizador que impide la degeneración—, como el $\beta$ del VAE en el <a href="14-vae.html">capítulo 14</a>.</p>
+          <p class="math-note">Un aviso para leer el programa: usa la parametrización recíproca, con <code>gamma_rec</code> multiplicando la reconstrucción en vez de $\gamma$ multiplicando la KL, es decir minimiza $\texttt{gamma\_rec}\cdot\mathcal{L}_{\mathrm{rec}} + \mathcal{L}_{\mathrm{clu}}$. Así, <code>gamma_rec=1</code> es IDEC con los dos términos al mismo peso —$\gamma=1$ en la fórmula de arriba, con los promedios concretos que usa el código— y <code>gamma_rec=0</code> es DEC puro, que en esa fórmula <em>no</em> es $\gamma=0$ (eso sería el autoencoder a secas) sino el límite $\gamma\to\infty$. El artículo original de IDEC usa $\gamma=0{,}1$; aquí damos más peso a la reconstrucción para que la comparación entre DEC e IDEC salga lo más nítida posible.</p>
         </div>
 
         <h2 id="ejemplo">Medir la diferencia</h2>
@@ -164,6 +170,20 @@ def acuerdo(a, b):
     ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
     t = np.triu_indices(len(a), k=1)
     return (ia[t] == ib[t]).mean()
+
+
+def pares(x):
+    return x * (x - 1) // 2
+
+
+def ari(a, b):
+    """Rand ajustado (capítulo 8): el acuerdo menos el esperado por azar."""
+    M = np.zeros((a.max() + 1, b.max() + 1), dtype=np.int64)
+    np.add.at(M, (a, b), 1)
+    sij = pares(M).sum()
+    si, sj = pares(M.sum(axis=1)).sum(), pares(M.sum(axis=0)).sum()
+    esperado = si * sj / pares(len(a))
+    return (sij - esperado) / (0.5 * (si + sj) - esperado)
 
 
 def kmeans(X, k, semilla=0, iters=200):
@@ -329,15 +349,22 @@ def confianza(q):
 
 
 print("\nResumen")
-print(f"{'método':38} {'acuerdo':&gt;9} {'reconstr.':&gt;11} {'confianza':&gt;11} {'q&gt;0,9':&gt;9}")
-print(f"{'k-means en el espacio original':38} {acuerdo(kmeans(X, K, 0)[0], y):8.1%} "
-      f"{'-':&gt;11} {'-':&gt;11} {'-':&gt;9}")
+z_obs = kmeans(X, K, 0)[0]
+print(f"{'método':32} {'acuerdo':&gt;9} {'ARI':&gt;7} {'reconstr.':&gt;10} "
+      f"{'confianza':&gt;10} {'q&gt;0,9':&gt;9}")
+print(f"{'k-means en el espacio original':32} {acuerdo(z_obs, y):8.1%} "
+      f"{ari(z_obs, y):7.3f} {'-':&gt;10} {'-':&gt;10} {'-':&gt;9}")
 c, f = confianza(q_ini)
-print(f"{'autoencoder + k-means':38} {acuerdo(z_km_lat, y):8.1%} {rec_pre:11.5f} "
-      f"{c:11.4f} {f:8.1%}")
+print(f"{'autoencoder + k-means':32} {acuerdo(z_km_lat, y):8.1%} "
+      f"{ari(z_km_lat, y):7.3f} {rec_pre:10.5f} {c:10.4f} {f:8.1%}")
 for nombre, (z_f, _, rec_f, _, q_f) in resultados.items():
     c, f = confianza(q_f)
-    print(f"{nombre:38} {acuerdo(z_f, y):8.1%} {rec_f:11.5f} {c:11.4f} {f:8.1%}")
+    print(f"{nombre:32} {acuerdo(z_f, y):8.1%} {ari(z_f, y):7.3f} "
+          f"{rec_f:10.5f} {c:10.4f} {f:8.1%}")
+# el 'acuerdo' es el Rand CRUDO: conviene ver su suelo de azar (capítulo 8)
+r_az = np.random.default_rng(9)
+azar = np.mean([acuerdo(y, r_az.permutation(y)) for _ in range(20)])
+print(f"suelo de azar del acuerdo (etiquetas permutadas): {azar:.1%}; el del ARI es 0")
 # ---------------- El colapso: DEC SIN preentrenar ----------------
 print("\n¿Y si nos saltamos el preentrenamiento? (DEC desde pesos al azar)")
 par_azar = init(7)
@@ -345,13 +372,13 @@ Z_azar = adelante(par_azar, X)[MEDIO + 1]
 C_azar = kmeans(Z_azar, K, semilla=0)[1]
 z_c, Z_c, rec_c, _, q_c = entrena_dec(par_azar, C_azar, 0.0)
 ocupados = int((np.bincount(z_c, minlength=K) &gt; 0).sum())
-print(f"  acuerdo con la verdad     : {acuerdo(z_c, y):.1%}")
+print(f"  acuerdo con la verdad     : {acuerdo(z_c, y):.1%}  (ARI {ari(z_c, y):.3f})")
 print(f"  grupos no vacíos          : {ocupados} de {K}")
 print(f"  tamaños                   : {np.bincount(z_c, minlength=K).tolist()}")
 print(f"  dispersión del latente    : {Z_c.std():.4f}  "
       f"(con preentrenamiento: {resultados['DEC (solo KL)'][1].std():.4f})")
-print("  No colapsa a un solo grupo, pero se queda al nivel de k-means en el")
-print("  espacio original: el objetivo KL(P||Q) solo REFUERZA la partición con la")
+print("  No colapsa a un solo grupo, pero medido en ARI ni siquiera llega al")
+print("  k-means original: el objetivo KL(P||Q) solo REFUERZA la partición con la")
 print("  que arranca, no la descubre. Autoentrenarse sobre las propias creencias")
 print("  amplifica lo que ya había, aciertos y errores. Por eso DEC se preentrena.")
 
@@ -410,19 +437,20 @@ IDEC (KL + reconstrucción)
   final: acuerdo 98.4%, reconstrucción 0.01609 (al empezar: 0.01380)
 
 Resumen
-método                                   acuerdo   reconstr.   confianza     q&gt;0,9
-k-means en el espacio original            74.4%           -           -         -
-autoencoder + k-means                     97.9%     0.01380      0.7961    31.2%
-DEC (solo KL)                             98.6%     0.76129      0.9778   100.0%
-IDEC (KL + reconstrucción)                98.4%     0.01609      0.9652    98.4%
+método                             acuerdo     ARI  reconstr.  confianza     q&gt;0,9
+k-means en el espacio original      74.4%   0.434          -          -         -
+autoencoder + k-means               97.9%   0.945    0.01380     0.7961    31.2%
+DEC (solo KL)                       98.6%   0.962    0.76129     0.9778   100.0%
+IDEC (KL + reconstrucción)          98.4%   0.958    0.01609     0.9652    98.4%
+suelo de azar del acuerdo (etiquetas permutadas): 62.6%; el del ARI es 0
 
 ¿Y si nos saltamos el preentrenamiento? (DEC desde pesos al azar)
-  acuerdo con la verdad     : 76.5%
+  acuerdo con la verdad     : 76.5%  (ARI 0.390)
   grupos no vacíos          : 4 de 4
   tamaños                   : [321, 430, 196, 253]
   dispersión del latente    : 2.6482  (con preentrenamiento: 5.4424)
-  No colapsa a un solo grupo, pero se queda al nivel de k-means en el
-  espacio original: el objetivo KL(P||Q) solo REFUERZA la partición con la
+  No colapsa a un solo grupo, pero medido en ARI ni siquiera llega al
+  k-means original: el objetivo KL(P||Q) solo REFUERZA la partición con la
   que arranca, no la descubre. Autoentrenarse sobre las propias creencias
   amplifica lo que ya había, aciertos y errores. Por eso DEC se preentrena.
 
@@ -452,21 +480,25 @@ representando los datos. IDEC consigue lo mismo sin romper nada.</pre>
 
         <h3>Lo tercero: DEC destroza la representación</h3>
 
-        <p>Mira la columna de reconstrucción. DEC pasa de <strong>0,0138 a 0,7613</strong>: un factor <strong>55</strong>. El latente ha dejado de representar los datos; ahora solo sirve para dar la respuesta que el propio modelo se ha inventado. Si querías el código para cualquier otra cosa —visualizar, detectar anomalías, alimentar otro modelo—, ya no vale.</p>
+        <p>Mira la columna de reconstrucción. DEC pasa de <strong>0,0138 a 0,7613</strong>: un factor <strong>55</strong>. Para calibrar ese 0,76: los datos están estandarizados columna a columna, así que un modelo que se limitara a predecir la media —sin mirar el dato— tendría un error de exactamente <strong>1,00</strong>. DEC lo deja en 0,76, es decir, del código de 2 dimensiones ya solo se puede reconstruir un <strong>24 %</strong> de la varianza; IDEC conserva el <strong>98 %</strong>. El latente ha dejado de representar los datos; ahora solo sirve para dar la respuesta que el propio modelo se ha inventado. Si querías el código para cualquier otra cosa —visualizar, detectar anomalías, alimentar otro modelo—, ya no vale.</p>
 
         <p>IDEC obtiene prácticamente el mismo acuerdo (98,4 % frente a 98,6 %) y la misma confianza (0,965 frente a 0,978), pero con una reconstrucción de <strong>0,0161</strong>: apenas peor que la de partida. Por dos décimas de acuerdo, conserva una representación utilizable. En la práctica se usa IDEC.</p>
 
         <h3>Lo cuarto: sin preentrenar no hay nada</h3>
 
-        <p>El último bloque quita la fase 1 y arranca DEC desde pesos aleatorios. El acuerdo se queda en el <strong>76,5 %</strong>, es decir, al nivel del k-means original (74,4 %). No colapsa a un solo grupo —los cuatro quedan poblados, con tamaños 321/430/196/253— pero tampoco descubre nada.</p>
+        <p>El último bloque quita la fase 1 y arranca DEC desde pesos aleatorios. El acuerdo se queda en el <strong>76,5 %</strong>, aparentemente al nivel del k-means original (74,4 %). No colapsa a un solo grupo —los cuatro quedan poblados, con tamaños 321/430/196/253— pero tampoco descubre nada.</p>
+
+        <p>Conviene además poner esas cifras en la escala del <a href="08-validacion-clusteres.html">capítulo 8</a>, porque el «acuerdo» es el índice de Rand crudo y ese índice no vale cero cuando no hay nada: con cuatro grupos equilibrados, permutar las etiquetas al azar ya da un <strong>62,6 %</strong>, y así lo mide el programa. El 74,4 % y el 76,5 % no están cerca de la verdad, sino a un tercio del camino entre el azar y ella. Si en lugar del índice crudo miramos la columna ARI, que descuenta esa expectativa, la comparación queda desnuda: k-means original <strong>0,434</strong>, autoencoder + k-means <strong>0,945</strong>, DEC <strong>0,962</strong>, IDEC <strong>0,958</strong> y DEC sin preentrenar <strong>0,390</strong>, <em>peor</em> que el k-means original aunque el acuerdo crudo dijera lo contrario.</p>
 
         <p>Y el motivo de que no colapse no es el que uno diría. Repitiendo el experimento con el denominador $f_j$ eliminado, el resultado apenas cambia: 76,9 % de acuerdo frente al 76,5 %. Lo que impide el colapso no es el término de equilibrado, sino el hecho de que la optimización arranca de una partición ya repartida —la que da k-means sobre el latente inicial— y $D_{\mathrm{KL}}(P\Vert Q)$ solo sabe reforzar aquello de lo que parte. Es la misma razón por la que no descubre nada nuevo: es un amplificador, y un amplificador conserva el signo de lo que le entra.</p>
+
+        <p>Eso no significa que $f_j$ no sirva de nada; significa que aquí no es la restricción activa. Hay que apretar un poco para verlo actuar: si además se recalcula $P$ en <em>cada</em> iteración en vez de cada 140, sin el denominador dos de los cuatro grupos se vacían del todo —tamaños 508/692/0/0— y con él ninguno, 191/332/345/332, con un acuerdo del 91,1 %. El colapso de DEC no es un fantasma teórico. Simplemente, con los ajustes de este programa quien lo mantiene a raya es la inicialización, no la fórmula.</p>
 
         <p>La razón es estructural: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ <strong>solo puede reforzar la partición de la que se parte</strong>. Es un amplificador, no una fuente. Si arrancas del ruido, amplificas ruido. Por eso todas las variantes de deep clustering llevan una fase de inicialización no trivial: un autoencoder, un modelo contrastivo o —en los métodos más recientes— ambos.</p>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
-          <p>Cambia <code>scale=0.62</code> por <code>scale=1.0</code> en la generación de los datos, haciendo que los cuatro grupos se solapen más. Los resultados se invierten en lo interesante: «autoencoder + k-means» da un 88,4 %, DEC se queda igual en <strong>88,4 %</strong> e IDEC baja al <strong>87,6 %</strong>. Con grupos ambiguos, afilar las asignaciones ya no ayuda: el modelo se vuelve seguro de decisiones que no tenía cómo tomar bien.</p>
+          <p>Cambia <code>scale=0.62</code> por <code>scale=1.0</code> en la generación de los datos, haciendo que los cuatro grupos se solapen más. Los resultados se invierten en lo interesante: «autoencoder + k-means» da un 88,4 %, DEC se queda igual en <strong>88,4 %</strong> e IDEC baja al <strong>87,6 %</strong> (en ARI: <strong>0,690</strong>, <strong>0,690</strong> y <strong>0,669</strong>). Con grupos ambiguos, afilar las asignaciones ya no ayuda: el modelo se vuelve seguro de decisiones que no tenía cómo tomar bien.</p>
         </div>
 
         <h2 id="familia">El resto de la familia</h2>
@@ -505,8 +537,8 @@ representando los datos. IDEC consigue lo mismo sin romper nada.</pre>
             <li>Representar antes de agrupar ya vale mucho: 74,4 % en el espacio original frente a 97,9 % sobre el código del autoencoder.</li>
             <li>DEC usa asignación blanda con t de Student y una distribución objetivo $p_{ij}\propto q_{ij}^2/f_j$: el cuadrado afila y el denominador equilibra tamaños. Lo que <em>no</em> hace $f_j$ es impedir el colapso: con todas las filas iguales, $p=q$ y la KL vale cero igualmente.</li>
             <li>Su efecto real no es descubrir sino afilar: el acuerdo sube del 97,9 % al 98,6 %, pero la confianza pasa de 0,796 a 0,978 y los puntos decididos del 31,2 % al 100 %.</li>
-            <li>Sin el término de reconstrucción, la representación se destruye: el error pasa de 0,0138 a 0,7613, un factor 55. IDEC lo conserva en 0,0161 renunciando a dos décimas de acuerdo.</li>
-            <li>Sin preentrenamiento, DEC se queda en el 76,5 %, el nivel del k-means original: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ solo amplifica lo que ya había.</li>
+            <li>Sin el término de reconstrucción, la representación se destruye: el error pasa de 0,0138 a 0,7613, un factor 55. Como los datos están estandarizados, eso es reconstruir un 24 % de la varianza frente al 98 % de IDEC, que conserva el error en 0,0161 renunciando a dos décimas de acuerdo.</li>
+            <li>Sin preentrenamiento, DEC se queda en el 76,5 % de acuerdo crudo, que parece el nivel del k-means original pero está por debajo: en ARI, 0,390 frente a 0,434. $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ solo amplifica lo que ya había.</li>
             <li>Autoentrenarse aumenta la confianza también en los errores. Es la patología común a esta familia y al autoentrenamiento semisupervisado.</li>
           </ul>
         </div>

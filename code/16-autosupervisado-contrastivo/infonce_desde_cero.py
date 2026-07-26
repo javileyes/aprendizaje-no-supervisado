@@ -6,7 +6,7 @@ vistas con transformaciones que NO deberían cambiar su significado, y se
 entrena la red para que las dos vistas de un mismo dato se parezcan y las de
 datos distintos no.
 
-Los datos son señales caracterizadas por su FRECUENCIA (4 clases). Las
+Los datos son señales caracterizadas por su FRECUENCIA (6 clases). Las
 transformaciones cambian la fase, la amplitud y añaden ruido: cosas que no
 alteran la frecuencia. Al declarar esas invariancias le estamos diciendo a la
 red qué es irrelevante, y eso es toda la supervisión que necesita.
@@ -182,8 +182,8 @@ par_c, hist = entrena_contrastivo()
 print(f"{'época':>7} {'InfoNCE':>10}")
 for ep, L in hist:
     print(f"{ep:7d} {L:10.4f}")
-print(f"  (una pérdida de log(2*128-1) = {np.log(255):.4f} sería no haber "
-      f"aprendido nada)")
+print(f"  (la cifra es la del último lote de la época, que tiene 64 datos;")
+print(f"   log(2*64-1) = {np.log(127):.4f} sería no haber aprendido nada)")
 
 Z_tr = normaliza(adelante(par_c, X)[-1])[0]
 Z_te = normaliza(adelante(par_c, X_te)[-1])[0]

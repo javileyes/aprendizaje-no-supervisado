@@ -10,7 +10,9 @@ Tres efectos, los tres verificables con numpy:
 
 Comprobamos además la predicción teórica exacta para el cubo unidad: la media de
 la distancia crece como sqrt(d/6) mientras su desviación tiende a la constante
-0,5*sqrt(7/30) = 0,2415. El contraste relativo, por tanto, cae como 1/sqrt(d).
+0,5*sqrt(7/30) = 0,2415. La dispersión RELATIVA, por tanto, cae como 1/sqrt(d).
+El contraste (dmax-dmin)/dmin hereda ese ritmo solo asintóticamente: es un
+estadístico de extremos y al principio cae bastante más deprisa.
 
 Ejecútalo con:  python code/02-geometria-y-dimensionalidad/maldicion_dimensionalidad.py
 """
@@ -53,8 +55,10 @@ for d in [2, 20, 200]:
     D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
     np.fill_diagonal(D, np.inf)
     cuentas = np.bincount(D.argmin(axis=1), minlength=n)
+    centro = np.linalg.norm(X - X.mean(axis=0), axis=1)   # lejanía al centro de masas
     print(f"  d={d:4d} -> máximo {cuentas.max():3d}, "
-          f"puntos que no son vecinos de nadie: {(cuentas == 0).mean():.0%}")
+          f"puntos que no son vecinos de nadie: {(cuentas == 0).mean():.0%}, "
+          f"corr(hubness, dist. al centro)={np.corrcoef(cuentas, centro)[0, 1]:+.3f}")
 
 fig, ax = plt.subplots(1, 3, figsize=(14, 3.8))
 ax[0].plot(dims, contrastes, "o-", color="#ef476f")

@@ -39,6 +39,20 @@ def acuerdo(a, b):
     return (ia[t] == ib[t]).mean()
 
 
+def pares(x):
+    return x * (x - 1) // 2
+
+
+def ari(a, b):
+    """Rand ajustado (capítulo 8): el acuerdo menos el esperado por azar."""
+    M = np.zeros((a.max() + 1, b.max() + 1), dtype=np.int64)
+    np.add.at(M, (a, b), 1)
+    sij = pares(M).sum()
+    si, sj = pares(M.sum(axis=1)).sum(), pares(M.sum(axis=0)).sum()
+    esperado = si * sj / pares(len(a))
+    return (sij - esperado) / (0.5 * (si + sj) - esperado)
+
+
 def kmeans(X, k, semilla=0, iters=200):
     r = np.random.default_rng(semilla)
     C = [X[r.integers(len(X))]]
@@ -202,15 +216,22 @@ def confianza(q):
 
 
 print("\nResumen")
-print(f"{'método':38} {'acuerdo':>9} {'reconstr.':>11} {'confianza':>11} {'q>0,9':>9}")
-print(f"{'k-means en el espacio original':38} {acuerdo(kmeans(X, K, 0)[0], y):8.1%} "
-      f"{'-':>11} {'-':>11} {'-':>9}")
+z_obs = kmeans(X, K, 0)[0]
+print(f"{'método':32} {'acuerdo':>9} {'ARI':>7} {'reconstr.':>10} "
+      f"{'confianza':>10} {'q>0,9':>9}")
+print(f"{'k-means en el espacio original':32} {acuerdo(z_obs, y):8.1%} "
+      f"{ari(z_obs, y):7.3f} {'-':>10} {'-':>10} {'-':>9}")
 c, f = confianza(q_ini)
-print(f"{'autoencoder + k-means':38} {acuerdo(z_km_lat, y):8.1%} {rec_pre:11.5f} "
-      f"{c:11.4f} {f:8.1%}")
+print(f"{'autoencoder + k-means':32} {acuerdo(z_km_lat, y):8.1%} "
+      f"{ari(z_km_lat, y):7.3f} {rec_pre:10.5f} {c:10.4f} {f:8.1%}")
 for nombre, (z_f, _, rec_f, _, q_f) in resultados.items():
     c, f = confianza(q_f)
-    print(f"{nombre:38} {acuerdo(z_f, y):8.1%} {rec_f:11.5f} {c:11.4f} {f:8.1%}")
+    print(f"{nombre:32} {acuerdo(z_f, y):8.1%} {ari(z_f, y):7.3f} "
+          f"{rec_f:10.5f} {c:10.4f} {f:8.1%}")
+# el 'acuerdo' es el Rand CRUDO: conviene ver su suelo de azar (capítulo 8)
+r_az = np.random.default_rng(9)
+azar = np.mean([acuerdo(y, r_az.permutation(y)) for _ in range(20)])
+print(f"suelo de azar del acuerdo (etiquetas permutadas): {azar:.1%}; el del ARI es 0")
 # ---------------- El colapso: DEC SIN preentrenar ----------------
 print("\n¿Y si nos saltamos el preentrenamiento? (DEC desde pesos al azar)")
 par_azar = init(7)
@@ -218,13 +239,13 @@ Z_azar = adelante(par_azar, X)[MEDIO + 1]
 C_azar = kmeans(Z_azar, K, semilla=0)[1]
 z_c, Z_c, rec_c, _, q_c = entrena_dec(par_azar, C_azar, 0.0)
 ocupados = int((np.bincount(z_c, minlength=K) > 0).sum())
-print(f"  acuerdo con la verdad     : {acuerdo(z_c, y):.1%}")
+print(f"  acuerdo con la verdad     : {acuerdo(z_c, y):.1%}  (ARI {ari(z_c, y):.3f})")
 print(f"  grupos no vacíos          : {ocupados} de {K}")
 print(f"  tamaños                   : {np.bincount(z_c, minlength=K).tolist()}")
 print(f"  dispersión del latente    : {Z_c.std():.4f}  "
       f"(con preentrenamiento: {resultados['DEC (solo KL)'][1].std():.4f})")
-print("  No colapsa a un solo grupo, pero se queda al nivel de k-means en el")
-print("  espacio original: el objetivo KL(P||Q) solo REFUERZA la partición con la")
+print("  No colapsa a un solo grupo, pero medido en ARI ni siquiera llega al")
+print("  k-means original: el objetivo KL(P||Q) solo REFUERZA la partición con la")
 print("  que arranca, no la descubre. Autoentrenarse sobre las propias creencias")
 print("  amplifica lo que ya había, aciertos y errores. Por eso DEC se preentrena.")
 

@@ -23,7 +23,7 @@ print(f"Datos: {X.shape[0]} puntos en {X.shape[1]} dimensiones, sin etiquetas.")
 # --- Pregunta 1: ¿dónde está la masa? Densidad por histograma 2D ---
 H, xe, ye = np.histogram2d(X[:, 0], X[:, 1], bins=24)
 densidad = H / (H.sum() * (xe[1] - xe[0]) * (ye[1] - ye[0]))
-print(f"Densidad máxima estimada: {densidad.max():.4f} puntos por unidad de área.")
+print(f"Densidad máxima estimada: {densidad.max():.4f} (densidad de probabilidad, integra 1).")
 
 # --- Pregunta 2: ¿en cuántos grupos cae? k-means en 12 líneas ---
 def kmeans(X, k, semilla=0, iters=50):

@@ -194,6 +194,10 @@ S = {g: estabilidad(g) for g in lam_nac}
 seleccionado, S_hat = {}, {}
 for g in sorted(lam_nac, reverse=True):          # de las hojas hacia la raíz
     suma_hijos = sum(S_hat[c] for c in hijos_grupo[g])
+    if g == 0:                                   # la raíz nunca se selecciona:
+        S_hat[g] = suma_hijos                    # "todo en un grupo" no es respuesta
+        seleccionado[g] = False
+        continue
     if hijos_grupo[g] and suma_hijos > S[g]:
         S_hat[g] = suma_hijos
         seleccionado[g] = False
@@ -207,7 +211,7 @@ for g in sorted(lam_nac, reverse=True):          # de las hojas hacia la raíz
                 seleccionado[x] = False
                 pila2.extend(hijos_grupo[x])
 
-elegidos = [g for g in lam_nac if seleccionado[g] and g != 0]
+elegidos = [g for g in lam_nac if seleccionado[g]]
 z_h = np.full(n, -1)
 for c, g in enumerate(elegidos):
     for h in hojas_totales(g):
@@ -217,7 +221,7 @@ print(f"\nÁrbol condensado: {len(lam_nac)} grupos candidatos; "
       f"seleccionados {len(elegidos)} por estabilidad.")
 print(f"{'grupo':>6} {'nace en lambda':>15} {'puntos':>8} {'estabilidad':>13} {'elegido':>9}")
 for g in sorted(lam_nac):
-    marca = "sí" if seleccionado[g] and g != 0 else "no"
+    marca = "sí" if seleccionado[g] else "no"
     print(f"{g:6d} {lam_nac[g]:15.4f} {len(hojas_totales(g)):8d} {S[g]:13.2f} {marca:>9}")
 
 print(f"\nHDBSCAN -> {len(elegidos)} grupos, {(z_h == -1).mean():.1%} de ruido "

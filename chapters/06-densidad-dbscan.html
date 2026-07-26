@@ -39,7 +39,7 @@
 
         <div class="callout intuition">
           <div class="callout-title">🧠 Intuición</div>
-          <p>Imagina que subes lentamente el nivel de un mar que cubre el paisaje de la densidad. Al principio todo está sumergido; según baja el agua, van emergiendo islas. <strong>Cada isla es un clúster, y su forma es la que le dé la densidad, no la que le imponga el algoritmo.</strong> Los puntos que quedan bajo el agua son ruido.</p>
+          <p>Imagina un mar que cubre por completo el paisaje de la densidad y del que vas bajando lentamente el nivel. Al principio todo está sumergido; según baja el agua van emergiendo islas, y las que ya habían emergido se unen por los istmos. <strong>Cada isla es un clúster, y su forma es la que le dé la densidad, no la que le imponga el algoritmo.</strong> Los puntos que quedan bajo el agua son ruido.</p>
         </div>
 
         <p>Esa imagen tiene nombre formal. Si $p$ es la densidad, los clústeres al nivel $\lambda$ son las <strong>componentes conexas del conjunto de nivel</strong> $\{x : p(x) \gt \lambda\}$. Es la definición de Hartigan (1975), y es la definición matemáticamente más limpia de «clúster» que existe: no depende de $k$, ni de la forma, ni de un centroide. Solo depende de la densidad y de un umbral. DBSCAN es una manera práctica de aproximarla con una muestra finita.</p>
@@ -62,8 +62,8 @@
 
         <figure class="figure">
           <svg viewBox="0 0 620 220" width="100%" role="img" aria-label="Puntos núcleo, frontera y ruido con radio epsilon">
-            <circle cx="160" cy="110" r="52" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
-            <circle cx="270" cy="130" r="52" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
+            <circle cx="160" cy="110" r="70" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
+            <circle cx="270" cy="130" r="70" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
             <circle cx="160" cy="110" r="7" fill="#5b8def"/>
             <circle cx="270" cy="130" r="7" fill="#5b8def"/>
             <circle cx="140" cy="88" r="5" fill="#5b8def"/><circle cx="182" cy="94" r="5" fill="#5b8def"/>
@@ -75,8 +75,8 @@
             <circle cx="500" cy="70" r="6" fill="#ef476f"/>
             <circle cx="560" cy="160" r="6" fill="#ef476f"/>
 
-            <line x1="160" y1="110" x2="212" y2="110" stroke="#5b8def" stroke-width="1.5"/>
-            <text x="186" y="104" text-anchor="middle" font-size="12" fill="#5b8def">ε</text>
+            <line x1="160" y1="110" x2="230" y2="110" stroke="#5b8def" stroke-width="1.5"/>
+            <text x="195" y="104" text-anchor="middle" font-size="12" fill="#5b8def">ε</text>
 
             <text x="160" y="196" text-anchor="middle" font-size="12" fill="#5b8def">núcleo: ≥ minPts vecinos</text>
             <text x="360" y="196" text-anchor="middle" font-size="12" fill="#e2b53d">frontera</text>
@@ -240,7 +240,7 @@ Epsilon elegido: 0.20
 
         <p>La heurística estándar: calcula para cada punto su distancia al $k$-ésimo vecino (con $k = \mathrm{minPts}$), ordena esas distancias de menor a mayor y dibújalas. Los puntos de dentro de un clúster tendrán valores pequeños y parecidos; el ruido, valores mucho mayores. El «codo» de esa curva marca la frontera y sugiere $\varepsilon$. En nuestros datos la mediana es 0,132 y el percentil 90 es 0,223, y el valor que funciona (0,20) cae justo en esa zona de subida.</p>
 
-        <p>Sobre $\mathrm{minPts}$ hay una regla razonable: al menos $d+1$, y en la práctica $2d$ suele ir bien. Cuanto mayor, más robusto al ruido y más puntos declarados ruido.</p>
+        <p>Sobre $\mathrm{minPts}$ hay una regla razonable, escrita con $d$ = dimensión del espacio —el mismo $d$ del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, no la función distancia $d(x,y)$ de más arriba—: al menos $d+1$, que son los puntos que hacen falta para encerrar un volumen, y en la práctica $2d$ suele ir bien. Cuanto mayor, más robusto al ruido y más puntos declarados ruido. Aquí $d = 2$, así que la regla daría 4; usamos 8 porque hay un 12 % de ruido uniforme y conviene ser más exigente. Con $\mathrm{minPts} = 4$ el $\varepsilon$ elegido sigue siendo 0,20 y el acuerdo sigue siendo del 100 %, pero solo se detectan 22 de los 40 puntos de ruido en lugar de 24.</p>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
@@ -258,6 +258,7 @@ Epsilon elegido: 0.20
           <p>$$ d_{\text{núcleo}}(x) \;=\; \text{distancia de } x \text{ a su } k\text{-ésimo vecino más próximo} $$</p>
           <p>$$ d_{\text{alcance}}(a,b) \;=\; \max\big\{\, d_{\text{núcleo}}(a),\; d_{\text{núcleo}}(b),\; d(a,b) \,\big\} $$</p>
           <p class="math-note">La distancia núcleo es un <strong>estimador inverso de la densidad</strong>: donde hay muchos puntos, el $k$-ésimo vecino está cerca y $d_{\text{núcleo}}$ es pequeña. La distancia de alcance mutuo <em>infla</em> la distancia entre dos puntos hasta al menos la peor de sus densidades locales. Efecto: los puntos en zonas dispersas se separan de todo, mientras que dentro de un grupo denso las distancias no cambian. Es lo que vuelve el análisis <em>relativo</em> a la densidad local en lugar de absoluto.</p>
+          <p class="math-note">¿Y por qué el máximo, y no la suma o la media? Porque solo el máximo da una equivalencia exacta. Como $d_{\text{núcleo}}(a) \le \varepsilon$ es literalmente la condición $|N_\varepsilon(a)| \ge k$ —contando a $a$ entre sus vecinos, igual que en $N_\varepsilon$—, se tiene $$ d_{\text{alcance}}(a,b) \le \varepsilon \iff d(a,b) \le \varepsilon \ \text{ y además } a \text{ y } b \text{ son ambos núcleo al radio } \varepsilon, $$ con $\mathrm{minPts} = k$. Es decir, las aristas de peso $\le \varepsilon$ son exactamente los pares directamente conectados de DBSCAN* a ese $\varepsilon$, y los puntos que no son núcleo quedan aislados, que es justo lo que DBSCAN* llama ruido. Por eso cortar el árbol de recubrimiento mínimo por el peso $\varepsilon$ devuelve, sin ningún cálculo adicional, los clústeres de DBSCAN* a ese $\varepsilon$: el árbol entero es la respuesta para todos los $\varepsilon$ a la vez.</p>
         </div>
 
         <ol>
@@ -271,7 +272,9 @@ Epsilon elegido: 0.20
         <div class="callout math">
           <div class="callout-title">➗ Estabilidad de un grupo</div>
           <p>$$ S(C) \;=\; \sum_{x \in C} \big( \lambda_{\text{caída}}(x) - \lambda_{\text{nac}}(C) \big), \qquad \lambda = \frac{1}{\text{distancia}} $$</p>
-          <p class="math-note">$\lambda_{\text{nac}}(C)$ es el valor de $\lambda$ al que nació el grupo (al dividirse su padre) y $\lambda_{\text{caída}}(x)$ el valor al que el punto $x$ lo abandonó. Como $\lambda$ es el inverso de la distancia, <strong>vivir mucho en la jerarquía significa tener $S$ grande</strong>: un grupo que persiste a lo largo de un rango amplio de umbrales es un grupo real. La selección final recorre el árbol de las hojas a la raíz y se queda con un nodo si su estabilidad supera la suma de las de sus descendientes seleccionados.</p>
+          <p class="math-note">Reaparece el $\lambda$ del principio del capítulo, y no por casualidad, aunque ahora se mida en otras unidades: allí era un nivel de densidad y aquí es el inverso de una distancia. Con el estimador de densidad de los $k$ vecinos, $\hat p(x) \propto k / \big(n\, V_d\, d_{\text{núcleo}}(x)^d\big)$ —con $d$ la dimensión y $V_d$ el volumen de la bola unidad—, un radio pequeño significa densidad alta, así que $1/d_{\text{núcleo}}$ es creciente en $\hat p$ y sirve igual de bien como nivel del mar. Subir $\lambda$ es subir el agua: emerge menos tierra y las islas se van rompiendo en islas más pequeñas.</p>
+          <p class="math-note">$\lambda_{\text{nac}}(C)$ es el valor de $\lambda$ al que nació el grupo (al dividirse su padre) y $\lambda_{\text{caída}}(x)$ el valor al que el punto $x$ dejó de pertenecer a $C$, lo que ocurre de dos maneras: o bien $x$ se cae solo, porque la rama en la que iba quedó por debajo de $\mathrm{minClusterSize}$; o bien $C$ se parte en dos hijos genuinos y en ese instante <em>todos</em> los puntos que aún quedaban lo abandonan a la vez, con $\lambda_{\text{caída}} = \lambda_{\text{nac}}$ de los hijos. En el programa son, respectivamente, la suma sobre <code>puntos_grupo[g]</code> y el bucle sobre <code>hijos_grupo[g]</code>. El segundo caso es el dominante: el grupo 1 del ejemplo de abajo solo tiene 2 puntos propios de los 242 que contiene, y olvidarlo —sumar sobre sus 242 puntos el $\lambda$ al que cada uno se cayó de su rama— daría 4175,12 en lugar de 376,95.</p>
+          <p class="math-note"><strong>Vivir mucho en la jerarquía significa tener $S$ grande</strong>: un grupo que persiste a lo largo de un rango amplio de umbrales es un grupo real. La selección final recorre el árbol de las hojas a la raíz y se queda con un nodo si su estabilidad supera la suma de las de sus descendientes seleccionados. La raíz nunca se selecciona: meter todo en un solo grupo siempre es una opción disponible y hay que prohibirla explícitamente, o en cuanto los hijos murieran pronto tras nacer ganaría ella y el algoritmo devolvería cero grupos y todo como ruido.</p>
         </div>
 
         <h2 id="hdbscan">HDBSCAN desde cero</h2>
@@ -470,6 +473,10 @@ S = {g: estabilidad(g) for g in lam_nac}
 seleccionado, S_hat = {}, {}
 for g in sorted(lam_nac, reverse=True):          # de las hojas hacia la raíz
     suma_hijos = sum(S_hat[c] for c in hijos_grupo[g])
+    if g == 0:                                   # la raíz nunca se selecciona:
+        S_hat[g] = suma_hijos                    # "todo en un grupo" no es respuesta
+        seleccionado[g] = False
+        continue
     if hijos_grupo[g] and suma_hijos &gt; S[g]:
         S_hat[g] = suma_hijos
         seleccionado[g] = False
@@ -483,7 +490,7 @@ for g in sorted(lam_nac, reverse=True):          # de las hojas hacia la raíz
                 seleccionado[x] = False
                 pila2.extend(hijos_grupo[x])
 
-elegidos = [g for g in lam_nac if seleccionado[g] and g != 0]
+elegidos = [g for g in lam_nac if seleccionado[g]]
 z_h = np.full(n, -1)
 for c, g in enumerate(elegidos):
     for h in hojas_totales(g):
@@ -493,7 +500,7 @@ print(f"\nÁrbol condensado: {len(lam_nac)} grupos candidatos; "
       f"seleccionados {len(elegidos)} por estabilidad.")
 print(f"{'grupo':&gt;6} {'nace en lambda':&gt;15} {'puntos':&gt;8} {'estabilidad':&gt;13} {'elegido':&gt;9}")
 for g in sorted(lam_nac):
-    marca = "sí" if seleccionado[g] and g != 0 else "no"
+    marca = "sí" if seleccionado[g] else "no"
     print(f"{g:6d} {lam_nac[g]:15.4f} {len(hojas_totales(g)):8d} {S[g]:13.2f} {marca:&gt;9}")
 
 print(f"\nHDBSCAN -&gt; {len(elegidos)} grupos, {(z_h == -1).mean():.1%} de ruido "

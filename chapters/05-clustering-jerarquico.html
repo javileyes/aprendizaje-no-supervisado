@@ -118,7 +118,7 @@
 
         <h2 id="ejemplo">Verificarlo todo con código</h2>
 
-        <p>El programa comprueba las tres afirmaciones del capítulo: que la fórmula de Ward es exacta, que Lance-Williams reproduce los cinco enlaces, y que el de centroide se invierte.</p>
+        <p>El programa comprueba las tres afirmaciones del capítulo: que la fórmula de Ward es exacta, que Lance-Williams reproduce los cinco enlaces hasta el redondeo de punto flotante —contrastándola con una implementación ingenua que vuelve a mirar los datos en cada fusión— y que el de centroide se invierte.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -222,7 +222,42 @@ print(f"   aumento real de la suma de cuadrados : {real:.10f}")
 print(f"   fórmula nA*nB/(nA+nB)*||muA-muB||^2  : {formula:.10f}")
 print(f"   diferencia                           : {abs(real - formula):.2e}\n")
 
-# ---------------- 2) Los cuatro enlaces sobre los mismos datos ----------------
+# ------- 1 bis) Lance-Williams frente a la definición directa de cada enlace -------
+def directo(X, enlace):
+    """La misma búsqueda de mínimos, pero recalculando cada distancia DESDE los datos."""
+    grupos, alturas = [[i] for i in range(len(X))], []
+
+    def d(A, B):
+        P, Q = X[A], X[B]
+        M = np.sqrt(((P[:, None] - Q[None]) ** 2).sum(-1))
+        if enlace == "simple":
+            return M.min()
+        if enlace == "completo":
+            return M.max()
+        if enlace == "medio":
+            return M.mean()
+        if enlace == "centroide":
+            return np.linalg.norm(P.mean(0) - Q.mean(0))
+        return np.sqrt(2 * len(A) * len(B) / (len(A) + len(B))
+                       * ((P.mean(0) - Q.mean(0)) ** 2).sum())      # Ward: sqrt(2*Delta)
+
+    while len(grupos) &gt; 1:
+        h, i, j = min((d(grupos[a], grupos[b]), a, b)
+                      for a in range(len(grupos)) for b in range(a + 1, len(grupos)))
+        alturas.append(h)
+        grupos = [g for k, g in enumerate(grupos) if k not in (i, j)] + [grupos[i] + grupos[j]]
+    return np.array(alturas)
+
+
+nube = np.random.default_rng(7).normal(size=(30, 3))   # generador propio: no desplaza a rng
+print("1 bis) Lance-Williams frente a la definición directa de cada enlace")
+print(f"   {'enlace':&lt;10} {'max |LW - definición|':&gt;24}")
+for enlace in ["simple", "completo", "medio", "centroide", "ward"]:
+    dif = np.abs(aglomerativo(nube, enlace)[:, 2] - directo(nube, enlace)).max()
+    print(f"   {enlace:&lt;10} {dif:24.2e}")
+print()
+
+# ---------------- 2) Los cinco enlaces sobre los mismos datos ----------------
 centros = np.array([[0.0, 0.0], [4.0, 0.5], [2.0, 4.0]])
 X = np.vstack([c + rng.normal(scale=0.7, size=(40, 2)) for c in centros])
 y = np.repeat([0, 1, 2], 40)
@@ -275,6 +310,14 @@ plt.show()
    fórmula nA*nB/(nA+nB)*||muA-muB||^2  : 86.3792229181
    diferencia                           : 2.84e-14
 
+1 bis) Lance-Williams frente a la definición directa de cada enlace
+   enlace        max |LW - definición|
+   simple                     6.66e-16
+   completo                   6.66e-16
+   medio                      6.66e-16
+   centroide                  6.66e-16
+   ward                       8.88e-16
+
 2) Acuerdo con la verdad al cortar en k=3, y monotonía del dendrograma
    enlace       acuerdo   alturas monótonas  inversiones
    simple        97.8%                  sí            0
@@ -290,9 +333,11 @@ plt.show()
 
         <p>La primera comprobación es exacta hasta el error de redondeo de punto flotante: $2{,}84\times 10^{-14}$ sobre un valor de 86,38. La fórmula de Ward no es una aproximación.</p>
 
-        <p>La segunda es deliberadamente aburrida: con tres grupos esféricos bien separados, <strong>los cinco enlaces dan el mismo 97,8 %</strong>. Cuando los datos son fáciles, la elección del enlace da igual, y conviene saberlo antes de perder una tarde comparándolos. Lo que no da igual es la columna de la derecha: el enlace por centroide produce 4 inversiones en el dendrograma, y por tanto un árbol que no se puede dibujar honestamente.</p>
+        <p>El bloque «1 bis» es la comprobación de fondo, la que sostiene el título de esta sección. Sobre 30 puntos en tres dimensiones se ejecutan dos algoritmos distintos: la recurrencia, que solo toca la tabla de distancias, y una versión ingenua que en cada fusión vuelve a los datos y aplica la definición literal del enlace (el mínimo, el máximo, la media de pares, la distancia entre centroides, la raíz de $2\Delta$). Las alturas coinciden con una discrepancia máxima de $9\times10^{-16}$: no se parecen, son las mismas.</p>
 
-        <p>El tercer bloque aísla el mecanismo con tres puntos. Dos están a distancia 1 y el tercero forma un triángulo casi equilátero (lado 1,02). Ward fusiona primero a altura 1,00 y después a 1,02: creciente. El centroide fusiona a 1,00 y luego a <strong>0,8833</strong>, porque el centroide de los dos primeros puntos queda <em>más cerca</em> del tercero de lo que ninguno de ellos estaba. La segunda fusión aparece por debajo de la primera.</p>
+        <p>El bloque 2 es deliberadamente aburrido: con tres grupos esféricos bien separados, <strong>los cinco enlaces dan el mismo 97,8 %</strong>. Cuando los datos son fáciles, la elección del enlace da igual, y conviene saberlo antes de perder una tarde comparándolos. Lo que no da igual es la columna de la derecha: el enlace por centroide produce 4 inversiones en el dendrograma, y por tanto un árbol que no se puede dibujar honestamente.</p>
+
+        <p>El tercer bloque aísla el mecanismo con tres puntos. Dos están a distancia 1 y el tercero se coloca sobre la mediatriz, un 2 % más alto que en el equilátero perfecto: 0,8833 en vez de 0,8660. Los otros dos lados miden entonces 1,0150 y el ángulo superior 59,02°; basta esa deformación para que la primera fusión no quede empatada. Ward fusiona primero a altura 1,00 y después a 1,02: creciente. El centroide fusiona a 1,00 y luego a <strong>0,8833</strong>, porque el centroide de los dos primeros puntos queda <em>más cerca</em> del tercero de lo que ninguno de ellos estaba. La segunda fusión aparece por debajo de la primera.</p>
 
         <h2 id="comparacion">Cuándo sí importa el enlace: encadenamiento</h2>
 
@@ -502,7 +547,7 @@ Correlación cofenética (cuánto respeta el dendrograma las distancias reales):
 
         <h2 id="lectura">Cómo se lee y se corta un dendrograma</h2>
 
-        <p>El dendrograma se lee de abajo arriba. Cada hoja es un dato, cada horizontal una fusión, y <strong>la altura de esa horizontal es la distancia a la que ocurrió</strong>. Un salto vertical largo sin fusiones significa que hubo que aumentar mucho la tolerancia para que algo más se uniera: señal de que la estructura de ese nivel era estable.</p>
+        <p>El dendrograma se lee de abajo arriba. Cada hoja es un dato, cada horizontal una fusión, y <strong>la altura de esa horizontal es la distancia a la que ocurrió</strong> —salvo en Ward, donde es $\sqrt{2\Delta}$: tiene unidades de distancia, pero no es una distancia entre grupos—. Un salto vertical largo sin fusiones significa que hubo que aumentar mucho la tolerancia para que algo más se uniera: señal de que la estructura de ese nivel era estable.</p>
 
         <figure class="figure">
   <svg viewBox="0 0 700 280" width="100%" role="img" aria-label="Cómo se lee un dendrograma: alturas de fusión, salto grande y corte">
@@ -577,8 +622,8 @@ Correlación cofenética (cuánto respeta el dendrograma las distancias reales):
             <li>El clústering aglomerativo devuelve un árbol, no una partición: $k$ se elige cortándolo, después de ver el resultado.</li>
             <li>El enlace define la distancia entre conjuntos y es la decisión de modelado del método. Simple = conectividad; completo = compacidad; medio = compromiso; Ward = inercia.</li>
             <li>El coste de Ward vale exactamente $\frac{n_An_B}{n_A+n_B}\lVert\mu_A-\mu_B\rVert^2$ (verificado con error $2{,}84\times10^{-14}$), y ese factor es el que empuja a grupos de tamaño parecido.</li>
-            <li>La recurrencia de Lance-Williams implementa los cinco criterios con cuatro coeficientes. Centroide y Ward operan sobre distancias al cuadrado; los demás, no.</li>
-            <li>Centroide y mediana pueden invertir el dendrograma: medido, 4 inversiones en datos normales y una fusión a 0,8833 después de otra a 1,00 en el triángulo equilátero.</li>
+            <li>La recurrencia de Lance-Williams implementa los cinco criterios con cuatro coeficientes, y da exactamente las mismas alturas que aplicar la definición de cada enlace sobre los datos (comprobado, discrepancia máxima $9\times10^{-16}$). Centroide y Ward operan sobre distancias al cuadrado; los demás, no.</li>
+            <li>Centroide y mediana pueden invertir el dendrograma: medido, 4 inversiones en datos normales y una fusión a 0,8833 después de otra a 1,00 en el triángulo casi equilátero.</li>
             <li>El encadenamiento del enlace simple acierta el 100 % en las lunas y se derrumba al 49,7 % con un puente de 16 puntos. La correlación cofenética mide la fidelidad del árbol, no la calidad de los grupos, y aquí premiaría al enlace equivocado.</li>
           </ul>
         </div>

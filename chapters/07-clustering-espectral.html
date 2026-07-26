@@ -120,7 +120,7 @@
           <p>Minimizar RatioCut equivale exactamente a</p>
           <p>$$ \min_{f} \; f^\top L f \quad \text{sujeto a} \quad f \perp \mathbf{1}, \quad \lVert f\rVert^2 = n, \quad f \text{ con solo dos valores}. $$</p>
           <p>La última restricción es la que hace el problema NP-difícil. <strong>La quitamos</strong> y dejamos que $f$ sea un vector real cualquiera. Por el teorema de Rayleigh-Ritz, el mínimo de $f^\top L f$ sobre los vectores de norma fija ortogonales al primer autovector es el <em>segundo</em> autovector de $L$.</p>
-          <p class="math-note">Ese segundo autovector se llama <strong>vector de Fiedler</strong>, y su autovalor $\lambda_2$ es la <em>conectividad algebraica</em> del grafo. Para volver a una partición basta con mirar el signo de cada componente, o pasarle un k-means.</p>
+          <p class="math-note">Ese segundo autovector se llama <strong>vector de Fiedler</strong>, y su autovalor $\lambda_2$ es la <em>conectividad algebraica</em> del grafo. Para volver a una partición se mira el signo de cada componente, o se le pasa un k-means; que el umbral sea el 0 no es evidente, y volvemos sobre ello en cuanto tengamos la desigualdad de Cheeger.</p>
         </div>
 
         <p>¿Cuánto se pierde al relajar? Hay una cota, pero exige un cuidado que casi siempre se pasa por alto: <strong>no se enuncia con el $\lambda_2$ que acabamos de definir</strong>. La conectividad algebraica es el segundo autovalor del laplaciano <em>sin normalizar</em>, y con ella la desigualdad es sencillamente falsa —crece con los grados, mientras que la conductancia está acotada por 1—.</p>
@@ -132,11 +132,23 @@
           <p class="math-note">Comprobado numéricamente: en el grafo completo $K_{10}$, $\lambda_2(L) = 10$, $\lambda_2(L_{\mathrm{sym}}) = 1{,}111$ y $h = 0{,}556$. Con el laplaciano sin normalizar la cota diría $5 \le 0{,}556$, que es falso; con el normalizado da $0{,}556 \le 0{,}556 \le 1{,}491$, y de hecho es <em>exacta</em> por la izquierda. Es otra razón para preferir siempre la versión normalizada.</p>
         </div>
 
+        <p>Y ahora sí, el umbral. Lo que garantiza la teoría no es el signo, sino el <strong>corte de barrido</strong> (<em>sweep cut</em>): ordena los nodos por su valor de Fiedler, considera los $n-1$ cortes que separan «los $t$ primeros» del resto y quédate con el mejor. Ese es el lado constructivo de la demostración de Cheeger —usando el autovector de la versión normalizada, alguno de esos $n-1$ cortes tiene conductancia $\le \sqrt{2\lambda_2^{\mathrm{sym}}}$—, y es también la razón de que el script de la sección siguiente dibuje el vector de Fiedler <em>ordenado</em>: si el grafo se parte bien, el perfil ordenado muestra dos mesetas separadas por un escalón, y el escalón dice dónde cortar. En su grafo de 90 nodos el escalón está en la posición 45 y es con diferencia el mayor salto del perfil (0,158 frente a 0,019 del siguiente); el mejor de los 89 cortes de barrido está justo ahí, coincide con el corte por signo y tiene conductancia 0,00860, dentro de la horquilla $0{,}00730 \le 0{,}00860 \le 0{,}17086$ que predice Cheeger. El signo funciona cuando el escalón cruza el cero, que es lo habitual pero no una garantía.</p>
+
+        <p>Conviene, eso sí, el contrapeso honesto: Cheeger acota lo que <em>existe</em>, no lo que la relajación <em>encuentra</em>. Guattery y Miller (1998) construyeron familias de grafos en los que la partición espectral es arbitrariamente peor que la óptima.</p>
+
         <h3>La versión normalizada</h3>
 
-        <p>Con NCut en lugar de RatioCut, la misma derivación —cambiando $|A|$ por $\operatorname{vol}(A)$— lleva a un problema de autovalores <em>generalizado</em>, $Lu = \lambda D u$, equivalente a diagonalizar cualquiera de estos dos laplacianos normalizados:</p>
+        <p>Con NCut en lugar de RatioCut la derivación es paralela, pero no es literalmente la misma, y conviene verla porque es la que explica de dónde sale el $D^{-1/2}$. Se codifica ahora $f_i = +\sqrt{\operatorname{vol}(\bar A)/\operatorname{vol}(A)}$ si $i \in A$ y $f_i = -\sqrt{\operatorname{vol}(A)/\operatorname{vol}(\bar A)}$ si $i \in \bar A$. Con la identidad del laplaciano sale</p>
+
+        <p>$$ f^\top L f = \operatorname{cut}(A,\bar A)\left(\frac{\operatorname{vol}(\bar A)}{\operatorname{vol}(A)} + \frac{\operatorname{vol}(A)}{\operatorname{vol}(\bar A)} + 2\right) = \operatorname{vol}(V)\cdot\mathrm{NCut}(A,\bar A), $$</p>
+
+        <p>y las otras dos condiciones también cambian: la ortogonalidad ya no es $f \perp \mathbf{1}$ sino $Df \perp \mathbf{1}$, y la norma fija ya no es $\lVert f\rVert^2 = n$ sino $f^\top D f = \operatorname{vol}(V)$. La matriz $D$ se mete en las tres, y por eso el problema relajado —minimizar $f^\top L f$ con $f^\top D f$ fija— tiene por solución el segundo autovector del problema de autovalores <em>generalizado</em> $Lf = \lambda D f$.</p>
+
+        <p>Aquí está el origen del $D^{-1/2}$: si sustituimos $u = D^{1/2} f$, entonces $f^\top L f = u^\top D^{-1/2} L D^{-1/2} u$, $f^\top D f = \lVert u\rVert^2$, y la restricción $Df \perp \mathbf{1}$ pasa a ser $u \perp D^{1/2}\mathbf{1}$, que es justo el primer autovector. El problema vuelve a ser uno de autovalores ordinario, y la matriz que aparece es el primero de estos dos laplacianos normalizados:</p>
 
         <p>$$ L_{\mathrm{sym}} = D^{-1/2} L D^{-1/2} = I - D^{-1/2} W D^{-1/2}, \qquad L_{\mathrm{rw}} = D^{-1} L = I - D^{-1} W . $$</p>
+
+        <p>No son dos definiciones caprichosas: son las dos formas de escribir el mismo problema generalizado, una con el cambio de variable $u = D^{1/2}f$ y otra sin él —los autovectores de $L_{\mathrm{rw}}$ son directamente los $f$—.</p>
 
         <p>El subíndice «rw» es por <em>random walk</em>: $D^{-1}W$ es la matriz de transición de un paseo aleatorio por el grafo, y NCut equivale a buscar las regiones de las que a un paseante le cuesta salir. En la práctica se recomienda casi siempre la versión normalizada, porque las no normalizadas tienden a aislar nodos de grado bajo.</p>
 
@@ -185,7 +197,7 @@ print(f"   autovalor mínimo de L = {np.linalg.eigvalsh(L).min():.2e}  (debe ser
 
 # ---------------- 2) Multiplicidad del 0 = componentes conexas ----------------
 print("2) Multiplicidad del autovalor 0 frente al número de componentes")
-print(f"   {'componentes':&gt;12} {'autovalores casi nulos':&gt;24} {'lambda_2':&gt;12}")
+print(f"   {'componentes':&gt;12} {'autovalores casi nulos':&gt;24} {'salto espectral':&gt;16}")
 for n_comp in [1, 2, 3, 4]:
     centros = np.array([[6.0 * i, 0.0] for i in range(n_comp)])
     X = np.vstack([c + rng.normal(scale=0.35, size=(30, 2)) for c in centros])
@@ -194,7 +206,7 @@ for n_comp in [1, 2, 3, 4]:
     Lg = np.diag(Wg.sum(axis=1)) - Wg
     val = np.linalg.eigvalsh(Lg)
     casi_cero = int((val &lt; 1e-8).sum())
-    print(f"   {n_comp:12d} {casi_cero:24d} {val[n_comp] if n_comp &lt; len(val) else 0:12.4f}")
+    print(f"   {n_comp:12d} {casi_cero:24d} {val[n_comp]:16.4f}")
 print("   El autovalor que sigue al último cero (lambda_k+1) es el 'salto espectral'.\n")
 
 # ---------------- 3) El vector de Fiedler contra 20 000 particiones al azar ----
@@ -251,11 +263,11 @@ plt.show()
    autovalor mínimo de L = -1.78e-14  (debe ser ~0, nunca negativo)
 
 2) Multiplicidad del autovalor 0 frente al número de componentes
-    componentes   autovalores casi nulos     lambda_2
-              1                        1       5.9651
-              2                        2       8.0287
-              3                        3       3.1117
-              4                        4       4.5511
+    componentes   autovalores casi nulos  salto espectral
+              1                        1           5.9651
+              2                        2           8.0287
+              3                        3           3.1117
+              4                        4           4.5511
    El autovalor que sigue al último cero (lambda_k+1) es el 'salto espectral'.
 
 3) ¿Corta bien el vector de Fiedler? (RatioCut: más bajo, mejor)
@@ -279,7 +291,7 @@ plt.show()
           <li>Construir el grafo de similitud $W$ (aquí, $k$ vecinos).</li>
           <li>Calcular $L_{\mathrm{sym}} = I - D^{-1/2}WD^{-1/2}$.</li>
           <li>Tomar los $k$ autovectores de menor autovalor y ponerlos como columnas de $U \in \mathbb{R}^{n\times k}$. Cada fila es ahora la <em>nueva representación</em> de un punto.</li>
-          <li>Normalizar las filas de $U$ a norma 1. Esto proyecta los puntos a la esfera unidad, donde —según la teoría— los grupos se concentran en direcciones distintas.</li>
+          <li>Normalizar las filas de $U$ a norma 1. La razón es concreta: en el caso ideal de $k$ componentes desconectadas el núcleo de $L_{\mathrm{sym}}$ está generado por los $D^{1/2}\mathbf{1}_{A_m}$, así que la fila del nodo $i$ tiene longitud $\sqrt{d_i/\operatorname{vol}(A_m)}$ —los nodos bien conectados quedan lejos del origen y los periféricos cerca, aunque sean del mismo grupo—. Normalizar borra esa dependencia del grado: todos los nodos de un grupo caen sobre el <em>mismo</em> punto de la esfera unidad, y grupos distintos en direcciones ortogonales.</li>
           <li>Aplicar k-means a esas filas.</li>
         </ol>
 
@@ -514,14 +526,16 @@ DESCONECTADOS, así que hay tantos autovalores nulos como grupos.
 
         <p>Los resultados frente a k-means son espectaculares: <strong>100 % contra 66,7 %</strong> en las lunas y <strong>100 % contra 49,8 %</strong> en los círculos concéntricos, donde k-means está literalmente al nivel del azar porque los dos anillos comparten centro y ningún par de centroides puede distinguirlos. En los tres anillos, 92,6 % contra 55,4 %.</p>
 
-        <p>Pero la tabla de arriba es más honesta que los titulares, y por eso está antes. <strong>No existe un número de vecinos que funcione para los tres conjuntos.</strong> Con 10 vecinos las lunas salen perfectas y los anillos caen al 77,8 %; con 5 los anillos suben al 92,6 % y las lunas se hunden al 67,5 %. Con 20 vecinos, los anillos se derrumban al 55,6 % porque el grafo empieza a conectar anillos contiguos.</p>
+        <p>Pero la tabla de arriba es más honesta que los titulares, y por eso está antes. <strong>No existe un número de vecinos que funcione para los tres conjuntos.</strong> Con 10 vecinos las lunas salen perfectas y los anillos caen al 77,8 %; con 5 los anillos suben al 92,6 % y las lunas se hunden al 67,5 %. Con 20 vecinos se derrumban al 55,6 %, y la causa no es que el grafo <em>empiece</em> a conectar anillos contiguos: eso ocurre mucho antes. Ya con 6 vecinos hay componentes que mezclan los dos anillos exteriores, y a partir de 9 el grafo entero es una sola componente. Lo que cambia al llegar a 20 es la cantidad: 841 aristas entre anillos distintos frente a 2 970 dentro de ellos, cuando con 10 vecinos eran 46 frente a 1 856. Cortar entre anillos deja de ser más barato que cortar por dentro de uno, y el método parte el disco en tres <em>sectores angulares</em> de unos 120°, cada uno con un tercio de cada anillo. De ahí que el acuerdo caiga justo al 55,6 %, que es exactamente lo que da el azar con tres grupos equilibrados.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El grafo es el modelo, y no hay forma de validarlo desde dentro</div>
           <p>El clústering espectral traslada el problema: ya no eliges $k$ centroides ni un $\varepsilon$, eliges una <em>estructura de vecindad</em>. Y esa elección decide el resultado tanto como cualquier hiperparámetro anterior. Al no haber etiquetas con las que comparar, no existe ningún criterio interno que te diga que 10 vecinos era mejor que 5. Es la misma imposibilidad del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, con otro disfraz.</p>
         </div>
 
-        <p>La última sección de la salida enseña por qué funciona cuando funciona: con un grafo de $k$ vecinos suficientemente escaso, los grupos quedan <em>literalmente desconectados</em>, y entonces hay exactamente tantos autovalores nulos como grupos. En las lunas y los círculos salen 2 y 2, perfecto. En los anillos con 5 vecinos salen <strong>5</strong> para 3 grupos reales: el grafo se ha fragmentado de más, y dos trocitos sueltos aparecen como componentes propias. Ese exceso es exactamente la razón de que el acuerdo sea 92,6 % y no 100 %.</p>
+        <p>La última sección de la salida enseña por qué funciona cuando funciona: con un grafo de $k$ vecinos suficientemente escaso, los grupos quedan <em>literalmente desconectados</em>, y entonces hay exactamente tantos autovalores nulos como grupos. En las lunas y los círculos salen 2 y 2, perfecto. En los anillos con 5 vecinos salen <strong>5</strong> para 3 grupos reales: el grafo se ha fragmentado de más, y dos trocitos sueltos de 20 nodos aparecen como componentes propias. Ese exceso es exactamente la razón de que el acuerdo sea 92,6 % y no 100 %.</p>
+
+        <p>Vale la pena ver el mecanismo, porque explica ese 92,6 % con precisión. El núcleo tiene dimensión 5 y solo tomamos $k=3$ columnas, así que dos de las cinco componentes quedan fuera del subespacio elegido: sus filas de $U$ tienen norma <em>exactamente</em> 0. La guarda <code>np.maximum(..., 1e-12)</code> del código evita la división por cero, pero esos puntos no acaban repartidos por la esfera: se quedan todos superpuestos en el origen. Aquí son 110 de 330 —el trocito de 20 nodos del anillo medio y 90 del exterior—, y k-means, que solo ve un montón de puntos idénticos, los mete a todos en el mismo clúster junto con los 20 restantes del anillo exterior. El reparto final es: los 110 del anillo interior, los 90 del medio, y un tercer grupo que junta los 110 del exterior con 20 del medio. De ahí el 92,6 %.</p>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>

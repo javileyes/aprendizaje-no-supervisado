@@ -70,10 +70,13 @@ s = mahalanobis(X, mu, S)
 print(f"\nAUC del detector: {auc(s, y):.4f}  (excelente... pero no es un umbral)")
 
 s_lim = mahalanobis(X_lim, mu, S)
+# cuantil 0,99 de una chi-cuadrado con D grados, por Wilson-Hilferty (sin SciPy)
+z99 = 2.3263478740408408                                        # cuantil 0,99 normal
+q99 = D * (1 - 2 / (9 * D) + z99 * np.sqrt(2 / (9 * D))) ** 3
 umbrales = [
     ("percentil 95 de los normales", np.percentile(s_lim, 95)),
     ("percentil 99 de los normales", np.percentile(s_lim, 99)),
-    ("cuantil chi-cuadrado al 99 %", D + 2.33 * np.sqrt(2 * D) + 2.0),
+    ("cuantil chi-cuadrado al 99 %", q99),
     ("suponer 5 % de anomalías", np.percentile(s, 95)),
 ]
 print(f"\n{'regla para el umbral':32} {'valor':>8} {'precisión':>11} "

@@ -37,7 +37,7 @@
 
         <p>Aplica PCA a un conjunto de caras. La primera componente sale como una especie de cara promedio; las siguientes, como fantasmas grises con zonas claras y oscuras que hay que <em>sumar y restar</em> para reconstruir un rostro. Funcionan —el error es mínimo, lo demostró Eckart-Young—, pero no corresponden a nada: no existe media cara negativa.</p>
 
-        <p>La causa es que PCA solo exige ortogonalidad, y la ortogonalidad permite cancelaciones. Si prohibimos los números negativos, prohibimos cancelar, y la única manera de construir el todo es <strong>sumando partes</strong>.</p>
+        <p>La causa es la ortogonalidad, y la implicación es más fuerte de lo que suele decirse: la ortogonalidad no <em>permite</em> los valores negativos, los <strong>obliga</strong>. Si dos vectores $u,v$ son no negativos y ortogonales, entonces $\sum_i u_iv_i = 0$ con todos los sumandos $\ge 0$, así que cada sumando es cero: para cada píxel $i$, o $u_i=0$ o $v_i=0$. Sus soportes son <em>disjuntos</em>, no comparten ni un píxel activo. Como en las imágenes reales las partes sí se solapan, una base ortogonal de partes solapadas no puede ser no negativa: le salen valores negativos por necesidad matemática, no por casualidad. Prohibir los números negativos es prohibir la cancelación, y con ella la ortogonalidad entre partes que comparten píxeles; la única manera de construir el todo pasa a ser <strong>sumando partes</strong>.</p>
 
         <figure class="figure">
   <svg viewBox="0 0 700 250" width="100%" role="img" aria-label="PCA usa todo el subespacio; NMF solo el cono no negativo">
@@ -243,7 +243,7 @@ sino en CÓMO las representa:
   fracción de píxeles negativos en las de NMF            : 0.0%</pre>
         </div>
 
-        <p>NMF recupera las cuatro partes con correlación <strong>1,0000</strong> las cuatro: no aproximadamente, sino exactamente. Pero fíjate en la fila de PCA, porque el resultado es más interesante de lo que suele contarse: <strong>PCA también las encuentra</strong> —0,944, 0,998, 0,993 y 0,810, con una media de 0,936—.</p>
+        <p>NMF recupera las cuatro partes con correlación <strong>1,0000</strong> las cuatro —el 1,0000 es el redondeo a cuatro decimales; con un decimal más son 0,99998, 0,99999, 0,99999 y 0,99998—. Lo poco que falta para el 1 lo pone el ruido aditivo que le metimos nosotros: quitando ese término y dejando correr más iteraciones, la correlación sube a 0,9999999. Pero fíjate en la fila de PCA, porque el resultado es más interesante de lo que suele contarse: <strong>PCA también las encuentra</strong> —0,944, 0,998, 0,993 y 0,810, con una media de 0,936—.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ Un detalle que cambia la conclusión: el signo</div>
@@ -255,7 +255,7 @@ sino en CÓMO las representa:
 
         <p>El <strong>55,6 %</strong> de los píxeles de las componentes de PCA son negativos, frente al <strong>0,0 %</strong> en NMF. Ahí está toda la historia: para reconstruir una imagen, PCA suma <em>y resta</em> sus componentes —los coeficientes negativos cancelan lo que sobra—, mientras que NMF solo puede sumar. Por eso las bases de NMF son objetos que uno puede señalar y nombrar, y las de PCA son patrones con zonas positivas y negativas que solo tienen sentido en combinación.</p>
 
-        <p>Y conviene ser honesto sobre el alcance del experimento: estas partes son rectángulos disjuntos con activaciones dispersas, un caso especialmente amable en el que las direcciones de máxima varianza casi coinciden con las partes. Con partes solapadas —trozos de cara, temas que comparten palabras— PCA sí las mezcla, y ahí la ventaja de NMF deja de ser solo de interpretación y pasa a ser también de identificación.</p>
+        <p>Y conviene ser honesto sobre el alcance del experimento: estas partes son rectángulos con activaciones dispersas y con muy poco solape —de los seis pares posibles solo dos comparten píxeles, y son 4 y 6 de los 144 de la imagen—, un caso especialmente amable en el que las direcciones de máxima varianza casi coinciden con las partes. Con partes muy solapadas —trozos de cara, temas que comparten palabras— PCA sí las mezcla, y ahí la ventaja de NMF deja de ser solo de interpretación y pasa a ser también de identificación.</p>
 
         <p>El error baja monótonamente de 1632,5 a 1,9 y los mínimos de $W$ y $H$ son $7\times10^{-81}$ y $6{,}7\times10^{-6}$: positivos, aunque uno de ellos ridículamente pequeño. Ese es el comportamiento típico de las reglas multiplicativas — se acercan a cero pero nunca lo cruzan, lo que produce de paso soluciones bastante <em>dispersas</em>.</p>
 
@@ -264,7 +264,7 @@ sino en CÓMO las representa:
           <p>Cambia <code>nmf(X, k_real)</code> por <code>nmf(X, 6)</code>, pidiendo seis partes donde solo hay cuatro. El error final baja de 1,923 a <strong>1,899</strong> —siempre baja o iguala al añadir componentes, igual que la inercia en el <a href="03-kmeans.html">capítulo 3</a>—, pero la mejora es de un 1 % y las dos componentes de más no descubren nada: se reparten trozos de las partes verdaderas. Elegir $k$ en NMF tiene exactamente el mismo problema que elegir $k$ en clústering, y las mismas soluciones aproximadas del <a href="08-validacion-clusteres.html">capítulo 8</a>.</p>
         </div>
 
-        <p>NMF es hoy la herramienta estándar en <strong>modelado de temas</strong> (cada fila de $H$ es un tema, un conjunto de palabras que aparecen juntas; cada fila de $W$, la mezcla de temas de un documento), en <strong>separación de fuentes de audio</strong> sobre espectrogramas y en <strong>bioinformática</strong>. Su pariente probabilístico, con verosimilitud multinomial en lugar de error cuadrático, es la asignación latente de Dirichlet (LDA).</p>
+        <p>NMF es hoy la herramienta estándar en <strong>modelado de temas</strong> (cada fila de $H$ es un tema, un conjunto de palabras que aparecen juntas; cada fila de $W$, la mezcla de temas de un documento), en <strong>separación de fuentes de audio</strong> sobre espectrogramas y en <strong>bioinformática</strong>. Y tiene un pariente probabilístico exacto, aunque no el que suele citarse: si en lugar del error cuadrático se minimiza la divergencia de Kullback-Leibler —lo natural cuando $X$ son recuentos—, NMF resulta ser el mismo problema de optimización que pLSA (Hofmann, 1999). La asignación latente de Dirichlet (LDA; Blei, Ng y Jordan, 2003) es un paso más allá: pLSA con una previa de Dirichlet sobre las proporciones de temas, es decir, justo la regularización bayesiana que a NMF le falta.</p>
 
         <h2 id="ica">ICA: de la decorrelación a la independencia</h2>
 
@@ -280,7 +280,9 @@ sino en CÓMO las representa:
 
         <h3>Por qué las fuentes no pueden ser gaussianas</h3>
 
-        <p>La condición de no gaussianidad no es un tecnicismo: sin ella el problema es <strong>irresoluble por principio</strong>. Supón $s \sim \mathcal{N}(0, I)$ y sea $R$ cualquier matriz ortogonal. Entonces $Rs$ también es $\mathcal{N}(0,I)$, porque la gaussiana estándar es invariante por rotaciones. Luego $A$ y $AR$ producen <em>exactamente la misma distribución</em> de $x$, y ningún método basado en datos podrá distinguirlas. La gaussiana es la única distribución con esa patología, y por eso es la única prohibida.</p>
+        <p>La condición de no gaussianidad no es un tecnicismo: sin ella el problema es <strong>irresoluble por principio</strong>. Supón $s \sim \mathcal{N}(0, I)$ y sea $R$ cualquier matriz ortogonal. Entonces $Rs$ también es $\mathcal{N}(0,I)$, porque la gaussiana estándar es invariante por rotaciones. Luego $A$ y $AR$ producen <em>exactamente la misma distribución</em> de $x$, y ningún método basado en datos podrá distinguirlas. La gaussiana es la única distribución con esa patología, y por eso es la única que hay que vigilar.</p>
+
+        <p>Pero atención al matiz, porque la condición correcta es más débil de lo que parece: la patología necesita <em>dos</em> gaussianas para manifestarse. Una rotación tiene que mezclar dos direcciones, y una rotación que mezcle una gaussiana con una no gaussiana sí cambia la distribución conjunta, así que es detectable. El teorema de identificabilidad de Comon (1994) dice exactamente eso: el modelo es identificable, salvo permutación y escala, si a lo sumo <strong>una</strong> de las fuentes es gaussiana. Y esa una se recupera igual: es la que queda cuando ya has aislado todas las demás.</p>
 
         <h3>La estrategia: buscar lo menos gaussiano</h3>
 
@@ -481,6 +483,7 @@ Curtosis de lo recuperado por ICA: [-1.913 -1.165 -1.472]</pre>
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
           <p>Sustituye las tres fuentes por gaussianas: cambia <code>s1</code>, <code>s2</code> y <code>s3</code> por <code>rng.normal(size=n)</code> cada una. La correlación media de ICA cae de 0,9963 a valores mucho peores y, sobre todo, <em>deja de ser reproducible</em>: midiéndolo con tres semillas del generador obtengo <strong>0,890, 0,700 y 0,800</strong>, sin ningún patrón. Compáralo con el 0,9963 estable del caso no gaussiano. No es un fallo del algoritmo: es el teorema de identificabilidad en acción. Con fuentes gaussianas, cualquier rotación explica los datos igual de bien, así que lo que devuelve FastICA es esencialmente arbitrario y solo se parece a las fuentes por casualidad.</p>
+          <p>Ahora haz lo mismo pero cambiando <em>solo</em> <code>s1</code>. La media sube a <strong>0,9979</strong> y sale idéntica con las tres semillas: una sola gaussiana no estorba, exactamente como predice Comon. Con dos ya empieza a depender de la semilla —0,997, 0,949 y 0,993 en las mismas tres—: ahí está la frontera.</p>
         </div>
 
         <h2 id="comparativa">Tres factorizaciones, tres hipótesis</h2>
@@ -496,7 +499,7 @@ Curtosis de lo recuperado por ICA: [-1.913 -1.165 -1.472]</pre>
               <tr><td>Solución</td><td>Cerrada y única</td><td>Iterativa, mínimos locales</td><td>Iterativa, mínimos locales</td></tr>
               <tr><td>Componentes</td><td>Ordenadas por importancia</td><td>Sin orden natural</td><td>Sin orden ni escala</td></tr>
               <tr><td>Interpretación</td><td>Direcciones de dispersión</td><td>Partes que se suman</td><td>Causas físicas separadas</td></tr>
-              <tr><td>Requiere</td><td>Nada</td><td>Datos $\ge 0$</td><td>Fuentes no gaussianas</td></tr>
+              <tr><td>Requiere</td><td>Nada</td><td>Datos $\ge 0$</td><td>A lo sumo una fuente gaussiana</td></tr>
               <tr><td>Uso típico</td><td>Compresión, quitar ruido</td><td>Temas, audio, imágenes</td><td>EEG, MEG, separación de señales</td></tr>
             </tbody>
           </table>
@@ -519,9 +522,9 @@ Curtosis de lo recuperado por ICA: [-1.913 -1.165 -1.472]</pre>
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
             <li>NMF minimiza $\lVert X - WH\rVert_F^2$ con $W,H\ge0$. Las reglas multiplicativas de Lee-Seung mantienen la no negatividad por construcción y no aumentan el error.</li>
-            <li>Al prohibir cancelaciones, la representación es aditiva. Medido: NMF recupera las 4 partes con correlación 1,0000; PCA también las encuentra (media 0,936) <em>si se compara en valor absoluto</em>, porque el signo de una componente es arbitrario. La diferencia real está en el 55,6 % de píxeles negativos de PCA frente al 0,0 % de NMF: uno reconstruye sumando y restando, el otro solo sumando.</li>
+            <li>Ortogonalidad y no negatividad son incompatibles en cuanto las partes se solapan: dos vectores no negativos y ortogonales tienen soportes disjuntos. Por eso las bases de PCA tienen que llevar negativos y las de NMF no. Medido: NMF recupera las 4 partes con correlación 1,0000; PCA también las encuentra (media 0,936) <em>si se compara en valor absoluto</em>, porque el signo de una componente es arbitrario. La diferencia real está en el 55,6 % de píxeles negativos de PCA frente al 0,0 % de NMF: uno reconstruye sumando y restando, el otro solo sumando.</li>
             <li>NMF no es única salvo escala, y elegir $k$ tiene los mismos problemas que en clústering.</li>
-            <li>ICA busca componentes independientes, no solo incorreladas. Es imposible si las fuentes son gaussianas, porque la gaussiana estándar es invariante por rotaciones y $A$ y $AR$ dan la misma distribución.</li>
+            <li>ICA busca componentes independientes, no solo incorreladas. La gaussiana estándar es invariante por rotaciones, así que $A$ y $AR$ dan la misma distribución: el teorema de Comon (1994) dice que el modelo es identificable si a lo sumo <em>una</em> fuente es gaussiana. Medido: con una, la correlación media se queda en 0,998 y es estable; con tres, cae a 0,7-0,9 y cambia con cada semilla.</li>
             <li>Mezclar acerca a la gaussiana: medido, curtosis de $-1{,}9$ a $-1{,}2$ en las fuentes frente a $-1{,}0$ a $-0{,}5$ en las mezclas. Maximizar la no gaussianidad deshace la mezcla.</li>
             <li>Blanquear reduce el problema a encontrar una rotación; FastICA la encuentra con un punto fijo de Newton usando $g=\tanh$. Medido: correlación 0,9963 con las fuentes, frente a 0,6732 de PCA.</li>
           </ul>

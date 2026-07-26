@@ -61,6 +61,8 @@
           <p class="math-note">La condición de optimalidad <em>es</em> la ecuación de autovectores. Además, multiplicando por $u^\top$ y usando $u^\top u = 1$: $u^\top S u = \lambda$. Es decir, <strong>el valor que queríamos maximizar es exactamente el autovalor</strong>. Luego la dirección óptima es el autovector del mayor autovalor, y la varianza que consigue es ese autovalor. No hay nada que iterar: se diagonaliza $S$ y ya está.</p>
         </div>
 
+        <p>Conviene ver qué significa esto en la imagen del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>. Las «bolas de Mahalanobis» de allí —los conjuntos $\{\tilde x : \tilde x^\top S^{-1}\tilde x = 1\}$— son elipsoides: el contorno de nivel de la nube. Diagonalizar $S$ es exactamente encontrar los <strong>ejes de ese elipsoide</strong>, y el semieje $j$ mide $\sqrt{\lambda_j}$. PCA no es más que alinear el sistema de coordenadas con esos ejes y quedarse con los más largos. Por eso las componentes salen ortogonales sin que haya que pedirlo: los ejes de un elipsoide lo son. Y por eso blanquear —dividir cada eje por $\sqrt{\lambda_j}$— convierte el elipsoide en una esfera, que es justo lo que hacía la distancia de Mahalanobis.</p>
+
         <p>Para la segunda componente se añade la restricción $u_2 \perp u_1$ y se repite el argumento con dos multiplicadores; el resultado es el autovector del segundo autovalor. Y así hasta $d$. Como $S$ es simétrica y semidefinida positiva, el teorema espectral garantiza que sus autovectores forman una <strong>base ortonormal</strong> y que todos los autovalores son $\ge 0$: exactamente lo que hace falta para que esto tenga sentido geométrico.</p>
 
         <h2 id="doble-lectura">La otra cara: mínimo error de reconstrucción</h2>
@@ -81,27 +83,27 @@
         <figure class="figure">
           <svg viewBox="0 0 660 260" width="100%" role="img" aria-label="Proyección sobre la primera componente principal">
             <g stroke="#8b93a7" stroke-width="1" stroke-dasharray="3 3">
-              <line x1="120" y1="180" x2="152" y2="148"/>
-              <line x1="180" y1="170" x2="205" y2="145"/>
-              <line x1="250" y1="120" x2="262" y2="108"/>
-              <line x1="330" y1="115" x2="322" y2="107"/>
-              <line x1="400" y1="70" x2="382" y2="88"/>
-              <line x1="450" y1="90" x2="428" y2="112"/>
+              <line x1="160" y1="226" x2="145" y2="191"/>
+              <line x1="198" y1="136" x2="209" y2="164"/>
+              <line x1="287" y1="167" x2="274" y2="136"/>
+              <line x1="328" y1="85" x2="338" y2="109"/>
+              <line x1="417" y1="114" x2="403" y2="81"/>
+              <line x1="445" y1="28" x2="458" y2="57"/>
             </g>
             <line x1="90" y1="215" x2="510" y2="35" stroke="#5b8def" stroke-width="3"/>
             <text x="520" y="35" font-size="13" fill="#5b8def" font-weight="700">1ª componente</text>
-            <line x1="300" y1="125" x2="235" y2="42" stroke="#e2b53d" stroke-width="2.5"/>
-            <text x="180" y="36" font-size="13" fill="#e2b53d" font-weight="700">2ª componente</text>
+            <line x1="300" y1="125" x2="263" y2="38" stroke="#e2b53d" stroke-width="2.5"/>
+            <text x="160" y="34" font-size="13" fill="#e2b53d" font-weight="700">2ª componente</text>
 
             <g fill="#ef476f">
-              <circle cx="120" cy="180" r="5"/><circle cx="180" cy="170" r="5"/>
-              <circle cx="250" cy="120" r="5"/><circle cx="330" cy="115" r="5"/>
-              <circle cx="400" cy="70" r="5"/><circle cx="450" cy="90" r="5"/>
+              <circle cx="160" cy="226" r="5"/><circle cx="198" cy="136" r="5"/>
+              <circle cx="287" cy="167" r="5"/><circle cx="328" cy="85" r="5"/>
+              <circle cx="417" cy="114" r="5"/><circle cx="445" cy="28" r="5"/>
             </g>
             <g fill="#43c59e">
-              <circle cx="152" cy="148" r="4"/><circle cx="205" cy="145" r="4"/>
-              <circle cx="262" cy="108" r="4"/><circle cx="322" cy="107" r="4"/>
-              <circle cx="382" cy="88" r="4"/><circle cx="428" cy="112" r="4"/>
+              <circle cx="145" cy="191" r="4"/><circle cx="209" cy="164" r="4"/>
+              <circle cx="274" cy="136" r="4"/><circle cx="338" cy="109" r="4"/>
+              <circle cx="403" cy="81" r="4"/><circle cx="458" cy="57" r="4"/>
             </g>
             <text x="300" y="245" text-anchor="middle" font-size="12" fill="currentColor">las líneas de puntos son los residuos: su longitud al cuadrado es el error</text>
           </svg>
@@ -213,7 +215,7 @@ fig, ax = plt.subplots(1, 3, figsize=(14, 4))
 ax[0].plot(val[:20], "o-", color="#5b8def")
 ax[0].set_xlabel("componente")
 ax[0].set_ylabel("autovalor (varianza)")
-ax[0].set_title("espectro: 3 grandes y una meseta")
+ax[0].set_title("espectro: 2 picos y una meseta de ruido")
 ax[1].plot(np.cumsum(val) / val.sum(), color="#43c59e")
 ax[1].axhline(0.9, ls=":", c="k")
 ax[1].set_xlabel("nº de componentes")
@@ -259,11 +261,18 @@ plt.show()
 
         <p>El segundo bloque verifica la identidad del error: en las ocho filas, el error medido y la suma de los autovalores descartados coinciden con diferencias del orden de $10^{-13}$. Y con $k = 200$ el error es <em>exactamente</em> cero: con todas las componentes, la reconstrucción es perfecta, porque $U_dU_d^\top = I$.</p>
 
-        <p>El tercer bloque contiene el resultado práctico y una lección incómoda. Agrupar en las 200 dimensiones originales da un 82,9 % de acuerdo; hacerlo sobre las 2 o 3 primeras componentes sube al <strong>87,7 %</strong>. Proyectar ha <em>añadido</em> información útil, en el sentido de que ha quitado ruido. Pero mira la varianza explicada de esas tres componentes: <strong>solo el 6,0 %</strong>.</p>
+        <p>El tercer bloque contiene el resultado práctico y una lección incómoda. Agrupar en las 200 dimensiones originales da un 82,9 % de acuerdo; hacerlo sobre las 2 primeras componentes sube al <strong>87,7 %</strong> (con 3, 87,5 %). Proyectar ha <em>añadido</em> información útil, en el sentido de que ha quitado ruido. Pero mira la varianza explicada de esas dos componentes: <strong>solo el 4,6 %</strong>.</p>
+
+        <p>Un apunte de método: ese «acuerdo» es el índice de Rand sin ajustar, y el <a href="08-validacion-clusteres.html">capítulo 8</a> explicó por qué está inflado y comprime el rango útil. Medido con ARI, que es lo que allí se recomienda, la mejora es aún más marcada: de 0,620 a 0,722.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ «Varianza explicada» no significa «información conservada»</div>
-          <p>Aquí, <strong>dos</strong> componentes que explican el 4,6 % de la varianza contienen <em>toda</em> la estructura, y las 198 restantes son ruido. Y lo sabemos por el propio experimento: agrupar con 2 componentes da 87,7 % y con 3 da 87,5 %, ligeramente peor. La tercera componente no aporta señal; solo añade una dirección de ruido más. La regla popular de «quédate con las componentes que expliquen el 90 %» habría conservado más de 100 componentes y casi todo el ruido. Ese porcentaje mide qué fracción de la <em>dispersión</em> retienes, no qué fracción de la <em>señal</em>.</p>
+          <p>Aquí, <strong>dos</strong> componentes que explican el 4,6 % de la varianza contienen <em>toda</em> la estructura, y las 198 restantes son ruido. Y lo sabemos por el propio experimento: agrupar con 2 componentes da 87,7 % y con 3 da 87,5 %, ligeramente peor. La tercera componente no aporta señal; solo añade una dirección de ruido más. Y que basten dos y no tres tiene una razón estructural: tres centros de grupo generan siempre un subespacio afín de dimensión 2, así que la dispersión <em>entre</em> grupos ocupa solo dos direcciones por mucho que la señal viva en tres. La regla popular de «quédate con las componentes que expliquen el 90 %» habría conservado <strong>132</strong> componentes y casi todo el ruido. Ese porcentaje mide qué fracción de la <em>dispersión</em> retienes, no qué fracción de la <em>señal</em>.</p>
+        </div>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición — de dónde sale la meseta</div>
+          <p>La meseta del espectro no es un accidente de estos datos. Cuando $n$ y $d$ son ambos grandes con $d/n$ fijo, el ruido isótropo de varianza $\sigma^2$ no produce $d$ autovalores iguales a $\sigma^2$: produce todo un <em>continuo</em> repartido entre $\sigma^2\big(1-\sqrt{d/n}\big)^2$ y $\sigma^2\big(1+\sqrt{d/n}\big)^2$ —es la ley de Marchenko–Pastur—. Aquí, con $\sigma = 1{,}8$, $n = 400$ y $d = 200$, eso predice el intervalo $[0{,}278,\ 9{,}442]$, y los autovalores medidos —descontando $\lambda_1 = 16{,}11$ y $\lambda_2 = 14{,}61$, que sobresalen por llevar señal— van de $0{,}287$ a $9{,}442$. El «codo» del gráfico de sedimentación es, en esencia, <strong>el borde superior de ese intervalo</strong>: una componente lleva señal si su autovalor sobresale por encima del bulto de ruido, no por ser grande en términos absolutos. Y de ahí la lección: $\lambda_3 = 9{,}442$ cae justo sobre el borde, así que la tercera componente es indistinguible del ruido aunque la señal viva de verdad en dimensión 3. Hay estructura que PCA no recupera, no por torpeza del método, sino porque a este nivel de ruido no queda rastro de ella en la covarianza.</p>
         </div>
 
         <div class="callout warn">
@@ -407,9 +416,11 @@ TRAMPA 2 · las mismas tres variables, con y sin estandarizar
 
         <h3>Trampa 1: varianza no es información</h3>
 
-        <p>Los datos tienen dos columnas: una de ruido con desviación 6 y sin ninguna estructura, y otra con dos grupos claramente separados pero desviación 0,35. La primera componente explica el <strong>92,7 %</strong> de la varianza y apunta con coeficiente 1,000 a la columna de ruido. Si te quedas con ella —que es lo que dicta el método—, k-means da un <strong>49,9 %</strong>: el nivel del azar. Con la segunda componente sola, <strong>100 %</strong>.</p>
+        <p>Los datos tienen dos columnas: una de ruido gaussiano sin ninguna estructura (parámetro <code>scale=6</code>; desviación realizada 5,44, varianza 29,58) y otra con dos grupos separados por 3 unidades y una dispersión <em>interna</em> de 0,35, lo que le da una desviación total de 1,53 y una varianza de 2,33. Con esas dos cifras sale el reparto que imprime el programa: la primera componente explica el <strong>92,7 %</strong> de la varianza y apunta con coeficiente 1,000 a la columna de ruido. Si te quedas con ella —que es lo que dicta el método—, k-means da un <strong>49,9 %</strong>: el nivel del azar. Con la segunda componente sola, <strong>100 %</strong>.</p>
 
         <p>Fíjate en que usar <em>las dos</em> componentes tampoco arregla nada (49,9 %): al conservar el eje de ruido, este domina la distancia euclídea y k-means vuelve a partir por donde no debe. Es el mismo fenómeno de escala del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, ahora dentro de PCA.</p>
+
+        <p>Y hay una razón más fuerte que esa: quedarse con <em>todas</em> las componentes es centrar los datos y aplicarles una transformación ortogonal —una rotación, quizá con una reflexión—, y ninguna de las dos operaciones cambia las distancias euclídeas. Como k-means solo mira distancias, el resultado no es parecido al de los datos crudos: es <strong>literalmente el mismo</strong>, punto por punto —mismas etiquetas, no solo el mismo 49,9 %—. PCA sin truncar no puede ayudar ni perjudicar a k-means; todo lo que PCA aporta está en <em>qué componentes tiras</em>, nunca en el cambio de base.</p>
 
         <p>La raíz del problema es que <strong>PCA no sabe qué buscas</strong>. Es no supervisado: maximiza dispersión, no separabilidad. Cuando sí hay etiquetas, el método análogo que sí maximiza separación es el análisis discriminante lineal (LDA), pero eso ya es supervisado y queda fuera del manual.</p>
 
@@ -418,6 +429,8 @@ TRAMPA 2 · las mismas tres variables, con y sin estandarizar
         <p>Tres variables: altura en centímetros (desviación 8,00), peso en kilos (9,15) y un sensor en milímetros (287,74). Altura y peso están fuertemente correlacionados —comparten un factor común— y el sensor es ruido independiente. Sobre la covarianza, la primera componente es $[-0{,}001,\, -0{,}001,\, 1{,}000]$: literalmente el sensor, porque sus números son treinta veces mayores. Explica el 99,8 % de la varianza y no dice absolutamente nada.</p>
 
         <p>Estandarizando cada columna primero —lo que equivale a diagonalizar la matriz de <em>correlación</em> en vez de la de covarianza— la primera componente pasa a ser $[-0{,}706,\, -0{,}706,\, 0{,}057]$: el factor común de altura y peso, con pesos casi idénticos y el sensor prácticamente ignorado. Esa es la estructura real.</p>
+
+        <p>Dos notas sobre cómo leer esos números. Primera: <strong>el signo global de una componente es arbitrario</strong> —si $u$ resuelve $Su = \lambda u$, también lo resuelve $-u$ con el mismo autovalor, y la restricción $\lVert u\rVert = 1$ no lo decide—, así que $[-0{,}706,\, -0{,}706,\, 0{,}057]$ y $[0{,}706,\, 0{,}706,\, -0{,}057]$ son la misma componente. Lo que importa son los signos <em>relativos</em>: aquí altura y peso van juntos, como debe ser. Por eso las dos filas de la tabla no comparten criterio de signo, y por eso no debe alarmarte que otra librería o versión te devuelva el signo cambiado. Segunda: $0{,}706 \approx 1/\sqrt2 = 0{,}7071$, que es el valor que la simetría impone a dos variables estandarizadas e intercambiables. La componente es, literalmente, «altura más peso» normalizada.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ ¿Covarianza o correlación?</div>
@@ -432,7 +445,7 @@ TRAMPA 2 · las mismas tres variables, con y sin estandarizar
               <tr><th>Cuestión</th><th>Respuesta</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>¿Cuántas componentes?</strong></td><td>Ninguna regla es fiable. El gráfico de sedimentación (buscar el codo del espectro), un umbral de varianza explicada —con la advertencia de arriba— o, mejor, elegir $k$ por el rendimiento en la tarea posterior.</td></tr>
+              <tr><td><strong>¿Cuántas componentes?</strong></td><td>Ninguna regla es fiable. El gráfico de sedimentación (buscar el codo del espectro, que es el borde del bulto de ruido), un umbral de varianza explicada —con la advertencia de arriba— o, mejor, elegir $k$ por el rendimiento en la tarea posterior.</td></tr>
               <tr><td><strong>Coste</strong></td><td>$O(nd^2)$ para formar $S$ y $O(d^3)$ para diagonalizarla. Si $d \gt n$ es un desastre: entonces conviene la SVD del <a href="10-svd-y-ppca.html">capítulo 10</a>, que cuesta $O(nd\min(n,d))$ y además es más estable.</td></tr>
               <tr><td><strong>Blanqueo</strong></td><td>Dividir cada componente por $\sqrt{\lambda_j}$ deja covarianza identidad. Útil antes de ICA (<a href="11-nmf-e-ica.html">capítulo 11</a>), peligroso antes de agrupar: amplifica las direcciones de ruido, como avisaba el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</td></tr>
               <tr><td><strong>Datos nuevos</strong></td><td>Sin problema, y es una ventaja rara: $\tilde x \mapsto U_k^\top(x - \bar x)$ es una función explícita. Ni el clústering espectral ni t-SNE la tienen.</td></tr>
@@ -462,7 +475,7 @@ TRAMPA 2 · las mismas tres variables, con y sin estandarizar
             <li>Máxima varianza retenida y mínimo error de reconstrucción son el mismo problema, porque $E_k = \sum_{j\gt k}\lambda_j$ y la suma total es constante. Verificado con diferencias de $10^{-13}$.</li>
             <li>PCA se resuelve en forma cerrada: sin semillas, sin mínimos locales, sin iteraciones.</li>
             <li>Proyectar antes de agrupar ayuda cuando el ruido domina: 82,9 % → 87,7 % de acuerdo con solo 2 componentes de 200.</li>
-            <li>La varianza explicada engaña: esas componentes útiles explicaban solo el 6,0 % de la varianza total.</li>
+            <li>La varianza explicada engaña: esas dos componentes útiles explicaban solo el 4,6 % de la varianza total, y el umbral del 90 % habría conservado 132.</li>
             <li>Trampa 1: si el ruido tiene más varianza que la señal, la primera componente es ruido (92,7 % de varianza, 49,9 % de acuerdo) y la segunda lo resuelve entera (100 %).</li>
             <li>Trampa 2: PCA no es invariante de escala. Sobre la covarianza, la primera componente fue el sensor de números grandes; sobre la correlación, la relación real entre altura y peso.</li>
           </ul>

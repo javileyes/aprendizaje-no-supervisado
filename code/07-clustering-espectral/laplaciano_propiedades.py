@@ -5,7 +5,8 @@ El laplaciano del grafo, comprobado propiedad por propiedad.
      De ella salen todas las demás: L es semidefinida positiva y su forma
      cuadrática mide "cuánto varía f a lo largo de las aristas".
   2. La multiplicidad del autovalor 0 es EXACTAMENTE el número de componentes
-     conexas, y sus autovectores son los indicadores de esas componentes.
+     conexas, y su núcleo está GENERADO por los indicadores de esas componentes
+     (generado, no formado: la base concreta que devuelve eigh es arbitraria).
   3. El segundo autovector (vector de Fiedler) separa el grafo por su punto
      más débil, y su corte es mejor que el de miles de particiones al azar.
 
@@ -43,7 +44,7 @@ print(f"   autovalor mínimo de L = {np.linalg.eigvalsh(L).min():.2e}  (debe ser
 
 # ---------------- 2) Multiplicidad del 0 = componentes conexas ----------------
 print("2) Multiplicidad del autovalor 0 frente al número de componentes")
-print(f"   {'componentes':>12} {'autovalores casi nulos':>24} {'lambda_2':>12}")
+print(f"   {'componentes':>12} {'autovalores casi nulos':>24} {'salto espectral':>16}")
 for n_comp in [1, 2, 3, 4]:
     centros = np.array([[6.0 * i, 0.0] for i in range(n_comp)])
     X = np.vstack([c + rng.normal(scale=0.35, size=(30, 2)) for c in centros])
@@ -52,7 +53,7 @@ for n_comp in [1, 2, 3, 4]:
     Lg = np.diag(Wg.sum(axis=1)) - Wg
     val = np.linalg.eigvalsh(Lg)
     casi_cero = int((val < 1e-8).sum())
-    print(f"   {n_comp:12d} {casi_cero:24d} {val[n_comp] if n_comp < len(val) else 0:12.4f}")
+    print(f"   {n_comp:12d} {casi_cero:24d} {val[n_comp]:16.4f}")
 print("   El autovalor que sigue al último cero (lambda_k+1) es el 'salto espectral'.\n")
 
 # ---------------- 3) El vector de Fiedler contra 20 000 particiones al azar ----

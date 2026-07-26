@@ -45,7 +45,7 @@
         <div class="callout math">
           <div class="callout-title">➗ El objetivo</div>
           <p>$$ \min_{\theta,\phi} \; \frac{1}{n}\sum_{i=1}^{n} \big\lVert x_i - g_\phi\big(f_\theta(x_i)\big) \big\rVert^2, \qquad z = f_\theta(x) \in \mathbb{R}^k,\quad k \ll d $$</p>
-          <p class="math-note">$f_\theta$ es el <em>codificador</em>, que lleva de $\mathbb{R}^d$ al espacio latente $\mathbb{R}^k$; $g_\phi$ el <em>decodificador</em>, que vuelve. Ambos son redes neuronales con parámetros $\theta$ y $\phi$. Cuando $k \lt d$ se dice que el autoencoder es <em>subcompleto</em> (<em>undercomplete</em>), y esa restricción es lo único que impide la solución trivial $g\circ f = \mathrm{id}$.</p>
+          <p class="math-note">$f_\theta$ es el <em>codificador</em>, que lleva de $\mathbb{R}^d$ al espacio latente $\mathbb{R}^k$; $g_\phi$ el <em>decodificador</em>, que vuelve. Ambos son redes neuronales con parámetros $\theta$ y $\phi$. Cuando $k \lt d$ se dice que el autoencoder es <em>subcompleto</em> (<em>undercomplete</em>), y esa restricción es lo que dificulta la solución trivial $g\circ f = \mathrm{id}$ —aunque, como veremos, no siempre la impide—.</p>
         </div>
 
         <figure class="figure">
@@ -229,6 +229,14 @@ concentrarlas: cualquier rotación dentro del subespacio le da igual.</pre>
 
         <h2 id="backprop">Retropropagación, y cómo saber que está bien</h2>
 
+        <div class="callout math">
+          <div class="callout-title">➗ Una red, en tres líneas (todo lo que hace falta saber)</div>
+          <p>Hasta este capítulo el manual no ha usado ninguna red neuronal, así que conviene fijar el vocabulario antes de derivar nada. Una <strong>red densa</strong> —o perceptrón multicapa— es una composición de $L$ capas; la capa $\ell$ toma la salida de la anterior y calcula</p>
+          <p>$$ z^{(\ell)} = a^{(\ell-1)}W^{(\ell)} + b^{(\ell)}, \qquad a^{(\ell)} = \sigma\big(z^{(\ell)}\big), \qquad a^{(0)} = x $$</p>
+          <p class="math-note">$W^{(\ell)}$ es una matriz de <em>pesos</em>, $b^{(\ell)}$ un vector de <em>sesgos</em> y $\sigma$ una función no lineal aplicada elemento a elemento, la <em>activación</em>: aquí usaremos $\tanh$, y en el <a href="14-vae.html">capítulo 14</a> también ReLU, $\max(0,z)$, y la sigmoide. Sin $\sigma$ la red colapsa: componer capas lineales da otra capa lineal, y de hecho es <em>exactamente</em> por eso que el teorema de Baldi y Hornik de la sección anterior dice lo que dice.</p>
+          <p class="math-note">Entrenar es minimizar $\mathcal{L}(\theta)$ por <strong>descenso de gradiente</strong>, $\theta \leftarrow \theta - \eta\,\nabla_\theta\mathcal{L}$, con $\eta$ la <em>tasa de aprendizaje</em>. Calcular el gradiente sobre los $n$ datos en cada paso es caro, así que cada paso usa un <em>lote</em> —un subconjunto al azar— y una <em>época</em> es una pasada completa por los datos. <strong>Adam</strong>, que aparece en el código de aquí en adelante, es la variante habitual: mantiene una media móvil del gradiente y de su cuadrado para dar a cada peso su propio paso efectivo. Nada de esto cambia <em>qué</em> se optimiza; solo cómo se baja.</p>
+        </div>
+
         <p>Si las capas dejan de ser lineales, no hay fórmula cerrada y hay que optimizar. La herramienta es la regla de la cadena aplicada capa a capa. Con activaciones $a^{(\ell)} = \sigma(z^{(\ell)})$ y $z^{(\ell)} = a^{(\ell-1)}W^{(\ell)} + b^{(\ell)}$, la recursión hacia atrás es</p>
 
         <div class="callout math">
@@ -241,6 +249,7 @@ concentrarlas: cualquier rotación dentro del subespacio le da igual.</pre>
         <div class="callout warn">
           <div class="callout-title">⚠️ Verifica siempre el gradiente</div>
           <p>Un error de signo o un índice traspuesto en la retropropagación produce un código que <em>entrena</em> —la pérdida baja algo— pero no optimiza lo que crees. El remedio es de una línea: compara el gradiente analítico con el numérico, $\frac{\mathcal{L}(w+\varepsilon) - \mathcal{L}(w-\varepsilon)}{2\varepsilon}$, en unos cuantos pesos al azar. Si el error relativo baja de $10^{-5}$, está bien. El ejemplo siguiente lo hace antes de entrenar, y obtiene $5{,}33\times10^{-6}$.</p>
+          <p>Un aviso sobre ese número: sale $5{,}33\times10^{-6}$ y no $10^{-11}$, y el culpable no es la retropropagación sino el <em>otro</em> término de la comparación. El script usa $\varepsilon=10^{-6}$; en coma flotante de doble precisión, $\mathcal{L}(w+\varepsilon)$ y $\mathcal{L}(w-\varepsilon)$ coinciden en casi todas sus cifras y al restarlas se pierde la mayoría: es <strong>cancelación catastrófica</strong>. Se ve mirando los doce pesos uno a uno: la diferencia <em>absoluta</em> entre gradiente numérico y analítico ronda $10^{-10}$ en todos ellos —de $5\times10^{-12}$ a $3\times10^{-10}$—, mientras que el gradiente por el que se divide recorre más de tres órdenes de magnitud, de $3{,}4\times10^{-5}$ a $5\times10^{-2}$; el error relativo, que es el cociente de ambos, acaba abarcando casi cinco órdenes: de $10^{-10}$ a ese $5{,}33\times10^{-6}$, que sale de un peso cuyo gradiente vale, en módulo, $5{,}9\times10^{-5}$. Cambiando solo $\varepsilon$, con el mismo código: $\varepsilon=10^{-5}$ da $2{,}20\times10^{-7}$ y $\varepsilon=10^{-7}$ da $7{,}5\times10^{-5}$, que suspendería su propio umbral. Regla práctica: si el error relativo se mueve mucho al cambiar $\varepsilon$, el ruido lo pone la diferencia finita; si no se mueve, el error es tuyo.</p>
         </div>
 
         <h2 id="no-lineal">Cuando las curvas importan</h2>
@@ -473,12 +482,15 @@ reconstruir. De ahí que su error sea tres veces menor.</pre>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
-          <p>Cambia <code>CAPAS = [d_amb, 64, 32, k, 32, 64, d_amb]</code> por <code>[d_amb, k, d_amb]</code>: un autoencoder de una sola capa oculta y sin activación intermedia útil. El error sube de 0,1556 a <strong>0,5610</strong>, es decir, ligeramente <em>peor</em> que PCA (0,5569). Sin capas ocultas no hay no linealidad efectiva que aprovechar, y la red vuelve a ser un método lineal. La profundidad no es decoración.</p>
+          <p>Cambia <code>CAPAS = [d_amb, 64, 32, k, 32, 64, d_amb]</code> por <code>[d_amb, k, d_amb]</code>. El error sube de 0,1556 a <strong>0,5610</strong>, ligeramente <em>peor</em> que PCA (0,5569). Y la razón no es que falte no linealidad —el cuello sigue llevando su <code>tanh</code>, porque <code>adelante()</code> lo aplica a todas las capas menos a la última—, sino que el <strong>decodificador</strong> se ha quedado en una sola capa lineal: calcule lo que calcule el codificador, la reconstrucción es $\hat x = h(x)W_2 + b_2$ con $h(x)\in\mathbb{R}^k$, así que todas las reconstrucciones caen en un subespacio afín de dimensión $k$. Y el mejor subespacio afín de dimensión $k$ es, por <a href="10-svd-y-ppca.html">Eckart-Young</a>, exactamente el de PCA. (Comprobado: el rango de las reconstrucciones menos el sesgo vale $k$ exacto para $k=1,3,5$, y no cambia por mucho que se profundice el codificador.) El <code>tanh</code> del cuello lo empeora un poco más, porque la coordenada deja de ser una proyección lineal de $x$ y solo recupera la de PCA en el límite de pesos diminutos en el codificador y enormes en el decodificador, al que el optimizador se acerca sin llegar: quitando ese <code>tanh</code>, el mismo montaje da 0,5571, a un 0,04 % del de PCA. La profundidad que importa aquí es la del <em>decodificador</em>, porque es la que permite <strong>curvar</strong> la variedad sobre la que se reconstruye.</p>
+          <p>Un aviso: en esta variante el párrafo final que imprime el script deja de ser cierto. El error ya no es tres veces menor, y los vecinos conservados del autoencoder caen al 24,9 %, por debajo del 42,2 % de PCA; es decir, PCA gana ahora en las dos métricas. Ignóralo.</p>
         </div>
 
         <h2 id="variantes">Las variantes que evitan que la red haga trampa</h2>
 
-        <p>Con $k \lt d$ el cuello de botella basta. Pero hay motivos para querer $k \ge d$ —representaciones <em>sobrecompletas</em>, que suelen ser más útiles para tareas posteriores— y entonces nada impide que la red aprenda la identidad. Hay tres formas clásicas de estropeársela:</p>
+        <p>Con $k \lt d$ el cuello de botella <em>suele</em> bastar, pero no lo garantiza. Un canal de $k$ números reales solo es estrecho si la capacidad de las dos redes es limitada: con un codificador y un decodificador bastante potentes, una sola coordenada puede hacer de <strong>índice continuo</strong> que numera los ejemplos de entrenamiento, y al decodificador le basta con aprenderse la lista. Comprobado: 60 puntos de ruido gaussiano puro en $\mathbb{R}^{20}$ —sin ninguna estructura que descubrir— se reconstruyen con $k=1$, capas de 512 unidades y 20 000 pasos de Adam con un error de <strong>0,000007</strong> usando ReLU y de 0,061 usando tanh, frente a los 0,858 de PCA; los 60 códigos quedan repartidos a lo largo de un intervalo amplio, separados unos de otros, como las páginas de un índice. El autoencoder no ha entendido nada: ha memorizado.</p>
+
+        <p>Y hay motivos para querer $k \ge d$ —representaciones <em>sobrecompletas</em>, que suelen ser más útiles para tareas posteriores— con lo que ya nada impide que la red aprenda la identidad. Hay tres formas clásicas de estropeársela:</p>
 
         <div class="table-wrap">
           <table>
@@ -489,7 +501,7 @@ reconstruir. De ahí que su error sea tres veces menor.</pre>
               <tr>
                 <td><strong>Denoising</strong> (Vincent, 2008)</td>
                 <td>Corrompe la entrada, $\tilde x \sim C(\cdot\mid x)$, pero pide reconstruir la <em>original</em>: $\min \mathbb{E}\lVert x - g(f(\tilde x))\rVert^2$</td>
-                <td>Copiar deja de servir. Se puede demostrar que la red aprende a proyectar sobre la variedad de los datos; con ruido gaussiano pequeño, el residuo aproxima el <em>score</em> $\nabla_x \log p(x)$.</td>
+                <td>Copiar deja de servir. Se puede demostrar que la red aprende a proyectar sobre la variedad de los datos; y con ruido gaussiano de varianza $\sigma^2$ pequeña, el residuo del reconstructor óptimo cumple $r(x)-x = \sigma^2\,\nabla_x \log p(x) + o(\sigma^2)$ (Alain y Bengio, 2014): apunta hacia donde crece la densidad, pero escalado por $\sigma^2$.</td>
               </tr>
               <tr>
                 <td><strong>Disperso</strong></td>
@@ -647,10 +659,10 @@ ruido ha tenido que aprender la estructura de los trazos, no a copiar.</pre>
         <div class="callout key">
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
-            <li>Un autoencoder aprende a copiar su entrada a través de un cuello de botella. La restricción de ancho de banda es lo que obliga a descubrir la estructura.</li>
+            <li>Un autoencoder aprende a copiar su entrada a través de un cuello de botella. La restricción de ancho de banda es lo que empuja a descubrir la estructura, pero con redes muy potentes no basta: un cuello de $k=1$ puede degenerar en un índice que memoriza los datos.</li>
             <li>Con capas lineales y error cuadrático, todos los mínimos son globales y generan el subespacio de PCA. Verificado: mismo error (0,307498, diferencia $2\times10^{-7}$) y distancia entre subespacios 0,0058, pero pesos distintos y varianza sin ordenar.</li>
             <li>Las coordenadas de un autoencoder no están ordenadas ni son truncables: cambiar $k$ obliga a reentrenar.</li>
-            <li>La retropropagación es la regla de la cadena; verifícala siempre contra diferencias finitas (aquí, error $5{,}33\times10^{-6}$).</li>
+            <li>La retropropagación es la regla de la cadena; verifícala siempre contra diferencias finitas (aquí, error $5{,}33\times10^{-6}$, que es ruido del método numérico y no de la retropropagación).</li>
             <li>Con no linealidad, sobre una hélice y con $k=1$: error 0,1556 frente a 0,5569 de PCA, un 72,1 % menos. Conserva mejor la vecindad local (55,5 % frente a 42,2 %) aunque ordene peor globalmente.</li>
             <li>Denoising, disperso y contractivo impiden que la red copie. El denoising —corromper y reconstruir— es el antepasado directo de BERT y de los modelos de difusión: medido, se degrada un 21 % con ruido fuerte frente al 112 % del autoencoder normal.</li>
             <li>Un autoencoder no es generativo ni da densidades. Eso lo arregla el capítulo siguiente.</li>

@@ -31,9 +31,9 @@
 
         <span class="chapter-eyebrow">Parte V · Capítulo 18</span>
         <h1>Detección de anomalías</h1>
-        <p class="lead">El manual empezó diciendo que sin etiquetas el único objeto que existe es la densidad $p^\star(x)$. Detectar anomalías es la aplicación más directa de esa idea: un dato raro es un dato con densidad baja. Pero la práctica es más rica que ese eslogan —hay al menos tres nociones distintas de «raro»— y termina en dos problemas que ninguna curva ROC resuelve: dónde poner el umbral y qué hacer si tus datos de referencia ya están contaminados.</p>
+        <p class="lead">El manual empezó diciendo que sin etiquetas el único objeto que existe es la densidad $p^\star(x)$. Detectar anomalías es la aplicación más directa de esa idea: un dato raro es un dato con densidad baja. Pero la práctica es más rica que ese eslogan —hay al menos cuatro nociones distintas de «raro»— y termina en dos problemas que ninguna curva ROC resuelve: dónde poner el umbral y qué hacer si tus datos de referencia ya están contaminados.</p>
 
-        <h2 id="que-es">Tres nociones de raro</h2>
+        <h2 id="que-es">Cuatro nociones de raro</h2>
 
         <p>Antes de elegir método hay que decidir qué se busca, porque la palabra «anomalía» tapa cosas muy distintas:</p>
 
@@ -92,25 +92,25 @@
     <text x="630" y="212" text-anchor="middle" font-size="11" fill="currentColor">ningún valor es extremo,</text>
     <text x="630" y="228" text-anchor="middle" font-size="11" fill="currentColor">rompe la relación entre ambos</text>
   </svg>
-  <figcaption>La misma palabra tapa tres cosas distintas. El punto rojo de la izquierda está lejos de todo; el del centro tiene valores perfectamente normales y solo es raro <em>en comparación con sus vecinos</em>; el de la derecha cae dentro del rango de ambas variables y lo que rompe es la relación entre ellas.</figcaption>
+  <figcaption>Tres de las cuatro; la colectiva necesitaría un eje temporal. El punto rojo de la izquierda está lejos de todo; el del centro tiene valores perfectamente normales y solo es raro <em>en comparación con sus vecinos</em>; el de la derecha cae dentro del rango de ambas variables y lo que rompe es la relación entre ellas.</figcaption>
 </figure>
 
         <p>Y hay otra distinción, esta metodológica: en <em>detección de valores atípicos</em> las anomalías están mezcladas en el conjunto de ajuste; en <em>detección de novedades</em> se dispone de datos limpios y se busca lo raro en los nuevos. La diferencia importa muchísimo, y la mediremos al final.</p>
 
         <div class="callout intuition">
           <div class="callout-title">🧠 Intuición</div>
-          <p>Tres estrategias, y cada una responde a una de las nociones anteriores. <strong>Densidad</strong>: modela $p(x)$ y marca lo improbable. <strong>Distancia</strong>: mira lo aislado que está cada punto respecto de sus vecinos. <strong>Aislamiento</strong>: pregunta cuántos cortes al azar hacen falta para separarlo del resto —lo raro se separa antes—.</p>
+          <p>Cuatro estrategias para las tres nociones que este manual sí cubre. <strong>Densidad</strong>: modela $p(x)$ y marca lo improbable —anomalías globales—. <strong>Distancia</strong>: mira lo aislado que está cada punto respecto de sus vecinos —anomalías locales—. <strong>Aislamiento</strong>: pregunta cuántos cortes al azar hacen falta para separarlo del resto; lo raro se separa antes. <strong>Reconstrucción</strong>: comprime lo normal y mide lo que no cabe —anomalías de subespacio—. La cuarta noción, la <em>colectiva</em>, queda fuera de este manual: exige modelar la dependencia temporal de una secuencia, no la densidad de puntos independientes.</p>
         </div>
 
         <h2 id="metodos">Los cinco detectores</h2>
 
         <h3>Envolvente gaussiana (Mahalanobis)</h3>
 
-        <p>El más simple: ajusta una gaussiana y puntúa con la distancia de Mahalanobis del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, que no es más que $-2\log p(x)$ salvo constantes.</p>
+        <p>El más simple: ajusta una gaussiana y puntúa con la distancia de Mahalanobis <strong>al cuadrado</strong> del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>. Elevar al cuadrado no es un capricho: para una $\mathcal{N}(\mu,S)$ se tiene $-2\log p(x) = (x-\mu)^\top S^{-1}(x-\mu) + \log|S| + d\log 2\pi$, y los dos últimos términos no dependen de $x$. Puntuar con el cuadrado <em>es</em> puntuar con la log-verosimilitud negativa, salvo constantes.</p>
 
         <p>$$ s(x) = (x-\mu)^\top S^{-1}(x-\mu) $$</p>
 
-        <p>Si los datos fueran gaussianos, $s(x)$ seguiría una $\chi^2_d$ y el umbral saldría de una tabla. Rápido, interpretable y con un defecto grave: solo sabe de elipses. Todo lo que esté dentro de la elipse le parece normal aunque haya un hueco enorme.</p>
+        <p>Si los datos fueran gaussianos, $s(x)$ seguiría una $\chi^2_d$ y el umbral saldría de una tabla. Aquí no hay tabla ni SciPy, así que el cuantil se aproximará con la transformación de <strong>Wilson-Hilferty</strong>, que vuelve casi normal la <em>raíz cúbica</em> de una $\chi^2_d$; deshaciéndola —es decir, elevando al cubo— sale el cuantil: $q_\alpha \approx d\big(1-\tfrac{2}{9d}+z_\alpha\sqrt{\tfrac{2}{9d}}\big)^3$. Para $d=6$ y $\alpha=0{,}99$ da 16,84 frente al valor exacto 16,81. Rápido, interpretable y con un defecto grave: solo sabe de elipses. Todo lo que esté dentro de la elipse le parece normal aunque haya un hueco enorme.</p>
 
         <h3>Distancia al $k$-ésimo vecino</h3>
 
@@ -147,6 +147,13 @@
         <h2 id="comparativa">Ninguno gana siempre</h2>
 
         <p>El programa implementa los cinco desde cero —incluidos LOF e Isolation Forest completos— y los mide con el área bajo la curva ROC en tres escenarios diseñados para favorecer a familias distintas.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El AUC, en una línea</div>
+          <p>Sean $s$ la puntuación de anomalía, $A$ el conjunto de anomalías y $N$ el de puntos normales. El área bajo la curva ROC admite una definición que no necesita hablar de curvas:</p>
+          <p>$$ \mathrm{AUC} = \Pr\big[s(a) > s(n)\big], \qquad a\sim A,\ n\sim N $$</p>
+          <p class="math-note">Es decir, la probabilidad de que una anomalía tomada al azar puntúe por encima de un punto normal tomado al azar (los empates cuentan como media unidad; los pocos que hay aquí son entre puntos de la misma clase y no mueven ninguna cifra). Por eso 0,5 es el azar y por eso no depende del umbral: solo mira el <em>orden</em>. Su estimador es el estadístico $U$ de Mann-Whitney, $\mathrm{AUC} = \frac{R_A - n_A(n_A+1)/2}{n_A n_N}$ con $R_A$ la suma de los rangos de las anomalías, que es exactamente la función <code>auc</code> del programa. Y por eso un AUC de 0,007 no es «malo»: es un detector que acierta el orden al revés el 99,3 % de las veces.</p>
+        </div>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -211,8 +218,9 @@ def lof(X, k=20):
 def c_factor(n):
     """Longitud media de camino en un árbol de búsqueda binario con n nodos."""
     if n &lt;= 1:
-        return 1.0
-    return 2.0 * (np.log(n - 1) + 0.5772156649) - 2.0 * (n - 1) / n
+        return 0.0                                       # ya aislado: 0 cortes más
+    H = np.sum(1.0 / np.arange(1, n))                     # H_{n-1} exacto
+    return 2.0 * H - 2.0 * (n - 1) / n
 
 
 def camino(X, idx, prof, prof_max, r):
@@ -335,7 +343,7 @@ plt.show()
 Mahalanobis                      0.959            0.007            0.847
 dist. al 10º vecino              0.965            0.522            0.837
 LOF (k=20)                       0.970            0.784            0.882
-Isolation Forest                 0.960            0.537            0.784
+Isolation Forest                 0.960            0.538            0.792
 reconstrucción PCA               0.778            0.154            0.907
 
 (AUC: 1,000 = perfecto, 0,500 = azar. Nadie gana en las tres columnas.)
@@ -352,11 +360,13 @@ demás. Por eso en dimensión alta se detectan anomalías DESPUÉS de reducir.</
 
         <p><strong>Escenario A (anomalías globales).</strong> Casi empate técnico entre los cuatro primeros, todos alrededor de 0,96. Cuando las anomalías están lejos de todo, cualquier método razonable las encuentra. Solo la reconstrucción por PCA se queda atrás (0,778), porque una anomalía global puede caer perfectamente <em>dentro</em> del subespacio principal y proyectarse sin error.</p>
 
-        <p><strong>Escenario B (anomalías locales).</strong> Aquí se separan las aguas y el resultado es espectacular. Los puntos anómalos están en el hueco entre un grupo denso y otro disperso: no son extremos en absoluto. LOF consigue <strong>0,784</strong>; la distancia al $k$-ésimo vecino, 0,522, y el Isolation Forest, 0,537 — el nivel del azar.</p>
+        <p><strong>Escenario B (anomalías locales).</strong> Aquí se separan las aguas y el resultado es espectacular. Los puntos anómalos están en el hueco entre un grupo denso y otro disperso: no son extremos en absoluto. LOF consigue <strong>0,784</strong>; la distancia al $k$-ésimo vecino, 0,522, y el Isolation Forest, 0,538 — el nivel del azar.</p>
 
         <p>Y Mahalanobis obtiene <strong>0,007</strong>. No es una errata: es un AUC casi <em>perfectamente invertido</em>. Como el grupo disperso está lejos del origen, el centro de masas global queda desplazado y los puntos anómalos —que están en el hueco, cerca de ese centro— resultan ser los <em>más normales</em> según Mahalanobis. El detector no falla al azar: se equivoca sistemáticamente y con confianza. Es la ilustración más clara del capítulo de por qué hay que saber qué tipo de anomalía se busca.</p>
 
         <p><strong>Escenario C (anomalías de subespacio).</strong> Los puntos rompen la correlación entre las dos variables sin salirse del rango de ninguna. Gana la reconstrucción por PCA (<strong>0,907</strong>), justo el método que fracasaba en A. LOF queda segundo con 0,882.</p>
+
+        <p>Y el que peor lo hace es el Isolation Forest, por una razón que conviene ver: sus cortes son <strong>paralelos a los ejes</strong>. Una anomalía de subespacio está, por definición, dentro del rango marginal de todas las variables —aquí las anomalías caen holgadamente dentro del rango de los normales en ambas coordenadas—, así que ningún corte vertical u horizontal la separa antes que a los demás. Lo que la delata es una dirección <em>diagonal</em>, y eso es precisamente lo que PCA encuentra y lo que un bosque de cortes axiales no puede ver.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ Elegir detector es elegir definición de «raro»</div>
@@ -376,6 +386,8 @@ demás. Por eso en dimensión alta se detectan anomalías DESPUÉS de reducir.</
         <h2 id="umbral">Lo que el AUC no dice</h2>
 
         <p>Todos los números anteriores son AUC, que mide el <em>orden</em> de las puntuaciones y es independiente del umbral. Eso lo hace cómodo para comparar detectores y absolutamente inútil para desplegar uno: en producción hay que decidir a partir de qué valor se dispara la alarma.</p>
+
+        <p>Fijado el umbral aparecen tres métricas que sí dependen de él: la <strong>precisión</strong> es la fracción de alarmas que resultan ser anomalías; la <strong>exhaustividad</strong> (<em>recall</em>), la fracción de anomalías que la alarma captura; y $F_1$ es su media armónica, $F_1 = 2PR/(P+R)$, que solo es alta si ambas lo son.</p>
 
         <div class="code-example" data-packages="numpy,matplotlib">
           <div class="code-header">
@@ -446,10 +458,13 @@ s = mahalanobis(X, mu, S)
 print(f"\nAUC del detector: {auc(s, y):.4f}  (excelente... pero no es un umbral)")
 
 s_lim = mahalanobis(X_lim, mu, S)
+# cuantil 0,99 de una chi-cuadrado con D grados, por Wilson-Hilferty (sin SciPy)
+z99 = 2.3263478740408408                                        # cuantil 0,99 normal
+q99 = D * (1 - 2 / (9 * D) + z99 * np.sqrt(2 / (9 * D))) ** 3
 umbrales = [
     ("percentil 95 de los normales", np.percentile(s_lim, 95)),
     ("percentil 99 de los normales", np.percentile(s_lim, 99)),
-    ("cuantil chi-cuadrado al 99 %", D + 2.33 * np.sqrt(2 * D) + 2.0),
+    ("cuantil chi-cuadrado al 99 %", q99),
     ("suponer 5 % de anomalías", np.percentile(s, 95)),
 ]
 print(f"\n{'regla para el umbral':32} {'valor':&gt;8} {'precisión':&gt;11} "
@@ -529,7 +544,7 @@ AUC del detector: 0.9990  (excelente... pero no es un umbral)
 regla para el umbral                valor   precisión   exhaustividad      F1
 percentil 95 de los normales        12.59      55.7%          98.0%   0.710
 percentil 99 de los normales        16.56      83.1%          98.0%   0.899
-cuantil chi-cuadrado al 99 %        16.07      83.1%          98.0%   0.899
+cuantil chi-cuadrado al 99 %        16.84      84.5%          98.0%   0.907
 suponer 5 % de anomalías            20.06      98.0%          98.0%   0.980
 Mismo detector, mismo AUC de 0,999, y la precisión va del 55,7 % al 98,0 %
 según la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada
@@ -549,7 +564,7 @@ extremo en cada iteración y aguanta mucho mejor.</pre>
 
         <p>El detector tiene un AUC de <strong>0,9990</strong>: la ordenación es casi perfecta, apenas hay anomalías por debajo de datos normales. Y aun así, la precisión resultante va del <strong>55,7 % al 98,0 %</strong> según la regla que se use para fijar el umbral. Con el percentil 95 de los normales se captura el 98 % de las anomalías, pero <em>casi la mitad de las alarmas son falsas</em>.</p>
 
-        <p>La causa es el <strong>desequilibrio de clases</strong>. Con un 5 % de anomalías, un umbral que deje pasar un 5 % de falsos positivos genera unas 47 falsas alarmas frente a 50 aciertos posibles: precisión del 50 %, con un detector cuya ordenación es casi perfecta. En detección de anomalías la clase rara es rara <em>por definición</em>, así que la precisión se hunde con tasas de falso positivo que en otros contextos parecerían inocuas.</p>
+        <p>La causa es el <strong>desequilibrio de clases</strong>. Con un 5 % de anomalías, un umbral que deje pasar un 5 % de falsos positivos generaría unas 47 falsas alarmas frente a 50 aciertos posibles: apenas un 51 % de precisión, por perfecta que sea la ordenación. Aquí sale algo mejor —55,7 %— solo porque el percentil 95 estimado sobre el conjunto de ajuste deja pasar en realidad un 4,1 % de los normales. En detección de anomalías la clase rara es rara <em>por definición</em>, así que la precisión se hunde con tasas de falso positivo que en otros contextos parecerían inocuas.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El umbral no es un problema estadístico</div>
@@ -610,7 +625,7 @@ extremo en cada iteración y aguanta mucho mejor.</pre>
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
             <li>«Anomalía» tapa cosas distintas: global, local, de subespacio y colectiva. Elegir detector es elegir cuál de ellas se busca.</li>
-            <li>LOF puntúa con un <em>cociente</em> de densidades locales, y por eso es el único que resuelve las anomalías locales: AUC 0,784 frente a 0,522 del $k$-NN y 0,537 del Isolation Forest.</li>
+            <li>LOF puntúa con un <em>cociente</em> de densidades locales, y por eso es el único que resuelve las anomalías locales: AUC 0,784 frente a 0,522 del $k$-NN y 0,538 del Isolation Forest.</li>
             <li>Mahalanobis obtiene 0,007 en ese mismo escenario: no falla al azar, se equivoca de forma sistemática porque el centro de masas global está desplazado.</li>
             <li>La reconstrucción por PCA gana en las anomalías de subespacio (0,907) y pierde en las globales (0,778). No hay detector universal.</li>
             <li>Isolation Forest puntúa con $2^{-\mathbb{E}[h(x)]/c(n)}$, cuesta $O(n\log n)$ y no calcula distancias: por eso domina en la industria.</li>

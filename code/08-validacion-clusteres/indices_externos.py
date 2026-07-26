@@ -100,7 +100,16 @@ fina[:50] = 3                      # partimos el grupo 0 en dos mitades
 print(f"   verdad: 3 grupos de 100. Propuesta: 4 grupos (el primero, partido).")
 print(f"   Rand {rand_index(verdad, fina):.4f} | ARI {ari(verdad, fina):.4f} "
       f"| NMI {nmi(verdad, fina):.4f}")
-print("   Ningún índice llega a 1: una subdivisión pura se penaliza igual que un error.")
+
+mal = verdad.copy()
+mal[:50] = 1                       # los MISMOS 50 puntos, pero mezclados con el grupo 1
+print("   Y ahora un error de verdad sobre esos mismos 50 puntos: al grupo 1.")
+print(f"   Rand {rand_index(verdad, mal):.4f} | ARI {ari(verdad, mal):.4f} "
+      f"| NMI {nmi(verdad, mal):.4f}")
+print("   Ningún índice llega a 1 con la subdivisión, así que tampoco la aprueban.")
+print(f"   Pero el error cuesta más: el ARI baja de {ari(verdad, fina):.4f} a "
+      f"{ari(verdad, mal):.4f}. Los índices")
+print("   distinguen refinamiento de error en grado, no en clase.")
 
 fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 ax[0].plot([2, 5, 10, 20],
