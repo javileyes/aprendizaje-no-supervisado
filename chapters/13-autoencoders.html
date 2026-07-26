@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>13. Autoencoders: compresión aprendida · No supervisado</title>
+  <meta name="description" content="Del cuello de botella lineal (que reencuentra PCA) al no lineal; backpropagation desde cero, denoising y autoencoders dispersos." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="13">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte IV · Capítulo 13</span>
+        <h1>Autoencoders: compresión aprendida</h1>
+        <p class="lead">Todos los métodos de la parte III tenían la forma decidida de antemano: una proyección lineal, un kernel elegido a mano, un grafo de vecinos. Aquí damos el paso que define el aprendizaje profundo: <strong>no fijar la transformación, sino aprenderla</strong>. Y el objetivo con el que se aprende es el más antiguo del manual, el del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>: comprimir sin perder.</p>
+
+        <h2 id="idea">Un embudo que obliga a entender</h2>
+
+        <p>Imagina que tienes que describir una cara por teléfono a alguien que la va a dibujar, y solo puedes decir diez números. No hay margen para el detalle: tendrás que gastarlos en lo que <em>de verdad</em> distingue una cara de otra —anchura, edad, expresión— y no en el valor de cada píxel. La restricción de ancho de banda te fuerza a encontrar las variables importantes.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Un autoencoder es una red que aprende a copiar su entrada en su salida. Dicho así, es una tarea trivial y absurda. Deja de serlo cuando se le pone <strong>un cuello de botella</strong> en medio: para que la copia salga bien a través de un canal estrecho, la red tiene que descubrir la estructura de los datos.</p>
+        </div>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El objetivo</div>
+          <p>$$ \min_{\theta,\phi} \; \frac{1}{n}\sum_{i=1}^{n} \big\lVert x_i - g_\phi\big(f_\theta(x_i)\big) \big\rVert^2, \qquad z = f_\theta(x) \in \mathbb{R}^k,\quad k \ll d $$</p>
+          <p class="math-note">$f_\theta$ es el <em>codificador</em>, que lleva de $\mathbb{R}^d$ al espacio latente $\mathbb{R}^k$; $g_\phi$ el <em>decodificador</em>, que vuelve. Ambos son redes neuronales con parámetros $\theta$ y $\phi$. Cuando $k \lt d$ se dice que el autoencoder es <em>subcompleto</em> (<em>undercomplete</em>), y esa restricción es lo único que impide la solución trivial $g\circ f = \mathrm{id}$.</p>
+        </div>
+
+        <figure class="figure">
+          <svg viewBox="0 0 700 220" width="100%" role="img" aria-label="Arquitectura de un autoencoder con cuello de botella">
+            <rect x="30" y="40" width="34" height="140" rx="5" fill="#5b8def" opacity="0.75"/>
+            <rect x="110" y="60" width="30" height="100" rx="5" fill="#5b8def" opacity="0.55"/>
+            <rect x="185" y="80" width="26" height="60" rx="5" fill="#5b8def" opacity="0.4"/>
+            <rect x="258" y="98" width="22" height="24" rx="5" fill="#e2b53d"/>
+            <rect x="330" y="80" width="26" height="60" rx="5" fill="#43c59e" opacity="0.4"/>
+            <rect x="400" y="60" width="30" height="100" rx="5" fill="#43c59e" opacity="0.55"/>
+            <rect x="475" y="40" width="34" height="140" rx="5" fill="#43c59e" opacity="0.75"/>
+
+            <text x="47" y="200" text-anchor="middle" font-size="12" fill="currentColor">x</text>
+            <text x="269" y="200" text-anchor="middle" font-size="12" fill="#e2b53d" font-weight="700">z</text>
+            <text x="492" y="200" text-anchor="middle" font-size="12" fill="currentColor">x̂</text>
+            <text x="150" y="28" text-anchor="middle" font-size="13" fill="#5b8def" font-weight="700">codificador f</text>
+            <text x="400" y="28" text-anchor="middle" font-size="13" fill="#43c59e" font-weight="700">decodificador g</text>
+            <text x="269" y="145" text-anchor="middle" font-size="11" fill="#e2b53d">cuello</text>
+
+            <path d="M 530 110 L 600 110" stroke="currentColor" stroke-width="2" marker-end="url(#fl13)"/>
+            <defs><marker id="fl13" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L9,3 z" fill="currentColor"/></marker></defs>
+            <text x="640" y="104" text-anchor="middle" font-size="12" fill="currentColor">pérdida</text>
+            <text x="640" y="122" text-anchor="middle" font-size="12" fill="currentColor">‖x − x̂‖²</text>
+          </svg>
+          <figcaption>La red se entrena para que la salida se parezca a la entrada. Toda la información tiene que pasar por $z$, de dimensión $k$.</figcaption>
+        </figure>
+
+        <h2 id="lineal">El caso lineal: un teorema que devuelve a PCA</h2>
+
+        <p>Antes de complicar nada, quitemos las no linealidades: $f(x) = W_1^\top x$ y $g(z) = W_2^\top z$, ambas lineales. ¿Qué encuentra el descenso de gradiente?</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Teorema (Baldi y Hornik, 1989)</div>
+          <p>Con codificador y decodificador lineales y error cuadrático, <strong>todos los mínimos locales del problema son globales</strong>, y en todos ellos $W_1$ genera el mismo subespacio que los $k$ primeros autovectores de la covarianza. Los demás puntos críticos son puntos de silla.</p>
+          <p class="math-note">Traducido: un autoencoder lineal <em>es</em> PCA, con dos matices importantes. Primero, no recupera los autovectores sino una base cualquiera del mismo subespacio: el problema es invariante bajo $W_1 \to W_1 R$, $W_2 \to R^{-1}W_2$ para cualquier $R$ invertible. Segundo, la ausencia de mínimos locales espurios explica por qué el entrenamiento funciona tan bien pese a la no convexidad.</p>
+        </div>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">autoencoder_lineal_es_pca.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(3)
+n, d, k = 500, 20, 3
+
+# --- Datos con estructura de rango 3 más ruido ---
+base = np.linalg.qr(rng.normal(size=(d, k)))[0]
+X = rng.normal(size=(n, k)) @ np.diag([4.0, 2.5, 1.5]) @ base.T
+X += 0.6 * rng.normal(size=(n, d))
+X -= X.mean(axis=0)
+print(f"{n} puntos en dimensión {d}, con {k} direcciones dominantes.")
+
+# --- Referencia: PCA ---
+S = (X.T @ X) / (n - 1)
+val, vec = np.linalg.eigh(S)
+val, vec = val[::-1], vec[:, ::-1]
+U_pca = vec[:, :k]
+err_pca = ((X - (X @ U_pca) @ U_pca.T) ** 2).mean()
+print(f"PCA con {k} componentes -&gt; error cuadrático medio {err_pca:.6f}")
+
+
+def dist_subespacios(A, B):
+    """0 si A y B generan el mismo subespacio."""
+    QA = np.linalg.qr(A)[0]
+    QB = np.linalg.qr(B)[0]
+    return np.linalg.norm(QA @ QA.T - QB @ QB.T)
+
+
+# --- Autoencoder lineal: X -&gt; XW1 -&gt; XW1W2, con gradientes a mano ---
+# Pérdida: L = (1/(n*d)) ||X - X W1 W2||^2
+W1 = 0.1 * rng.normal(size=(d, k))       # codificador
+W2 = 0.1 * rng.normal(size=(k, d))       # decodificador
+lr, iters = 0.05, 4000
+historia, distancias = [], []
+
+for it in range(iters):
+    Z = X @ W1                            # código
+    R = Z @ W2                            # reconstrucción
+    E = R - X                             # residuo
+    L = (E ** 2).mean()
+    # dL/dW2 = 2/(n*d) Z^T E   ;   dL/dW1 = 2/(n*d) X^T E W2^T
+    gW2 = 2.0 / (n * d) * (Z.T @ E)
+    gW1 = 2.0 / (n * d) * (X.T @ E @ W2.T)
+    W1 -= lr * gW1
+    W2 -= lr * gW2
+    if it % 100 == 0 or it == iters - 1:
+        historia.append((it, L))
+        distancias.append((it, dist_subespacios(W1, U_pca)))
+
+print(f"\n{'iteración':&gt;10} {'error del AE':&gt;14} {'dist. a PCA':&gt;13}")
+for (it, L), (_, dd) in zip(historia, distancias):
+    if it % 500 == 0 or it == iters - 1:
+        print(f"{it:10d} {L:14.6f} {dd:13.6f}")
+
+Z = X @ W1
+R = Z @ W2
+print(f"\nError final del autoencoder : {((R - X) ** 2).mean():.6f}")
+print(f"Error de PCA                : {err_pca:.6f}")
+print(f"Diferencia                  : {abs(((R - X) ** 2).mean() - err_pca):.2e}")
+print(f"\nDistancia entre subespacios (0 = idénticos): "
+      f"{dist_subespacios(W1, U_pca):.6f}")
+print(f"¿Son los pesos iguales a los autovectores? "
+      f"||W1 - U_pca|| = {np.linalg.norm(W1 - U_pca):.4f}")
+print("NO: el autoencoder encuentra el mismo SUBESPACIO con otra base. El")
+print("descenso de gradiente no tiene ningún motivo para ordenar ni ortogonalizar.")
+
+# --- ¿Y están ordenadas por varianza, como en PCA? ---
+print(f"\nVarianza de cada coordenada del código:")
+print(f"  autoencoder : {np.round(Z.var(axis=0, ddof=1), 3)}")
+print(f"  PCA         : {np.round((X @ U_pca).var(axis=0, ddof=1), 3)}  "
+      f"(= autovalores {np.round(val[:k], 3)})")
+print("El AE reparte la varianza entre sus tres coordenadas sin ordenarlas ni")
+print("concentrarlas: cualquier rotación dentro del subespacio le da igual.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].semilogy([h[0] for h in historia], [h[1] for h in historia], color="#5b8def")
+ax[0].axhline(err_pca, ls="--", c="#ef476f")
+ax[0].set_xlabel("iteración")
+ax[0].set_ylabel("error cuadrático medio")
+ax[0].set_title("el AE baja hasta el error de PCA")
+ax[1].semilogy([d_[0] for d_ in distancias], [d_[1] for d_ in distancias],
+               color="#43c59e")
+ax[1].set_xlabel("iteración")
+ax[1].set_ylabel("distancia entre subespacios")
+ax[1].set_title("y converge al subespacio de PCA")
+P_pca = X @ U_pca
+ax[2].scatter(P_pca[:, 0], P_pca[:, 1], s=8, c="#8b93a7", label="PCA")
+ax[2].scatter(Z[:, 0], Z[:, 1], s=8, c="#e2b53d", alpha=0.6, label="autoencoder")
+ax[2].legend()
+ax[2].set_title("los códigos: mismo subespacio, otra base")
+ax[2].set_xticks([])
+ax[2].set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>500 puntos en dimensión 20, con 3 direcciones dominantes.
+PCA con 3 componentes -&gt; error cuadrático medio 0.307498
+
+ iteración   error del AE   dist. a PCA
+         0       1.539931      2.307855
+       500       0.310313      0.573908
+      1000       0.308067      0.276098
+      1500       0.307631      0.137666
+      2000       0.307531      0.070665
+      2500       0.307507      0.037060
+      3000       0.307500      0.019751
+      3500       0.307499      0.010658
+      3999       0.307498      0.005815
+
+Error final del autoencoder : 0.307498
+Error de PCA                : 0.307498
+Diferencia                  : 2.08e-07
+
+Distancia entre subespacios (0 = idénticos): 0.005815
+¿Son los pesos iguales a los autovectores? ||W1 - U_pca|| = 2.8259
+NO: el autoencoder encuentra el mismo SUBESPACIO con otra base. El
+descenso de gradiente no tiene ningún motivo para ordenar ni ortogonalizar.
+
+Varianza de cada coordenada del código:
+  autoencoder : [14.228  5.688  4.438]
+  PCA         : [15.5    6.28   2.697]  (= autovalores [15.5    6.28   2.697])
+El AE reparte la varianza entre sus tres coordenadas sin ordenarlas ni
+concentrarlas: cualquier rotación dentro del subespacio le da igual.</pre>
+        </div>
+
+        <p>El teorema se cumple al pie de la letra. El error del autoencoder converge a <strong>0,307498</strong>, exactamente el de PCA, con una diferencia de $2{,}08\times10^{-7}$; y la distancia entre los subespacios cae a 0,0058. Pero $\lVert W_1 - U_{\mathrm{PCA}}\rVert = 2{,}83$: los pesos <em>no</em> son los autovectores.</p>
+
+        <p>Las varianzas del código lo dejan claro: PCA da 15,50 / 6,28 / 2,70 —los autovalores, ordenados y con la varianza concentrada en la primera—, mientras el autoencoder da 14,23 / 5,69 / 4,44, repartida. Ha encontrado el mismo plano, pero con ejes girados dentro de él. Es una diferencia práctica real: <strong>las coordenadas de un autoencoder no están ordenadas por importancia y no se pueden truncar</strong>; si entrenas con $k=10$ y luego quieres 5, hay que reentrenar.</p>
+
+        <h2 id="backprop">Retropropagación, y cómo saber que está bien</h2>
+
+        <p>Si las capas dejan de ser lineales, no hay fórmula cerrada y hay que optimizar. La herramienta es la regla de la cadena aplicada capa a capa. Con activaciones $a^{(\ell)} = \sigma(z^{(\ell)})$ y $z^{(\ell)} = a^{(\ell-1)}W^{(\ell)} + b^{(\ell)}$, la recursión hacia atrás es</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Retropropagación</div>
+          <p>$$ \delta^{(L)} = \frac{\partial \mathcal{L}}{\partial a^{(L)}}, \qquad \delta^{(\ell)} = \Big(\delta^{(\ell+1)} \big(W^{(\ell+1)}\big)^{\!\top}\Big) \odot \sigma'\!\big(z^{(\ell)}\big) $$</p>
+          <p>$$ \frac{\partial \mathcal{L}}{\partial W^{(\ell)}} = \big(a^{(\ell-1)}\big)^{\!\top} \delta^{(\ell)}, \qquad \frac{\partial \mathcal{L}}{\partial b^{(\ell)}} = \sum_{\text{lote}} \delta^{(\ell)} $$</p>
+          <p class="math-note">$\odot$ es el producto elemento a elemento. Con $\sigma = \tanh$ resulta $\sigma'(z) = 1 - \tanh^2(z) = 1 - a^2$, así que la derivada se calcula desde la propia activación sin guardar $z$. El coste de todo el gradiente es el mismo, en orden de magnitud, que el de una pasada hacia delante.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Verifica siempre el gradiente</div>
+          <p>Un error de signo o un índice traspuesto en la retropropagación produce un código que <em>entrena</em> —la pérdida baja algo— pero no optimiza lo que crees. El remedio es de una línea: compara el gradiente analítico con el numérico, $\frac{\mathcal{L}(w+\varepsilon) - \mathcal{L}(w-\varepsilon)}{2\varepsilon}$, en unos cuantos pesos al azar. Si el error relativo baja de $10^{-5}$, está bien. El ejemplo siguiente lo hace antes de entrenar, y obtiene $5{,}33\times10^{-6}$.</p>
+        </div>
+
+        <h2 id="no-lineal">Cuando las curvas importan</h2>
+
+        <p>Los datos son una <strong>hélice</strong>: una variedad de dimensión intrínseca 1 —basta un número, la posición a lo largo del muelle— pero curvada y metida en 20 dimensiones. Pedimos $k=1$ a ambos métodos. PCA solo puede ofrecer una recta, y una hélice no lo es.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">autoencoder_no_lineal.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(1)
+n, d_amb, k = 900, 20, 1
+
+# --- Hélice (variedad 1D curvada) incrustada en 20 dimensiones ---
+t = np.linspace(0, 6 * np.pi, n) + rng.normal(scale=0.01, size=n)
+X3 = np.column_stack([np.cos(t), np.sin(t), t / 6])
+Q = np.linalg.qr(rng.normal(size=(d_amb, 3)))[0]
+X = X3 @ Q.T + 0.01 * rng.normal(size=(n, d_amb))
+X -= X.mean(axis=0)
+X /= X.std(axis=0).mean()
+print(f"{n} puntos sobre una hélice: dimensión intrínseca 1, "
+      f"incrustada en {d_amb}.")
+
+CAPAS = [d_amb, 64, 32, k, 32, 64, d_amb]
+
+
+def init(semilla=0):
+    r = np.random.default_rng(semilla)
+    par = []
+    for a, b in zip(CAPAS[:-1], CAPAS[1:]):
+        par.append([r.normal(scale=np.sqrt(2.0 / (a + b)), size=(a, b)), np.zeros(b)])
+    return par
+
+
+def adelante(par, X):
+    """Guarda las activaciones para poder retropropagar."""
+    acts = [X]
+    A = X
+    for i, (W, b) in enumerate(par):
+        Zl = A @ W + b
+        A = Zl if i == len(par) - 1 else np.tanh(Zl)   # última capa, lineal
+        acts.append(A)
+    return acts
+
+
+def perdida_y_grad(par, X):
+    acts = adelante(par, X)
+    R = acts[-1]
+    E = R - X
+    L = (E ** 2).mean()
+    grads = [None] * len(par)
+    dA = 2.0 * E / X.size                              # dL/dR
+    for i in range(len(par) - 1, -1, -1):
+        A_ant = acts[i]
+        if i != len(par) - 1:
+            dA = dA * (1.0 - acts[i + 1] ** 2)         # derivada de tanh
+        grads[i] = [A_ant.T @ dA, dA.sum(axis=0)]
+        dA = dA @ par[i][0].T
+    return L, grads
+
+
+# ---------- Verificación del gradiente con diferencias finitas ----------
+par = init(0)
+X_mini = X[:12]
+L0, g = perdida_y_grad(par, X_mini)
+eps = 1e-6
+errores = []
+for capa in sorted({0, len(par) // 2, len(par) - 1}):
+    W = par[capa][0]
+    for _ in range(4):
+        i, j = rng.integers(W.shape[0]), rng.integers(W.shape[1])
+        orig = W[i, j]
+        W[i, j] = orig + eps
+        Lp = perdida_y_grad(par, X_mini)[0]
+        W[i, j] = orig - eps
+        Lm = perdida_y_grad(par, X_mini)[0]
+        W[i, j] = orig
+        num = (Lp - Lm) / (2 * eps)
+        errores.append(abs(num - g[capa][0][i, j]) / max(abs(num), 1e-12))
+print(f"\nVerificación del gradiente (error relativo frente a diferencias finitas):")
+print(f"  máximo sobre {len(errores)} pesos de {len(sorted({0, len(par)//2, len(par)-1}))} capas: {max(errores):.2e}")
+print("  Por debajo de 1e-5 significa que la retropropagación es correcta.")
+
+# ---------- Entrenamiento con Adam ----------
+par = init(0)
+m = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+v = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+lr, b1, b2, eps_a = 3e-3, 0.9, 0.999, 1e-8
+lote, epocas = 128, 600
+hist = []
+paso = 0
+for ep in range(epocas):
+    orden = rng.permutation(n)
+    for ini in range(0, n, lote):
+        Xb = X[orden[ini:ini + lote]]
+        L, g = perdida_y_grad(par, Xb)
+        paso += 1
+        lr_ep = lr * (0.5 ** (ep // 200))          # el paso se reduce a la mitad
+        for i in range(len(par)):
+            for j in range(2):
+                m[i][j] = b1 * m[i][j] + (1 - b1) * g[i][j]
+                v[i][j] = b2 * v[i][j] + (1 - b2) * g[i][j] ** 2
+                mh = m[i][j] / (1 - b1 ** paso)
+                vh = v[i][j] / (1 - b2 ** paso)
+                par[i][j] -= lr_ep * mh / (np.sqrt(vh) + eps_a)
+    if ep % 60 == 0 or ep == epocas - 1:
+        hist.append((ep, perdida_y_grad(par, X)[0]))
+
+print(f"\n{'época':&gt;7} {'error del AE':&gt;14}")
+for ep, L in hist:
+    print(f"{ep:7d} {L:14.6f}")
+
+err_ae = perdida_y_grad(par, X)[0]
+
+# ---------- PCA con la misma dimensión latente ----------
+S = (X.T @ X) / (n - 1)
+val, vec = np.linalg.eigh(S)
+U = vec[:, ::-1][:, :k]
+err_pca = ((X - (X @ U) @ U.T) ** 2).mean()
+
+print(f"\nError de reconstrucción con k = {k}:")
+print(f"  PCA          : {err_pca:.6f}")
+print(f"  autoencoder  : {err_ae:.6f}")
+print(f"  reducción    : {(1 - err_ae / err_pca):.1%}")
+
+# ¿El código recuperó el parámetro que recorre la lámina?
+Z = adelante(par, X)[len(par) // 2]   # la activación del cuello de botella
+
+
+def spearman(a, b):
+    ra = np.argsort(np.argsort(a)).astype(float)
+    rb = np.argsort(np.argsort(b)).astype(float)
+    return abs(np.corrcoef(ra, rb)[0, 1])
+
+
+P = X @ U
+mejor_ae = max(spearman(Z[:, j], t) for j in range(k))
+mejor_pca = max(spearman(P[:, j], t) for j in range(k))
+
+
+def vecinos_conservados(coord, t, kv=10):
+    """Fracción de los kv vecinos en t que siguen siendo vecinos en el código."""
+    dt = np.abs(t[:, None] - t[None, :])
+    np.fill_diagonal(dt, np.inf)
+    dz = np.abs(coord[:, None] - coord[None, :])
+    np.fill_diagonal(dz, np.inf)
+    vt = np.argsort(dt, axis=1)[:, :kv]
+    vz = np.argsort(dz, axis=1)[:, :kv]
+    return np.mean([len(set(a) &amp; set(b)) / kv for a, b in zip(vt, vz)])
+
+
+print(f"\nCalidad de la coordenada latente (k = 1):")
+print(f"{'':14} {'|Spearman| con t':&gt;18} {'vecinos conservados':&gt;21}")
+print(f"{'PCA':14} {mejor_pca:18.4f} {vecinos_conservados(P[:, 0], t):20.1%}")
+print(f"{'autoencoder':14} {mejor_ae:18.4f} {vecinos_conservados(Z[:, 0], t):20.1%}")
+print("Dos lecturas distintas: PCA ordena mejor GLOBALMENTE (su coordenada crece")
+print("con t porque la hélice avanza en línea recta a lo largo del eje), pero el")
+print("autoencoder conserva mejor la VECINDAD local, que es lo que hace falta para")
+print("reconstruir. De ahí que su error sea tres veces menor.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].semilogy([h_[0] for h_ in hist], [h_[1] for h_ in hist], color="#5b8def")
+ax[0].axhline(err_pca, ls="--", c="#ef476f")
+ax[0].set_xlabel("época")
+ax[0].set_title("error: el AE baja por debajo de PCA")
+ax[1].scatter(t, P[:, 0], c=t, cmap="Spectral", s=8)
+ax[1].set_title(f"PCA: coordenada frente a t (Spearman {mejor_pca:.2f})")
+ax[2].scatter(t, Z[:, 0], c=t, cmap="Spectral", s=8)
+ax[2].set_title(f"AE: coordenada frente a t (Spearman {mejor_ae:.2f})")
+for a in ax[1:]:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>900 puntos sobre una hélice: dimensión intrínseca 1, incrustada en 20.
+
+Verificación del gradiente (error relativo frente a diferencias finitas):
+  máximo sobre 12 pesos de 3 capas: 5.33e-06
+  Por debajo de 1e-5 significa que la retropropagación es correcta.
+
+  época   error del AE
+      0       0.847537
+     60       0.534105
+    120       0.428435
+    180       0.479874
+    240       0.225201
+    300       0.208514
+    360       0.196433
+    420       0.171937
+    480       0.161938
+    540       0.166206
+    599       0.155594
+
+Error de reconstrucción con k = 1:
+  PCA          : 0.556853
+  autoencoder  : 0.155594
+  reducción    : 72.1%
+
+Calidad de la coordenada latente (k = 1):
+                 |Spearman| con t   vecinos conservados
+PCA                        0.9407                42.2%
+autoencoder                0.6929                55.5%
+Dos lecturas distintas: PCA ordena mejor GLOBALMENTE (su coordenada crece
+con t porque la hélice avanza en línea recta a lo largo del eje), pero el
+autoencoder conserva mejor la VECINDAD local, que es lo que hace falta para
+reconstruir. De ahí que su error sea tres veces menor.</pre>
+        </div>
+
+        <p>Con una sola coordenada, el autoencoder reconstruye con un error de <strong>0,1556</strong> frente a los 0,5569 de PCA: una reducción del <strong>72,1 %</strong>. La no linealidad permite «estirar» la hélice sobre una recta, algo que ninguna proyección lineal puede hacer.</p>
+
+        <p>La tabla final matiza el titular y merece leerse con cuidado, porque contiene una lección sobre qué significa «mejor». La coordenada de PCA se correlaciona con el parámetro real mucho mejor (0,941 frente a 0,693): como la hélice avanza en línea recta a lo largo de su eje, la proyección sobre esa dirección ordena bien los puntos <em>globalmente</em>. Pero conserva peor la vecindad local: solo el 42,2 % de los diez vecinos más próximos siguen siéndolo, frente al 55,5 % del autoencoder. Y es la vecindad local, no el orden global, lo que hace falta para reconstruir.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El latente de un autoencoder no es interpretable</div>
+          <p>PCA te entrega ejes con significado —«esta componente es altura más peso»— y ordenados. Un autoencoder te entrega $k$ números sin orden, sin escala fija y sin garantía de que cada uno corresponda a un factor. Es el precio de la flexibilidad, y lo pagarás en todos los capítulos que quedan.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>CAPAS = [d_amb, 64, 32, k, 32, 64, d_amb]</code> por <code>[d_amb, k, d_amb]</code>: un autoencoder de una sola capa oculta y sin activación intermedia útil. El error sube de 0,1556 a <strong>0,5610</strong>, es decir, ligeramente <em>peor</em> que PCA (0,5569). Sin capas ocultas no hay no linealidad efectiva que aprovechar, y la red vuelve a ser un método lineal. La profundidad no es decoración.</p>
+        </div>
+
+        <h2 id="variantes">Las variantes que evitan que la red haga trampa</h2>
+
+        <p>Con $k \lt d$ el cuello de botella basta. Pero hay motivos para querer $k \ge d$ —representaciones <em>sobrecompletas</em>, que suelen ser más útiles para tareas posteriores— y entonces nada impide que la red aprenda la identidad. Hay tres formas clásicas de estropeársela:</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Variante</th><th>Qué añade</th><th>Efecto</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Denoising</strong> (Vincent, 2008)</td>
+                <td>Corrompe la entrada, $\tilde x \sim C(\cdot\mid x)$, pero pide reconstruir la <em>original</em>: $\min \mathbb{E}\lVert x - g(f(\tilde x))\rVert^2$</td>
+                <td>Copiar deja de servir. Se puede demostrar que la red aprende a proyectar sobre la variedad de los datos; con ruido gaussiano pequeño, el residuo aproxima el <em>score</em> $\nabla_x \log p(x)$.</td>
+              </tr>
+              <tr>
+                <td><strong>Disperso</strong></td>
+                <td>Penaliza la activación media: $\lambda\sum_j D_{\mathrm{KL}}(\rho \Vert \hat\rho_j)$ con $\rho$ pequeño, o simplemente $\lambda\lVert z\rVert_1$</td>
+                <td>Cada dato usa pocas unidades. Las bases resultantes se parecen a las de NMF del <a href="11-nmf-e-ica.html">capítulo 11</a> y a los campos receptivos de la corteza visual.</td>
+              </tr>
+              <tr>
+                <td><strong>Contractivo</strong> (Rifai, 2011)</td>
+                <td>Penaliza la norma del jacobiano del codificador: $\lambda\lVert J_f(x)\rVert_F^2$</td>
+                <td>El código apenas cambia ante perturbaciones pequeñas, salvo en las direcciones de la variedad. Insensibilidad explícita en vez de implícita.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>El autoencoder denoising merece un párrafo aparte porque su idea ha resultado ser mucho más grande que él. «Estropea la entrada y pide reconstruir el original» es exactamente lo que hace BERT con las palabras tapadas y lo que hacen los modelos de difusión con el ruido gaussiano. Es la receta más productiva del aprendizaje auto-supervisado, y volverá en el <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>.</p>
+
+        <h2 id="torch">El mismo experimento con PyTorch</h2>
+
+        <p>El programa siguiente compara tres autoencoders idénticos entrenados con distintos niveles de ruido de entrada, y los evalúa sobre datos limpios y corrompidos. No se ejecuta en el navegador —Pyodide no trae PyTorch—, así que este bloque no lleva botón: descárgalo y ejecútalo en tu terminal tras un <code>pip install torch</code>.</p>
+
+        <div class="code-example">
+          <div class="code-header">
+            <span class="file-name">denoising_torch.py</span>
+            <div class="code-actions">
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import torch
+import torch.nn as nn
+
+SEMILLA = 0
+torch.manual_seed(SEMILLA)
+np.random.seed(SEMILLA)
+rng = np.random.default_rng(SEMILLA)
+
+# --- Datos: dígitos sintéticos de 12x12 formados por trazos ---
+LADO = 12
+D = LADO * LADO
+
+
+def genera(n):
+    """Cada imagen es la suma de 2-4 trazos rectos con grosor y posición al azar."""
+    X = np.zeros((n, LADO, LADO), dtype=np.float32)
+    for i in range(n):
+        for _ in range(rng.integers(2, 5)):
+            if rng.random() &lt; 0.5:
+                f = rng.integers(0, LADO - 1)
+                c0, c1 = sorted(rng.integers(0, LADO, 2))
+                X[i, f:f + 2, c0:c1 + 1] = 1.0
+            else:
+                c = rng.integers(0, LADO - 1)
+                f0, f1 = sorted(rng.integers(0, LADO, 2))
+                X[i, f0:f1 + 1, c:c + 2] = 1.0
+    return torch.tensor(X.reshape(n, D))
+
+
+X_tr, X_te = genera(4000), genera(1000)
+print(f"Entrenamiento {tuple(X_tr.shape)}, prueba {tuple(X_te.shape)}. "
+      f"Píxeles encendidos: {X_tr.mean():.1%}")
+
+
+class AE(nn.Module):
+    def __init__(self, latente=12):
+        super().__init__()
+        self.enc = nn.Sequential(nn.Linear(D, 128), nn.ReLU(),
+                                 nn.Linear(128, latente))
+        self.dec = nn.Sequential(nn.Linear(latente, 128), nn.ReLU(),
+                                 nn.Linear(128, D))
+
+    def forward(self, x):
+        return self.dec(self.enc(x))
+
+
+def entrena(nivel_ruido, epocas=40, lote=128):
+    torch.manual_seed(SEMILLA)
+    modelo = AE()
+    opt = torch.optim.Adam(modelo.parameters(), lr=1e-3)
+    perdida = nn.BCEWithLogitsLoss()
+    for _ in range(epocas):
+        perm = torch.randperm(len(X_tr))
+        for i in range(0, len(X_tr), lote):
+            xb = X_tr[perm[i:i + lote]]
+            ruidoso = xb * (torch.rand_like(xb) &gt; nivel_ruido).float()
+            opt.zero_grad()
+            L = perdida(modelo(ruidoso), xb)      # se reconstruye la ORIGINAL
+            L.backward()
+            opt.step()
+    return modelo
+
+
+@torch.no_grad()
+def evalua(modelo, nivel_prueba):
+    ruidoso = X_te * (torch.rand_like(X_te) &gt; nivel_prueba).float()
+    rec = torch.sigmoid(modelo(ruidoso))
+    return ((rec - X_te) ** 2).mean().item()
+
+
+print(f"\n{'ruido de entrenamiento':&gt;24} {'error con 0% ruido':&gt;20} "
+      f"{'con 30%':&gt;10} {'con 50%':&gt;10}")
+for nivel in [0.0, 0.2, 0.4]:
+    m = entrena(nivel)
+    fila = [evalua(m, p) for p in (0.0, 0.3, 0.5)]
+    print(f"{nivel:23.0%} {fila[0]:20.5f} {fila[1]:10.5f} {fila[2]:10.5f}")
+
+print("\nEl autoencoder entrenado SIN ruido gana cuando la prueba tampoco lo tiene,")
+print("pero se degrada mucho más deprisa al corromper la entrada. El entrenado con")
+print("ruido ha tenido que aprender la estructura de los trazos, no a copiar.")
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Entrenamiento (4000, 144), prueba (1000, 144). Píxeles encendidos: 18.9%
+
+  ruido de entrenamiento   error con 0% ruido    con 30%    con 50%
+                     0%              0.04191    0.06121    0.08876
+                    20%              0.04542    0.05322    0.07095
+                    40%              0.05274    0.05414    0.06391
+
+El autoencoder entrenado SIN ruido gana cuando la prueba tampoco lo tiene,
+pero se degrada mucho más deprisa al corromper la entrada. El entrenado con
+ruido ha tenido que aprender la estructura de los trazos, no a copiar.</pre>
+        </div>
+
+        <p>La tabla se lee por diagonales. Sin ruido en la prueba, gana el autoencoder entrenado sin ruido (0,04191 frente a 0,05274): era su especialidad. Pero al corromper el 50 % de los píxeles se invierte todo: el entrenado sin ruido se degrada un <strong>112 %</strong> (de 0,04191 a 0,08876) mientras que el entrenado con un 40 % solo empeora un <strong>21 %</strong> (de 0,05274 a 0,06391), y pasa a ser el mejor de los tres.</p>
+
+        <p>La lectura general: <strong>un poco de peor rendimiento en la tarea fácil compra mucha robustez en la difícil</strong>. Y como la tarea de reconstruir no es el objetivo final —el objetivo es la representación—, la robustez suele valer más.</p>
+
+        <h2 id="limites">Lo que le falta a un autoencoder</h2>
+
+        <p>Un autoencoder entrenado sabe comprimir y descomprimir, y no sabe nada más. En concreto, <strong>no es un modelo generativo</strong>: si tomas un vector $z$ al azar y lo pasas por el decodificador, lo que sale suele ser basura. La razón es que el codificador puede distribuir los códigos como le convenga, dejando huecos enormes del espacio latente sin visitar nunca, y el decodificador no tiene ni idea de qué hacer en esos huecos.</p>
+
+        <p>Tampoco asigna probabilidades: no hay $p(x)$ con la que decir si un dato nuevo es típico o raro. Lo tenía PPCA en el <a href="10-svd-y-ppca.html">capítulo 10</a> y lo hemos perdido al ganar flexibilidad.</p>
+
+        <p>Arreglar las dos cosas a la vez —hacer el latente continuo y bien poblado, y recuperar una densidad— es exactamente lo que consigue el autoencoder variacional, aplicando al autoencoder la maquinaria del ELBO que ya derivamos en el <a href="04-gmm-y-em.html">capítulo 4</a>. Es el <a href="14-vae.html">capítulo 14</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># el autoencoder lineal converge al subespacio de PCA</span>
+<span class="prompt">$</span> python code/13-autoencoders/autoencoder_lineal_es_pca.py
+
+<span class="comment"># el no lineal desenrolla una hélice (backprop verificada)</span>
+<span class="prompt">$</span> python code/13-autoencoders/autoencoder_no_lineal.py
+
+<span class="comment"># denoising con PyTorch (solo terminal)</span>
+<span class="prompt">$</span> pip install torch
+<span class="prompt">$</span> python code/13-autoencoders/denoising_torch.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Un autoencoder aprende a copiar su entrada a través de un cuello de botella. La restricción de ancho de banda es lo que obliga a descubrir la estructura.</li>
+            <li>Con capas lineales y error cuadrático, todos los mínimos son globales y generan el subespacio de PCA. Verificado: mismo error (0,307498, diferencia $2\times10^{-7}$) y distancia entre subespacios 0,0058, pero pesos distintos y varianza sin ordenar.</li>
+            <li>Las coordenadas de un autoencoder no están ordenadas ni son truncables: cambiar $k$ obliga a reentrenar.</li>
+            <li>La retropropagación es la regla de la cadena; verifícala siempre contra diferencias finitas (aquí, error $5{,}33\times10^{-6}$).</li>
+            <li>Con no linealidad, sobre una hélice y con $k=1$: error 0,1556 frente a 0,5569 de PCA, un 72,1 % menos. Conserva mejor la vecindad local (55,5 % frente a 42,2 %) aunque ordene peor globalmente.</li>
+            <li>Denoising, disperso y contractivo impiden que la red copie. El denoising —corromper y reconstruir— es el antepasado directo de BERT y de los modelos de difusión: medido, se degrada un 21 % con ruido fuerte frente al 112 % del autoencoder normal.</li>
+            <li>Un autoencoder no es generativo ni da densidades. Eso lo arregla el capítulo siguiente.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

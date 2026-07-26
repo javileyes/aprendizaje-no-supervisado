@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>7. Clústering espectral · No supervisado</title>
+  <meta name="description" content="El laplaciano del grafo, el corte normalizado, la relajación de Rayleigh y por qué los autovectores resuelven un problema combinatorio." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="7">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 7</span>
+        <h1>Clústering espectral</h1>
+        <p class="lead">Hay un resultado que parece magia: un problema de partición de grafos que es NP-difícil se resuelve —aproximadamente, pero muy bien— calculando autovectores. Este capítulo desmonta la magia paso a paso, porque el mecanismo (relajar un problema discreto a uno continuo y resolverlo con álgebra lineal) es una de las ideas más reutilizables de todo el aprendizaje automático.</p>
+
+        <h2 id="idea">Dejar de medir distancias y empezar a medir conexiones</h2>
+
+        <p>Piensa en una red social. ¿Están «cerca» dos personas que viven en la misma ciudad pero no se conocen, o dos que viven en continentes distintos y hablan a diario? Si lo que te interesa es cómo se propaga la información, la respuesta es obvia y no tiene nada que ver con la geometría.</p>
+
+        <p>Ese cambio de perspectiva es lo que resuelve las lunas y los anillos que derrotaron a k-means. Dos puntos en los extremos de una luna están lejos en línea recta, pero unidos por una cadena densa de vecinos: en el <em>grafo</em> están conectadísimos. El clústering espectral abandona el espacio original y trabaja solo con esa estructura de conexiones.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Convierte tus datos en un grafo donde cada punto es un nodo y las aristas pesan «cuánto se parecen». Ahora agrupar es <strong>cortar el grafo por donde menos aristas haya</strong>, como quien parte un racimo de uvas por el tallo más fino. La sorpresa es que ese corte se puede encontrar mirando los autovectores de una matriz.</p>
+        </div>
+
+        <h2 id="grafo">Paso 1: construir el grafo</h2>
+
+        <p>De la nube de puntos a la matriz de similitud $W$, simétrica y con $w_{ij} \ge 0$. Hay tres construcciones habituales:</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Construcción</th><th>Definición</th><th>Carácter</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Entorno $\varepsilon$</strong></td><td>$w_{ij}=1$ si $d(x_i,x_j)\le\varepsilon$</td><td>No ponderada; hereda la fragilidad de $\varepsilon$ que vimos en DBSCAN.</td></tr>
+              <tr><td><strong>$k$ vecinos</strong></td><td>$w_{ij}=1$ si $j$ está entre los $k$ más próximos de $i$ (o al revés)</td><td>Se adapta a densidades distintas. La más usada.</td></tr>
+              <tr><td><strong>Gaussiana</strong></td><td>$w_{ij}=\exp\!\big(-\lVert x_i - x_j\rVert^2/(2\sigma^2)\big)$</td><td>Grafo completo y ponderado; $\sigma$ fija la escala de «cerca».</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Esta elección <strong>es</strong> el modelo, igual que la métrica lo era en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>. Lo comprobaremos experimentalmente más abajo, y el resultado es incómodo.</p>
+
+        <h2 id="laplaciano">Paso 2: el laplaciano y su identidad fundamental</h2>
+
+        <p>Sea $D$ la matriz diagonal de grados, $d_i = \sum_j w_{ij}$ (cuánta conexión total tiene el nodo $i$). El <strong>laplaciano no normalizado</strong> del grafo es $L = D - W$. Toda la teoría sale de una única identidad, que vamos a derivar porque es corta:</p>
+
+        <p>$$ f^\top L f = f^\top D f - f^\top W f = \sum_i d_i f_i^2 - \sum_{i,j} w_{ij} f_i f_j . $$</p>
+
+        <p>Ahora usamos que $\sum_i d_i f_i^2 = \sum_{i,j} w_{ij} f_i^2$ y también $= \sum_{i,j} w_{ij} f_j^2$ por simetría de $W$. Escribimos el primer término como la media de esas dos formas:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La identidad del laplaciano</div>
+          <p>$$ f^\top L f \;=\; \frac{1}{2}\left( \sum_{i,j} w_{ij} f_i^2 - 2\sum_{i,j} w_{ij} f_i f_j + \sum_{i,j} w_{ij} f_j^2 \right) \;=\; \frac{1}{2}\sum_{i,j} w_{ij}\,(f_i - f_j)^2 $$</p>
+          <p class="math-note">$f \in \mathbb{R}^n$ asigna un número a cada nodo. La forma cuadrática mide <strong>cuánto varía $f$ a lo largo de las aristas, ponderando por su peso</strong>: es pequeña si $f$ es casi constante dentro de las zonas bien conectadas. Un vector $f$ con $f^\top L f$ bajo es una función «suave sobre el grafo».</p>
+        </div>
+
+        <p>De esa igualdad se siguen inmediatamente tres hechos:</p>
+
+        <ol>
+          <li><strong>$L$ es semidefinida positiva</strong>: la suma de la derecha es de términos no negativos, luego $f^\top L f \ge 0$ para todo $f$. Sus autovalores son todos $\ge 0$.</li>
+          <li><strong>El vector constante está en el núcleo</strong>: si $f = \mathbf{1}$, todos los $(f_i - f_j)$ valen 0, luego $L\mathbf{1} = 0$ y $\lambda_1 = 0$ siempre.</li>
+          <li><strong>La multiplicidad del 0 cuenta las componentes conexas.</strong> Si $Lf = 0$ entonces $f^\top L f = 0$, y como todos los sumandos son no negativos, $w_{ij} \gt 0 \Rightarrow f_i = f_j$. Es decir: $f$ es constante sobre cada componente conexa. El núcleo de $L$ está generado exactamente por los vectores indicadores de las componentes.</li>
+        </ol>
+
+        <p>El tercer punto es el corazón del método. Si tus grupos fueran componentes <em>totalmente desconectadas</em>, los autovectores de autovalor cero <strong>serían</strong> las etiquetas, sin más. El clústering espectral apuesta a que, cuando la separación no es perfecta sino solo buena, esos autovectores se deforman poco y siguen sirviendo.</p>
+
+        <h2 id="cortes">Paso 3: del corte mínimo a los autovectores</h2>
+
+        <p>Formalicemos «cortar por donde menos aristas haya». Para una partición en $A$ y su complementario $\bar A$, definimos $\operatorname{cut}(A,\bar A) = \sum_{i\in A, j\in\bar A} w_{ij}$. Minimizar eso directamente da una solución absurda: separar un único nodo, el peor conectado. Hay que <strong>equilibrar</strong>, y de ahí los dos objetivos clásicos:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ RatioCut y NCut</div>
+          <p>$$ \mathrm{RatioCut}(A_1,\dots,A_k) = \sum_{m=1}^k \frac{\operatorname{cut}(A_m, \bar A_m)}{|A_m|}, \qquad \mathrm{NCut}(A_1,\dots,A_k) = \sum_{m=1}^k \frac{\operatorname{cut}(A_m, \bar A_m)}{\operatorname{vol}(A_m)} $$</p>
+          <p class="math-note">$|A_m|$ es el número de nodos del grupo y $\operatorname{vol}(A_m) = \sum_{i \in A_m} d_i$ la suma de sus grados. Ambos denominadores penalizan los grupos diminutos; NCut lo hace mejor porque mide el «tamaño» en conexiones, no en nodos. Los dos problemas son <strong>NP-difíciles</strong>.</p>
+        </div>
+
+        <p>Aquí llega el truco. Para $k=2$, codifiquemos la partición en un vector $f$ con dos valores:</p>
+
+        <p>$$ f_i = \begin{cases} +\sqrt{|\bar A| / |A|} & \text{si } i \in A \\[2pt] -\sqrt{|A| / |\bar A|} & \text{si } i \in \bar A \end{cases} $$</p>
+
+        <p>Parece arbitrario, pero está elegido para que ocurran tres cosas a la vez. Primero, aplicando la identidad del laplaciano —solo contribuyen los pares que cruzan el corte, y para ellos $(f_i-f_j)^2 = \big(\sqrt{|\bar A|/|A|} + \sqrt{|A|/|\bar A|}\big)^2$—:</p>
+
+        <p>$$ f^\top L f = \operatorname{cut}(A,\bar A)\left(\frac{|\bar A|}{|A|} + \frac{|A|}{|\bar A|} + 2\right) = \operatorname{cut}(A,\bar A)\left(\frac{|A|+|\bar A|}{|A|} + \frac{|A|+|\bar A|}{|\bar A|}\right) = n \cdot \mathrm{RatioCut}(A,\bar A). $$</p>
+
+        <p>Segundo, $f$ es ortogonal al vector constante: $\sum_i f_i = |A|\sqrt{|\bar A|/|A|} - |\bar A|\sqrt{|A|/|\bar A|} = \sqrt{|A||\bar A|} - \sqrt{|A||\bar A|} = 0$. Y tercero, su norma está fijada: $\lVert f\rVert^2 = |A|\cdot\frac{|\bar A|}{|A|} + |\bar A|\cdot\frac{|A|}{|\bar A|} = n$.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La relajación</div>
+          <p>Minimizar RatioCut equivale exactamente a</p>
+          <p>$$ \min_{f} \; f^\top L f \quad \text{sujeto a} \quad f \perp \mathbf{1}, \quad \lVert f\rVert^2 = n, \quad f \text{ con solo dos valores}. $$</p>
+          <p>La última restricción es la que hace el problema NP-difícil. <strong>La quitamos</strong> y dejamos que $f$ sea un vector real cualquiera. Por el teorema de Rayleigh-Ritz, el mínimo de $f^\top L f$ sobre los vectores de norma fija ortogonales al primer autovector es el <em>segundo</em> autovector de $L$.</p>
+          <p class="math-note">Ese segundo autovector se llama <strong>vector de Fiedler</strong>, y su autovalor $\lambda_2$ es la <em>conectividad algebraica</em> del grafo. Para volver a una partición basta con mirar el signo de cada componente, o pasarle un k-means.</p>
+        </div>
+
+        <p>¿Cuánto se pierde al relajar? La <strong>desigualdad de Cheeger</strong> lo acota: si $h(G)$ es la conductancia del mejor corte posible, entonces $\frac{\lambda_2}{2} \le h(G) \le \sqrt{2\lambda_2}$. No es una garantía de optimalidad, pero sí dice que $\lambda_2$ pequeño implica que existe un buen corte, y que $\lambda_2$ grande implica que no existe ninguno. La relajación no puede engañarnos del todo.</p>
+
+        <h3>La versión normalizada</h3>
+
+        <p>Con NCut en lugar de RatioCut, la misma derivación —cambiando $|A|$ por $\operatorname{vol}(A)$— lleva a un problema de autovalores <em>generalizado</em>, $Lu = \lambda D u$, equivalente a diagonalizar cualquiera de estos dos laplacianos normalizados:</p>
+
+        <p>$$ L_{\mathrm{sym}} = D^{-1/2} L D^{-1/2} = I - D^{-1/2} W D^{-1/2}, \qquad L_{\mathrm{rw}} = D^{-1} L = I - D^{-1} W . $$</p>
+
+        <p>El subíndice «rw» es por <em>random walk</em>: $D^{-1}W$ es la matriz de transición de un paseo aleatorio por el grafo, y NCut equivale a buscar las regiones de las que a un paseante le cuesta salir. En la práctica se recomienda casi siempre la versión normalizada, porque las no normalizadas tienden a aislar nodos de grado bajo.</p>
+
+        <h2 id="verificacion">Verificar la teoría</h2>
+
+        <p>Antes de aplicar nada, comprobemos que todo lo anterior es literalmente cierto: la identidad, el conteo de componentes conexas y la calidad del corte de Fiedler frente a veinte mil particiones al azar.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">laplaciano_propiedades.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+
+
+def grafo_gaussiano(X, sigma):
+    sq = (X ** 2).sum(axis=1)
+    D2 = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+    W = np.exp(-D2 / (2 * sigma ** 2))
+    np.fill_diagonal(W, 0.0)
+    return W
+
+
+# ---------------- 1) La identidad de la forma cuadrática ----------------
+W = rng.random((60, 60))
+W = (W + W.T) / 2
+np.fill_diagonal(W, 0.0)
+L = np.diag(W.sum(axis=1)) - W
+f = rng.normal(size=60)
+
+forma = f @ L @ f
+suma = 0.5 * (W * (f[:, None] - f[None, :]) ** 2).sum()
+print("1) Identidad f^T L f = (1/2) sum_ij w_ij (f_i - f_j)^2")
+print(f"   f^T L f             = {forma:.10f}")
+print(f"   (1/2)sum w(fi-fj)^2 = {suma:.10f}")
+print(f"   diferencia          = {abs(forma - suma):.2e}")
+print(f"   autovalor mínimo de L = {np.linalg.eigvalsh(L).min():.2e}  (debe ser ~0, "
+      f"nunca negativo)\n")
+
+# ---------------- 2) Multiplicidad del 0 = componentes conexas ----------------
+print("2) Multiplicidad del autovalor 0 frente al número de componentes")
+print(f"   {'componentes':&gt;12} {'autovalores casi nulos':&gt;24} {'lambda_2':&gt;12}")
+for n_comp in [1, 2, 3, 4]:
+    centros = np.array([[6.0 * i, 0.0] for i in range(n_comp)])
+    X = np.vstack([c + rng.normal(scale=0.35, size=(30, 2)) for c in centros])
+    Wg = grafo_gaussiano(X, sigma=0.5)
+    Wg[Wg &lt; 1e-8] = 0.0                       # cortamos: grafo realmente desconectado
+    Lg = np.diag(Wg.sum(axis=1)) - Wg
+    val = np.linalg.eigvalsh(Lg)
+    casi_cero = int((val &lt; 1e-8).sum())
+    print(f"   {n_comp:12d} {casi_cero:24d} {val[n_comp] if n_comp &lt; len(val) else 0:12.4f}")
+print("   El autovalor que sigue al último cero (lambda_k+1) es el 'salto espectral'.\n")
+
+# ---------------- 3) El vector de Fiedler contra 20 000 particiones al azar ----
+print("3) ¿Corta bien el vector de Fiedler? (RatioCut: más bajo, mejor)")
+X = np.vstack([rng.normal(scale=0.6, size=(45, 2)),
+               rng.normal(scale=0.6, size=(45, 2)) + [4.0, 0.0]])
+W = grafo_gaussiano(X, sigma=0.9)
+L = np.diag(W.sum(axis=1)) - W
+val, vec = np.linalg.eigh(L)
+fiedler = vec[:, 1]                            # el segundo autovector
+z_esp = (fiedler &gt; 0).astype(int)
+
+
+def ratio_cut(W, z):
+    corte = W[z == 0][:, z == 1].sum()
+    n0, n1 = (z == 0).sum(), (z == 1).sum()
+    if n0 == 0 or n1 == 0:
+        return np.inf
+    return corte / n0 + corte / n1
+
+
+rc_esp = ratio_cut(W, z_esp)
+azar = [ratio_cut(W, rng.integers(0, 2, len(X))) for _ in range(20000)]
+azar = np.array(azar)
+print(f"   RatioCut del vector de Fiedler : {rc_esp:.5f}")
+print(f"   RatioCut al azar (20 000 veces): mediana {np.median(azar):.5f}, "
+      f"mínimo {azar.min():.5f}")
+print(f"   veces que el azar lo mejora    : {(azar &lt; rc_esp).sum()} de 20000")
+print(f"   autovalores 1 a 4: {np.round(val[:4], 5)}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X[:, 0], X[:, 1], c=fiedler, cmap="coolwarm", s=22, edgecolors="none")
+ax[0].set_title("valor del vector de Fiedler")
+ax[0].set_xticks([])
+ax[0].set_yticks([])
+ax[1].plot(np.sort(fiedler), "o", ms=3, color="#5b8def")
+ax[1].axhline(0, ls="--", c="#ef476f")
+ax[1].set_title("Fiedler ordenado: dos mesetas")
+ax[2].hist(azar, bins=60, color="#8b93a7")
+ax[2].axvline(rc_esp, color="#ef476f", lw=2)
+ax[2].set_xlabel("RatioCut")
+ax[2].set_title("20 000 particiones al azar vs. Fiedler")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1) Identidad f^T L f = (1/2) sum_ij w_ij (f_i - f_j)^2
+   f^T L f             = 1459.2887131886
+   (1/2)sum w(fi-fj)^2 = 1459.2887131886
+   diferencia          = 0.00e+00
+   autovalor mínimo de L = -1.78e-14  (debe ser ~0, nunca negativo)
+
+2) Multiplicidad del autovalor 0 frente al número de componentes
+    componentes   autovalores casi nulos     lambda_2
+              1                        1       5.9651
+              2                        2       8.0287
+              3                        3       3.1117
+              4                        4       4.5511
+   El autovalor que sigue al último cero (lambda_k+1) es el 'salto espectral'.
+
+3) ¿Corta bien el vector de Fiedler? (RatioCut: más bajo, mejor)
+   RatioCut del vector de Fiedler : 0.36840
+   RatioCut al azar (20 000 veces): mediana 22.77178, mínimo 18.02223
+   veces que el azar lo mejora    : 0 de 20000
+   autovalores 1 a 4: [-0.       0.32792  9.37793 11.31067]</pre>
+        </div>
+
+        <p>Los tres bloques confirman la teoría sin margen de duda. La identidad se cumple con diferencia <strong>exactamente 0</strong> en doble precisión. El conteo de componentes es exacto para 1, 2, 3 y 4 grupos separados. Y el vector de Fiedler consigue un RatioCut de <strong>0,368</strong> frente a una mediana de 22,77 al azar: sesenta veces mejor, y en veinte mil intentos aleatorios <em>ninguno</em> lo iguala.</p>
+
+        <p>El autovalor mínimo sale $-1{,}78\times10^{-14}$: negativo, pero solo por redondeo. Teóricamente es cero exacto, y conviene recordarlo al programar, porque una raíz cuadrada de un autovalor «negativo» es un error clásico.</p>
+
+        <p>La última línea contiene el otro mensaje del capítulo. Los autovalores son $0$, $0{,}328$, $9{,}378$, $11{,}311$: hay un abismo entre el segundo y el tercero. Ese <strong>salto espectral</strong> dice que el grafo se parte de forma natural en dos y que partirlo en tres sería violento. Es la manera espectral de estimar $k$.</p>
+
+        <h2 id="algoritmo">El algoritmo completo</h2>
+
+        <p>Juntando todo, el algoritmo de Ng, Jordan y Weiss (2001) tiene cinco pasos:</p>
+
+        <ol>
+          <li>Construir el grafo de similitud $W$ (aquí, $k$ vecinos).</li>
+          <li>Calcular $L_{\mathrm{sym}} = I - D^{-1/2}WD^{-1/2}$.</li>
+          <li>Tomar los $k$ autovectores de menor autovalor y ponerlos como columnas de $U \in \mathbb{R}^{n\times k}$. Cada fila es ahora la <em>nueva representación</em> de un punto.</li>
+          <li>Normalizar las filas de $U$ a norma 1. Esto proyecta los puntos a la esfera unidad, donde —según la teoría— los grupos se concentran en direcciones distintas.</li>
+          <li>Aplicar k-means a esas filas.</li>
+        </ol>
+
+        <p>Nótese lo que ha pasado: k-means, que en el espacio original era incapaz de separar dos lunas, <strong>sí funciona en el espacio de los autovectores</strong>. El clústering espectral no sustituye a k-means: le cambia el terreno de juego. Es, literalmente, una reducción de dimensión no lineal seguida de un clústering trivial, y por eso es también el puente hacia la <a href="09-pca.html">parte III</a>.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">espectral_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(8)
+
+
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def grafo_knn(X, k_vecinos):
+    """Grafo de k vecinos, simetrizado con OR: w_ij = 1 si i es vecino de j o al revés."""
+    sq = (X ** 2).sum(axis=1)
+    D2 = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+    np.fill_diagonal(D2, np.inf)
+    idx = np.argsort(D2, axis=1)[:, :k_vecinos]
+    W = np.zeros_like(D2)
+    filas = np.repeat(np.arange(len(X)), k_vecinos)
+    W[filas, idx.ravel()] = 1.0
+    return np.maximum(W, W.T)
+
+
+def espectral(X, k, k_vecinos=10, semilla=0):
+    W = grafo_knn(X, k_vecinos)
+    d = W.sum(axis=1)
+    d_inv = 1.0 / np.sqrt(np.maximum(d, 1e-12))
+    L_sym = np.eye(len(X)) - (d_inv[:, None] * W) * d_inv[None, :]
+    val, vec = np.linalg.eigh(L_sym)
+    U = vec[:, :k]                                   # los k autovectores más bajos
+    U = U / np.maximum(np.linalg.norm(U, axis=1, keepdims=True), 1e-12)
+    return kmeans(U, k, semilla), val
+
+
+# ---------------- Los tres conjuntos de prueba ----------------
+t = rng.uniform(0, np.pi, 150)
+lunas = np.vstack([np.column_stack([np.cos(t), np.sin(t)]),
+                   np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)])]) \
+    + rng.normal(scale=0.07, size=(300, 2))
+y_lunas = np.repeat([0, 1], 150)
+
+ang = rng.uniform(0, 2 * np.pi, 150)
+circulos = np.vstack([np.column_stack([np.cos(ang), np.sin(ang)]),
+                      2.4 * np.column_stack([np.cos(ang), np.sin(ang)])]) \
+    + rng.normal(scale=0.09, size=(300, 2))
+y_circ = np.repeat([0, 1], 150)
+
+ang3 = rng.uniform(0, 2 * np.pi, 110)
+anillos = np.vstack([r * np.column_stack([np.cos(ang3), np.sin(ang3)])
+                     for r in (1.0, 2.2, 3.4)]) + rng.normal(scale=0.08, size=(330, 2))
+y_anillos = np.repeat([0, 1, 2], 110)
+
+casos = [("dos lunas", lunas, y_lunas, 2),
+         ("dos círculos", circulos, y_circ, 2),
+         ("tres anillos", anillos, y_anillos, 3)]
+
+# --- El grafo NO es un detalle: barremos el número de vecinos ---
+vecinos_probados = [5, 6, 8, 10, 14, 20]
+print("Acuerdo del clústering espectral según cuántos vecinos tenga el grafo:")
+print(f"{'k vecinos':&gt;10} " + " ".join(f"{n:&gt;14}" for n, _, _, _ in casos))
+tabla = {}
+for kv in vecinos_probados:
+    fila = []
+    for nombre, X, y, k in casos:
+        z, _ = espectral(X, k, k_vecinos=kv)
+        fila.append(acuerdo(z, y))
+        tabla[(nombre, kv)] = fila[-1]
+    print(f"{kv:10d} " + " ".join(f"{a:13.1%} " for a in fila))
+
+print("\nNingún valor sirve para los tres a la vez: con 10 vecinos las lunas salen")
+print("perfectas pero los anillos se degradan, y con 5 pasa justo al revés.\n")
+
+print(f"{'conjunto':&lt;15} {'k-means':&gt;9} {'espectral (mejor kv)':&gt;22}   autovalores más bajos")
+resultados = []
+for nombre, X, y, k in casos:
+    z_km = kmeans(X, k, semilla=0)
+    kv_mejor = max(vecinos_probados, key=lambda kv: tabla[(nombre, kv)])
+    z_es, val = espectral(X, k, k_vecinos=kv_mejor)
+    resultados.append((nombre, X, y, z_km, z_es, val, k, kv_mejor))
+    print(f"{nombre:&lt;15} {acuerdo(z_km, y):8.1%} {acuerdo(z_es, y):15.1%} (kv={kv_mejor:2d})   "
+          f"{np.round(val[:k + 2], 4)}")
+
+print("\nSalto espectral: con un grafo de k vecinos bien elegido, los grupos quedan")
+print("DESCONECTADOS, así que hay tantos autovalores nulos como grupos.")
+for nombre, X, y, _, _, val, k, kv in resultados:
+    nulos = int((val &lt; 1e-9).sum())
+    print(f"  {nombre:&lt;15} autovalores por debajo de 1e-9: {nulos}  (grupos reales: {k})")
+
+fig, ax = plt.subplots(3, 3, figsize=(13, 11))
+for f, (nombre, X, y, z_km, z_es, val, k, kv) in enumerate(resultados):
+    ax[f, 0].scatter(X[:, 0], X[:, 1], c=z_km, cmap="coolwarm", s=10, edgecolors="none")
+    ax[f, 0].set_title(f"{nombre} · k-means {acuerdo(z_km, y):.0%}")
+    ax[f, 1].scatter(X[:, 0], X[:, 1], c=z_es, cmap="coolwarm", s=10, edgecolors="none")
+    ax[f, 1].set_title(f"{nombre} · espectral {acuerdo(z_es, y):.0%} (kv={kv})")
+    for c in (0, 1):
+        ax[f, c].set_xticks([])
+        ax[f, c].set_yticks([])
+        ax[f, c].set_aspect("equal")
+    ax[f, 2].plot(val[:10], "o-", color="#43c59e")
+    ax[f, 2].axvline(k - 0.5, ls="--", c="#ef476f")
+    ax[f, 2].set_xlabel("índice del autovalor")
+    ax[f, 2].set_title("espectro de L_sym")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Acuerdo del clústering espectral según cuántos vecinos tenga el grafo:
+ k vecinos      dos lunas   dos círculos   tres anillos
+         5         67.5%         100.0%          92.6%
+         6         67.5%         100.0%          77.7%
+         8         67.5%         100.0%          87.8%
+        10        100.0%         100.0%          77.8%
+        14        100.0%         100.0%          77.7%
+        20        100.0%         100.0%          55.6%
+
+Ningún valor sirve para los tres a la vez: con 10 vecinos las lunas salen
+perfectas pero los anillos se degradan, y con 5 pasa justo al revés.
+
+conjunto          k-means   espectral (mejor kv)   autovalores más bajos
+dos lunas          66.7%          100.0% (kv=10)   [0.     0.     0.0016 0.0036]
+dos círculos       49.8%          100.0% (kv= 5)   [-0.      0.      0.0008  0.0011]
+tres anillos       55.4%           92.6% (kv= 5)   [-0. -0. -0.  0.  0.]
+
+Salto espectral: con un grafo de k vecinos bien elegido, los grupos quedan
+DESCONECTADOS, así que hay tantos autovalores nulos como grupos.
+  dos lunas       autovalores por debajo de 1e-9: 2  (grupos reales: 2)
+  dos círculos    autovalores por debajo de 1e-9: 2  (grupos reales: 2)
+  tres anillos    autovalores por debajo de 1e-9: 5  (grupos reales: 3)</pre>
+        </div>
+
+        <p>Los resultados frente a k-means son espectaculares: <strong>100 % contra 66,7 %</strong> en las lunas y <strong>100 % contra 49,8 %</strong> en los círculos concéntricos, donde k-means está literalmente al nivel del azar porque los dos anillos comparten centro y ningún par de centroides puede distinguirlos. En los tres anillos, 92,6 % contra 55,4 %.</p>
+
+        <p>Pero la tabla de arriba es más honesta que los titulares, y por eso está antes. <strong>No existe un número de vecinos que funcione para los tres conjuntos.</strong> Con 10 vecinos las lunas salen perfectas y los anillos caen al 77,8 %; con 5 los anillos suben al 92,6 % y las lunas se hunden al 67,5 %. Con 20 vecinos, los anillos se derrumban al 55,6 % porque el grafo empieza a conectar anillos contiguos.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El grafo es el modelo, y no hay forma de validarlo desde dentro</div>
+          <p>El clústering espectral traslada el problema: ya no eliges $k$ centroides ni un $\varepsilon$, eliges una <em>estructura de vecindad</em>. Y esa elección decide el resultado tanto como cualquier hiperparámetro anterior. Al no haber etiquetas con las que comparar, no existe ningún criterio interno que te diga que 10 vecinos era mejor que 5. Es la misma imposibilidad del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, con otro disfraz.</p>
+        </div>
+
+        <p>La última sección de la salida enseña por qué funciona cuando funciona: con un grafo de $k$ vecinos suficientemente escaso, los grupos quedan <em>literalmente desconectados</em>, y entonces hay exactamente tantos autovalores nulos como grupos. En las lunas y los círculos salen 2 y 2, perfecto. En los anillos con 5 vecinos salen <strong>5</strong> para 3 grupos reales: el grafo se ha fragmentado de más, y dos trocitos sueltos aparecen como componentes propias. Ese exceso es exactamente la razón de que el acuerdo sea 92,6 % y no 100 %.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sustituye la lista <code>vecinos_probados</code> por valores consecutivos: <code>[5, 6, 7, 8, 9, 10]</code>. Verás que las lunas dan un salto brusco del 67,5 % al 100 % <strong>entre 8 y 9 vecinos</strong>, sin transición: 67,5 % con 5, 6, 7 y 8, y 100 % con 9 y 10. Es el momento en que las dos mitades de cada luna dejan de estar partidas y pasan a ser una sola componente conexa. El comportamiento del método es <em>discreto</em>, y por eso barrer el parámetro no basta: hay que mirar el espectro.</p>
+        </div>
+
+        <h2 id="limites">Coste y límites</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Aspecto</th><th>Situación</th><th>Remedio habitual</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Coste</strong></td><td>Diagonalizar $L$ densa cuesta $O(n^3)$ y guardar $W$, $O(n^2)$.</td><td>Grafo de $k$ vecinos disperso + métodos iterativos (Lanczos): solo hacen falta los $k$ autovectores más bajos.</td></tr>
+              <tr><td><strong>Datos nuevos</strong></td><td>No hay forma directa de asignar un punto que no estaba: el autovector no es una función.</td><td>Extensión de Nyström, o entrenar un clasificador sobre las etiquetas obtenidas.</td></tr>
+              <tr><td><strong>Elección del grafo</strong></td><td>Decide el resultado, como acabamos de medir.</td><td>Mirar el salto espectral; probar varios grafos y quedarse con el de mayor salto.</td></tr>
+              <tr><td><strong>Dimensión alta</strong></td><td>Si las distancias se concentran (<a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>), el grafo de vecinos se llena de <em>hubs</em> y pierde sentido.</td><td>Reducir la dimensión antes. Otra vez, la parte III.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Merece la pena señalar que este capítulo ha hecho, sin decirlo, algo que va a ocupar toda la segunda mitad del manual: <strong>cambiar los datos de espacio para que un algoritmo simple funcione</strong>. Los autovectores del laplaciano son una representación aprendida de los datos. En el <a href="12-manifold-tsne-umap.html">capítulo 12</a> veremos que los <em>eigenmaps</em> laplacianos son exactamente esto usado como método de reducción de dimensión por derecho propio.</p>
+
+        <p>Con esto cerramos el catálogo de algoritmos de clústering. Queda la pregunta que hemos ido aplazando desde el capítulo 3 y que ninguno de ellos responde: <strong>¿cuántos grupos hay, y cómo sé si los que he encontrado significan algo?</strong> Es el <a href="08-validacion-clusteres.html">capítulo 8</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># las propiedades del laplaciano, comprobadas</span>
+<span class="prompt">$</span> python code/07-clustering-espectral/laplaciano_propiedades.py
+
+<span class="comment"># el algoritmo completo sobre lunas, círculos y anillos</span>
+<span class="prompt">$</span> python code/07-clustering-espectral/espectral_desde_cero.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Se sustituye la geometría por un grafo de similitud. Agrupar pasa a ser cortar el grafo por donde menos peso haya.</li>
+            <li>La identidad $f^\top L f = \frac12\sum_{ij} w_{ij}(f_i-f_j)^2$ —verificada con diferencia 0 exacta— implica que $L$ es semidefinida positiva y que la multiplicidad del autovalor 0 es el número de componentes conexas.</li>
+            <li>RatioCut y NCut son NP-difíciles, pero codificando la partición en un $f$ concreto se ve que equivalen a minimizar $f^\top L f$ con $f$ binario. Relajando esa restricción, Rayleigh-Ritz da el segundo autovector.</li>
+            <li>Medido: el vector de Fiedler consigue RatioCut 0,368 frente a mediana 22,77 de 20 000 particiones al azar, ninguna de las cuales lo mejora.</li>
+            <li>El algoritmo es una reducción de dimensión no lineal seguida de k-means: 100 % en lunas y círculos, donde k-means da 66,7 % y 49,8 %.</li>
+            <li>Su punto débil es la construcción del grafo: ningún número de vecinos funciona para los tres conjuntos a la vez, y no hay criterio interno que lo decida.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

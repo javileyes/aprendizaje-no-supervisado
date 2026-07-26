@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>18. Detección de anomalías · No supervisado</title>
+  <meta name="description" content="Densidad, distancia y aislamiento: LOF, Isolation Forest, la envolvente gaussiana y el error de reconstrucción como puntuación." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="18">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte V · Capítulo 18</span>
+        <h1>Detección de anomalías</h1>
+        <p class="lead">El manual empezó diciendo que sin etiquetas el único objeto que existe es la densidad $p^\star(x)$. Detectar anomalías es la aplicación más directa de esa idea: un dato raro es un dato con densidad baja. Pero la práctica es más rica que ese eslogan —hay al menos tres nociones distintas de «raro»— y termina en dos problemas que ninguna curva ROC resuelve: dónde poner el umbral y qué hacer si tus datos de referencia ya están contaminados.</p>
+
+        <h2 id="que-es">Tres nociones de raro</h2>
+
+        <p>Antes de elegir método hay que decidir qué se busca, porque la palabra «anomalía» tapa cosas muy distintas:</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Tipo</th><th>Definición</th><th>Ejemplo</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Global</strong></td><td>Lejos de todo el conjunto</td><td>Una transacción de un millón de euros entre transacciones de decenas</td></tr>
+              <tr><td><strong>Local</strong> (contextual)</td><td>Normal en general, raro <em>en su vecindario</em></td><td>30 °C en enero en Madrid: una temperatura perfectamente normal… en julio</td></tr>
+              <tr><td><strong>De subespacio</strong></td><td>Rompe una relación entre variables sin ser extremo en ninguna</td><td>Una persona de 1,90 m y 45 kg: ni la altura ni el peso son raros; su combinación sí</td></tr>
+              <tr><td><strong>Colectiva</strong></td><td>Cada punto es normal, la secuencia no</td><td>Un electrocardiograma con el ritmo alterado</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Y hay otra distinción, esta metodológica: en <em>detección de valores atípicos</em> las anomalías están mezcladas en el conjunto de ajuste; en <em>detección de novedades</em> se dispone de datos limpios y se busca lo raro en los nuevos. La diferencia importa muchísimo, y la mediremos al final.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Tres estrategias, y cada una responde a una de las nociones anteriores. <strong>Densidad</strong>: modela $p(x)$ y marca lo improbable. <strong>Distancia</strong>: mira lo aislado que está cada punto respecto de sus vecinos. <strong>Aislamiento</strong>: pregunta cuántos cortes al azar hacen falta para separarlo del resto —lo raro se separa antes—.</p>
+        </div>
+
+        <h2 id="metodos">Los cinco detectores</h2>
+
+        <h3>Envolvente gaussiana (Mahalanobis)</h3>
+
+        <p>El más simple: ajusta una gaussiana y puntúa con la distancia de Mahalanobis del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, que no es más que $-2\log p(x)$ salvo constantes.</p>
+
+        <p>$$ s(x) = (x-\mu)^\top S^{-1}(x-\mu) $$</p>
+
+        <p>Si los datos fueran gaussianos, $s(x)$ seguiría una $\chi^2_d$ y el umbral saldría de una tabla. Rápido, interpretable y con un defecto grave: solo sabe de elipses. Todo lo que esté dentro de la elipse le parece normal aunque haya un hueco enorme.</p>
+
+        <h3>Distancia al $k$-ésimo vecino</h3>
+
+        <p>Puntuar cada punto por su distancia al $k$-ésimo vecino más próximo. Sin modelo y sin supuestos de forma, pero con un problema estructural: <strong>usa un umbral de distancia global</strong>, y si hay zonas de densidad muy distinta, lo que es lejos en la zona densa es cerca en la dispersa. Es exactamente el defecto de DBSCAN en el <a href="06-densidad-dbscan.html">capítulo 6</a>.</p>
+
+        <h3>LOF: densidad relativa</h3>
+
+        <p>La solución al problema anterior es la misma que allí: comparar cada punto con su propio vecindario en vez de con una escala global.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Local Outlier Factor (Breunig et al., 2000)</div>
+          <p>Con $N_k(p)$ los $k$ vecinos de $p$ y $d_k(o)$ la distancia de $o$ a su $k$-ésimo vecino, se define la <em>distancia de alcance</em> y la <em>densidad local</em>:</p>
+          <p>$$ d_{\text{alc}}(p,o) = \max\big\{d_k(o),\, d(p,o)\big\}, \qquad \mathrm{lrd}(p) = \left(\frac{1}{k}\sum_{o \in N_k(p)} d_{\text{alc}}(p,o)\right)^{-1} $$</p>
+          <p>$$ \mathrm{LOF}(p) \;=\; \frac{1}{k}\sum_{o\in N_k(p)} \frac{\mathrm{lrd}(o)}{\mathrm{lrd}(p)} $$</p>
+          <p class="math-note">Es un <strong>cociente</strong> de densidades: LOF $\approx 1$ significa «tan denso como sus vecinos», LOF $\gg 1$ significa «mucho menos denso que ellos». Al ser relativo, el mismo umbral vale en zonas densas y dispersas. La distancia de alcance —tomar el máximo con $d_k(o)$— es una suavización que evita que las fluctuaciones de los vecinos muy próximos dominen el resultado; es la misma idea que la distancia mutua de alcance de HDBSCAN.</p>
+        </div>
+
+        <h3>Isolation Forest: aislar en vez de modelar</h3>
+
+        <p>Una idea preciosa por lo contraintuitiva. En lugar de modelar lo normal y mirar quién se sale, <strong>aísla</strong>: construye árboles eligiendo al azar una variable y un punto de corte, hasta que cada dato quede solo. Los puntos raros, al estar en zonas vacías, se separan con pocos cortes; los normales, hundidos en la masa, necesitan muchos.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Puntuación de Isolation Forest (Liu et al., 2008)</div>
+          <p>$$ s(x) = 2^{-\,\mathbb{E}[h(x)]\,/\,c(n)}, \qquad c(n) = 2H_{n-1} - \frac{2(n-1)}{n} \approx 2\ln(n-1) + 2\gamma - \frac{2(n-1)}{n} $$</p>
+          <p class="math-note">$h(x)$ es el número de cortes hasta aislar $x$ en un árbol y $\mathbb{E}[h(x)]$ su media sobre el bosque. $c(n)$ es la longitud media de camino en un árbol de búsqueda binario aleatorio con $n$ nodos, y sirve para <em>normalizar</em>: sin ella, la puntuación dependería del tamaño de la muestra. $\gamma \approx 0{,}5772$ es la constante de Euler-Mascheroni. La puntuación vive en $(0,1)$: cerca de 1 es muy anómalo, cerca de 0,5 es normal.</p>
+        </div>
+
+        <p>Sus virtudes prácticas explican por qué es el más usado en la industria: coste $O(n\log n)$, memoria constante gracias a que cada árbol se construye sobre una submuestra de 256 puntos, ningún cálculo de distancias y ninguna hipótesis sobre la forma.</p>
+
+        <h3>Error de reconstrucción</h3>
+
+        <p>La quinta estrategia reutiliza toda la parte III: si un modelo aprendió a comprimir lo normal, lo anómalo <em>no se dejará comprimir</em>. Con PCA la puntuación es la distancia al subespacio principal, $\lVert x - U_kU_k^\top x\rVert^2$; con un autoencoder, el error de reconstrucción. Está hecha a medida de las anomalías de subespacio.</p>
+
+        <h2 id="comparativa">Ninguno gana siempre</h2>
+
+        <p>El programa implementa los cinco desde cero —incluidos LOF e Isolation Forest completos— y los mide con el área bajo la curva ROC en tres escenarios diseñados para favorecer a familias distintas.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">detectores_comparados.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+
+
+def auc(puntuacion, es_anomalia):
+    """Área bajo la ROC vía el estadístico de Mann-Whitney."""
+    orden = np.argsort(puntuacion)
+    rangos = np.empty(len(puntuacion), float)
+    rangos[orden] = np.arange(1, len(puntuacion) + 1)
+    n1 = es_anomalia.sum()
+    n0 = len(puntuacion) - n1
+    return (rangos[es_anomalia.astype(bool)].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
+
+
+def dist2(X):
+    sq = (X ** 2).sum(axis=1)
+    return np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+
+
+# ---------------- 1) Mahalanobis ----------------
+def mahalanobis(X):
+    mu = X.mean(axis=0)
+    S = np.cov(X, rowvar=False) + 1e-8 * np.eye(X.shape[1])
+    Si = np.linalg.inv(S)
+    d = X - mu
+    return np.einsum("ij,jk,ik-&gt;i", d, Si, d)
+
+
+# ---------------- 2) Distancia al k-ésimo vecino ----------------
+def knn_dist(X, k=10):
+    D = np.sqrt(dist2(X))
+    np.fill_diagonal(D, np.inf)
+    return np.sort(D, axis=1)[:, k - 1]
+
+
+# ---------------- 3) LOF (Breunig et al., 2000) ----------------
+def lof(X, k=20):
+    D = np.sqrt(dist2(X))
+    np.fill_diagonal(D, np.inf)
+    orden = np.argsort(D, axis=1)
+    vecinos = orden[:, :k]
+    d_k = D[np.arange(len(X)), orden[:, k - 1]]          # distancia k-ésima
+    # distancia de alcance: max(d_k(o), d(p,o)) -- suaviza las fluctuaciones
+    alcance = np.maximum(d_k[vecinos], D[np.arange(len(X))[:, None], vecinos])
+    lrd = 1.0 / (alcance.mean(axis=1) + 1e-12)           # densidad local
+    return lrd[vecinos].mean(axis=1) / (lrd + 1e-12)     # LOF = cociente
+
+
+# ---------------- 4) Isolation Forest (Liu et al., 2008) ----------------
+def c_factor(n):
+    """Longitud media de camino en un árbol de búsqueda binario con n nodos."""
+    if n &lt;= 1:
+        return 1.0
+    return 2.0 * (np.log(n - 1) + 0.5772156649) - 2.0 * (n - 1) / n
+
+
+def camino(X, idx, prof, prof_max, r):
+    """Longitud del camino hasta aislar cada punto, con cortes al azar."""
+    if prof &gt;= prof_max or len(idx) &lt;= 1:
+        return {i: prof + c_factor(len(idx)) for i in idx}
+    j = r.integers(X.shape[1])
+    lo, hi = X[idx, j].min(), X[idx, j].max()
+    if lo == hi:
+        return {i: prof + c_factor(len(idx)) for i in idx}
+    corte = r.uniform(lo, hi)
+    izq = idx[X[idx, j] &lt; corte]
+    der = idx[X[idx, j] &gt;= corte]
+    out = camino(X, izq, prof + 1, prof_max, r)
+    out.update(camino(X, der, prof + 1, prof_max, r))
+    return out
+
+
+def isolation_forest(X, n_arboles=100, muestra=256, semilla=0):
+    r = np.random.default_rng(semilla)
+    n = len(X)
+    m = min(muestra, n)
+    prof_max = int(np.ceil(np.log2(m)))
+    total = np.zeros(n)
+    cuenta = np.zeros(n)
+    for _ in range(n_arboles):
+        sub = r.choice(n, m, replace=False)
+        largos = camino(X, sub, 0, prof_max, r)
+        for i, v in largos.items():
+            total[i] += v
+            cuenta[i] += 1
+    medio = total / np.maximum(cuenta, 1)
+    medio[cuenta == 0] = c_factor(m)                     # puntos nunca muestreados
+    return 2.0 ** (-medio / c_factor(m))                 # más alto = más anómalo
+
+
+# ---------------- 5) Error de reconstrucción con PCA ----------------
+def pca_recon(X, k=1):
+    mu = X.mean(axis=0)
+    Xc = X - mu
+    S = (Xc.T @ Xc) / (len(X) - 1)
+    val, vec = np.linalg.eigh(S)
+    U = vec[:, ::-1][:, :k]
+    return ((Xc - (Xc @ U) @ U.T) ** 2).sum(axis=1)
+
+
+DETECTORES = [("Mahalanobis", mahalanobis),
+              ("dist. al 10º vecino", lambda X: knn_dist(X, 10)),
+              ("LOF (k=20)", lambda X: lof(X, 20)),
+              ("Isolation Forest", isolation_forest),
+              ("reconstrucción PCA", lambda X: pca_recon(X, 1))]
+
+# ---------------- Escenario A: anomalías globales ----------------
+XA = np.vstack([rng.normal(scale=1.0, size=(400, 2)),
+                rng.uniform(-9, 9, size=(20, 2))])
+yA = np.r_[np.zeros(400), np.ones(20)]
+
+# ---------------- Escenario B: anomalías locales ----------------
+denso = rng.normal(scale=0.35, size=(250, 2)) + [0.0, 0.0]
+disperso = rng.normal(scale=2.2, size=(170, 2)) + [9.0, 0.0]
+locales = np.column_stack([rng.normal(1.6, 0.12, 20), rng.normal(0.0, 0.12, 20)])
+XB = np.vstack([denso, disperso, locales])
+yB = np.r_[np.zeros(420), np.ones(20)]
+
+# ---------------- Escenario C: anomalías de subespacio ----------------
+lat = rng.normal(size=400)
+XC_norm = np.column_stack([lat, 0.95 * lat]) + 0.12 * rng.normal(size=(400, 2))
+XC_anom = np.column_stack([rng.normal(size=20), -0.95 * rng.normal(size=20)])
+XC = np.vstack([XC_norm, XC_anom])
+yC = np.r_[np.zeros(400), np.ones(20)]
+
+escenarios = [("A · globales", XA, yA), ("B · locales", XB, yB),
+              ("C · subespacio", XC, yC)]
+
+print(f"{'detector':22} " + " ".join(f"{n:&gt;16}" for n, _, _ in escenarios))
+tabla = {}
+for nombre, f in DETECTORES:
+    fila = []
+    for _, X, yv in escenarios:
+        Xn = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-9)
+        a = auc(f(Xn), yv)
+        fila.append(a)
+        tabla[(nombre, _)] = a
+    print(f"{nombre:22} " + " ".join(f"{a:15.3f} " for a in fila))
+
+print("\n(AUC: 1,000 = perfecto, 0,500 = azar. Nadie gana en las tres columnas.)")
+
+# --- ¿Cuánto se degrada todo esto en dimensión alta? ---
+print("\nLa maldición del capítulo 2, aplicada a la detección de anomalías:")
+print(f"{'dimensión':&gt;10} " + " ".join(f"{n:&gt;20}" for n, _ in DETECTORES[:3]))
+for d in [2, 10, 50, 200]:
+    r = np.random.default_rng(3)
+    Xn_ = r.normal(size=(400, d))
+    Xa_ = r.normal(size=(20, d)) * 1.0
+    Xa_[:, 0] += 6.0                       # la anomalía solo afecta a UNA dimensión
+    Xd = np.vstack([Xn_, Xa_])
+    yd = np.r_[np.zeros(400), np.ones(20)]
+    Xd = (Xd - Xd.mean(axis=0)) / (Xd.std(axis=0) + 1e-9)
+    print(f"{d:10d} " + " ".join(f"{auc(f(Xd), yd):19.3f} " for _, f in DETECTORES[:3]))
+print("La señal está siempre en la misma dimensión, pero se diluye entre las")
+print("demás. Por eso en dimensión alta se detectan anomalías DESPUÉS de reducir.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4.2))
+for a, (nombre, X, yv) in zip(ax, escenarios):
+    Xn = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-9)
+    s = lof(Xn, 20)
+    a.scatter(X[yv == 0, 0], X[yv == 0, 1], s=10, c="#8b93a7", edgecolors="none")
+    a.scatter(X[yv == 1, 0], X[yv == 1, 1], s=45, c="#ef476f", marker="X")
+    a.set_title(f"{nombre} · LOF: AUC {auc(s, yv):.2f}")
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>detector                   A · globales      B · locales   C · subespacio
+Mahalanobis                      0.959            0.007            0.847
+dist. al 10º vecino              0.965            0.522            0.837
+LOF (k=20)                       0.970            0.784            0.882
+Isolation Forest                 0.960            0.537            0.784
+reconstrucción PCA               0.778            0.154            0.907
+
+(AUC: 1,000 = perfecto, 0,500 = azar. Nadie gana en las tres columnas.)
+
+La maldición del capítulo 2, aplicada a la detección de anomalías:
+ dimensión          Mahalanobis  dist. al 10º vecino           LOF (k=20)
+         2               0.997                0.996                0.943
+        10               0.941                0.960                0.951
+        50               0.758                0.751                0.751
+       200               0.656                0.638                0.653
+La señal está siempre en la misma dimensión, pero se diluye entre las
+demás. Por eso en dimensión alta se detectan anomalías DESPUÉS de reducir.</pre>
+        </div>
+
+        <p><strong>Escenario A (anomalías globales).</strong> Casi empate técnico entre los cuatro primeros, todos alrededor de 0,96. Cuando las anomalías están lejos de todo, cualquier método razonable las encuentra. Solo la reconstrucción por PCA se queda atrás (0,778), porque una anomalía global puede caer perfectamente <em>dentro</em> del subespacio principal y proyectarse sin error.</p>
+
+        <p><strong>Escenario B (anomalías locales).</strong> Aquí se separan las aguas y el resultado es espectacular. Los puntos anómalos están en el hueco entre un grupo denso y otro disperso: no son extremos en absoluto. LOF consigue <strong>0,784</strong>; la distancia al $k$-ésimo vecino, 0,522, y el Isolation Forest, 0,537 — el nivel del azar.</p>
+
+        <p>Y Mahalanobis obtiene <strong>0,007</strong>. No es una errata: es un AUC casi <em>perfectamente invertido</em>. Como el grupo disperso está lejos del origen, el centro de masas global queda desplazado y los puntos anómalos —que están en el hueco, cerca de ese centro— resultan ser los <em>más normales</em> según Mahalanobis. El detector no falla al azar: se equivoca sistemáticamente y con confianza. Es la ilustración más clara del capítulo de por qué hay que saber qué tipo de anomalía se busca.</p>
+
+        <p><strong>Escenario C (anomalías de subespacio).</strong> Los puntos rompen la correlación entre las dos variables sin salirse del rango de ninguna. Gana la reconstrucción por PCA (<strong>0,907</strong>), justo el método que fracasaba en A. LOF queda segundo con 0,882.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Elegir detector es elegir definición de «raro»</div>
+          <p>La tabla no dice que LOF sea el mejor: dice que <strong>cada método detecta el tipo de anomalía que su definición contempla</strong>. En un problema real conviene ejecutar varios y mirar en qué se diferencian sus listas: los puntos que todos marcan son los globales; los que marca solo LOF son locales; los que marca solo la reconstrucción rompen correlaciones. Esa comparación es diagnóstico, no ruido.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En el escenario B, acerca las dos nubes: cambia <code>+ [9.0, 0.0]</code> por <code>+ [4.0, 0.0]</code> en la definición de <code>disperso</code>. Al juntarlas, la cola de la nube dispersa cubre el hueco donde estaban las anomalías, y estas dejan de ser un vacío para convertirse en una zona <em>ocupada</em>: el AUC de LOF se hunde de 0,784 a <strong>0,282</strong> —también se invierte— y Mahalanobis baja de 0,007 a <strong>0,000</strong>, un fallo perfecto. Las columnas A y C no se mueven.</p>
+          <p>La moraleja es doble. Primero, que un escenario «local» depende de que exista de verdad un hueco, no solo de que haya dos grupos. Y segundo, que un AUC muy por debajo de 0,5 no es mala suerte: es información. Significa que tu detector está midiendo justo lo contrario de lo que buscas, y en ese caso conviene entender por qué antes de invertir la puntuación.</p>
+        </div>
+
+        <h3>Y la maldición, otra vez</h3>
+
+        <p>El segundo bloque repite el experimento en dimensión creciente con una anomalía que solo afecta a <em>una</em> coordenada. En dimensión 2 los tres detectores rondan un AUC de 0,99; en dimensión 200, de 0,65. La señal no ha cambiado: se ha diluido entre 199 dimensiones de ruido que contribuyen a la distancia sin aportar información. Es la concentración de distancias del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, y la receta es la del manual entero: <strong>reducir la dimensión antes de detectar</strong>, con PCA, con un autoencoder o con lo que corresponda.</p>
+
+        <h2 id="umbral">Lo que el AUC no dice</h2>
+
+        <p>Todos los números anteriores son AUC, que mide el <em>orden</em> de las puntuaciones y es independiente del umbral. Eso lo hace cómodo para comparar detectores y absolutamente inútil para desplegar uno: en producción hay que decidir a partir de qué valor se dispara la alarma.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">umbral_y_contaminacion.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+D = 6
+
+
+def mahalanobis(X, mu, S):
+    Si = np.linalg.inv(S + 1e-8 * np.eye(len(S)))
+    d = X - mu
+    return np.einsum("ij,jk,ik-&gt;i", d, Si, d)
+
+
+def auc(s, y):
+    o = np.argsort(s)
+    r = np.empty(len(s), float)
+    r[o] = np.arange(1, len(s) + 1)
+    n1 = int(y.sum())
+    n0 = len(s) - n1
+    return (r[y.astype(bool)].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
+
+
+def prf(pred, y):
+    tp = np.sum(pred &amp; (y == 1))
+    fp = np.sum(pred &amp; (y == 0))
+    fn = np.sum(~pred &amp; (y == 1))
+    p = tp / max(tp + fp, 1)
+    r = tp / max(tp + fn, 1)
+    return p, r, 2 * p * r / max(p + r, 1e-12)
+
+
+# ---------------- Datos: normales gaussianos + anomalías desplazadas ----------
+def genera(n_norm, n_anom, r):
+    A = r.normal(size=(D, D))
+    S = A @ A.T / D + 0.4 * np.eye(D)
+    L = np.linalg.cholesky(S)
+    Xn = r.normal(size=(n_norm, D)) @ L.T
+    Xa = r.normal(size=(n_anom, D)) @ L.T + 3.2
+    X = np.vstack([Xn, Xa])
+    y = np.r_[np.zeros(n_norm), np.ones(n_anom)]
+    p = r.permutation(len(X))
+    return X[p], y[p]
+
+
+X, y = genera(950, 50, rng)
+print(f"{len(X)} puntos en dimensión {D}, con un {y.mean():.1%} de anomalías.")
+
+# ================= 1) El umbral =================
+X_lim, _ = genera(800, 0, np.random.default_rng(1))     # ajuste con datos limpios
+mu, S = X_lim.mean(axis=0), np.cov(X_lim, rowvar=False)
+s = mahalanobis(X, mu, S)
+print(f"\nAUC del detector: {auc(s, y):.4f}  (excelente... pero no es un umbral)")
+
+s_lim = mahalanobis(X_lim, mu, S)
+umbrales = [
+    ("percentil 95 de los normales", np.percentile(s_lim, 95)),
+    ("percentil 99 de los normales", np.percentile(s_lim, 99)),
+    ("cuantil chi-cuadrado al 99 %", D + 2.33 * np.sqrt(2 * D) + 2.0),
+    ("suponer 5 % de anomalías", np.percentile(s, 95)),
+]
+print(f"\n{'regla para el umbral':32} {'valor':&gt;8} {'precisión':&gt;11} "
+      f"{'exhaustividad':&gt;15} {'F1':&gt;7}")
+for nombre, u in umbrales:
+    p, r_, f1 = prf(s &gt; u, y)
+    print(f"{nombre:32} {u:8.2f} {p:10.1%} {r_:14.1%} {f1:7.3f}")
+print("Mismo detector, mismo AUC, y la precisión va del 19,5 % al 98,0 % según")
+print("la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada tipo")
+print("de error- y no se deduce de los datos.")
+
+# ================= 2) La contaminación =================
+print("\n¿Y si el conjunto de ajuste YA lleva anomalías dentro?")
+print(f"{'contaminación':&gt;14} {'AUC (media)':&gt;13} {'AUC (robusto)':&gt;15}")
+
+
+def mcd_simple(X, frac=0.75, iters=15):
+    """Determinante mínimo, versión simple: se reajusta con el 75 % más central."""
+    mu, S = X.mean(axis=0), np.cov(X, rowvar=False)
+    m = int(frac * len(X))
+    for _ in range(iters):
+        d = mahalanobis(X, mu, S)
+        sel = np.argsort(d)[:m]
+        mu_n, S_n = X[sel].mean(axis=0), np.cov(X[sel], rowvar=False)
+        if np.allclose(mu_n, mu, atol=1e-9):
+            mu, S = mu_n, S_n
+            break
+        mu, S = mu_n, S_n
+    return mu, S
+
+
+for cont in [0.0, 0.02, 0.05, 0.10, 0.20]:
+    n_a = int(cont * 800 / (1 - cont)) if cont &gt; 0 else 0
+    X_aj, _ = genera(800, n_a, np.random.default_rng(7))
+    mu_c, S_c = X_aj.mean(axis=0), np.cov(X_aj, rowvar=False)
+    mu_r, S_r = mcd_simple(X_aj)
+    print(f"{cont:13.0%} {auc(mahalanobis(X, mu_c, S_c), y):12.4f} "
+          f"{auc(mahalanobis(X, mu_r, S_r), y):14.4f}")
+print("El estimador clásico se envenena: las propias anomalías inflan la")
+print("covarianza y dejan de parecer raras. El robusto descarta el 25 % más")
+print("extremo en cada iteración y aguanta mucho mejor.")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+ax[0].hist([s[y == 0], s[y == 1]], bins=40, stacked=True,
+           label=["normales", "anomalías"])
+for nombre, u in umbrales[:3]:
+    ax[0].axvline(u, ls="--", lw=1)
+ax[0].set_yscale("log")
+ax[0].legend()
+ax[0].set_title("distancias y los umbrales candidatos")
+conts = [0.0, 0.02, 0.05, 0.10, 0.20]
+aucs_c, aucs_r = [], []
+for cont in conts:
+    n_a = int(cont * 800 / (1 - cont)) if cont &gt; 0 else 0
+    X_aj, _ = genera(800, n_a, np.random.default_rng(7))
+    aucs_c.append(auc(mahalanobis(X, X_aj.mean(axis=0),
+                                  np.cov(X_aj, rowvar=False)), y))
+    mu_r, S_r = mcd_simple(X_aj)
+    aucs_r.append(auc(mahalanobis(X, mu_r, S_r), y))
+ax[1].plot(conts, aucs_c, "o-", label="media y covarianza clásicas")
+ax[1].plot(conts, aucs_r, "s-", label="estimación robusta")
+ax[1].set_xlabel("fracción de anomalías en el ajuste")
+ax[1].set_ylabel("AUC")
+ax[1].legend()
+ax[1].set_title("efecto de la contaminación")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1000 puntos en dimensión 6, con un 5.0% de anomalías.
+
+AUC del detector: 1.0000  (excelente... pero no es un umbral)
+
+regla para el umbral                valor   precisión   exhaustividad      F1
+percentil 95 de los normales        12.60      19.5%         100.0%   0.326
+percentil 99 de los normales        16.54      31.6%         100.0%   0.481
+cuantil chi-cuadrado al 99 %        16.07      29.8%         100.0%   0.459
+suponer 5 % de anomalías            38.04      98.0%          98.0%   0.980
+Mismo detector, mismo AUC, y la precisión va del 19,5 % al 98,0 % según
+la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada tipo
+de error- y no se deduce de los datos.
+
+¿Y si el conjunto de ajuste YA lleva anomalías dentro?
+ contaminación   AUC (media)   AUC (robusto)
+           0%       0.9994         0.9985
+           2%       0.9948         0.9985
+           5%       0.9701         0.9988
+          10%       0.9056         0.9990
+          20%       0.7678         0.9994
+El estimador clásico se envenena: las propias anomalías inflan la
+covarianza y dejan de parecer raras. El robusto descarta el 25 % más
+extremo en cada iteración y aguanta mucho mejor.</pre>
+        </div>
+
+        <p>El detector tiene un AUC de <strong>1,0000</strong>: separación perfecta, no hay ni una anomalía por debajo de ninguna normal. Y aun así, la precisión resultante va del <strong>19,5 % al 98,0 %</strong> según la regla que se use para fijar el umbral. Con el percentil 95 de los normales se capturan todas las anomalías —exhaustividad 100 %— pero cuatro de cada cinco alarmas son falsas.</p>
+
+        <p>La causa es el <strong>desequilibrio de clases</strong>. Con un 5 % de anomalías, un umbral que deje pasar un 5 % de falsos positivos genera 47,5 falsas alarmas frente a 50 aciertos posibles. En detección de anomalías la clase rara es rara <em>por definición</em>, así que la precisión se hunde con tasas de falso positivo que en otros contextos parecerían inocuas.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El umbral no es un problema estadístico</div>
+          <p>Es un problema de costes. ¿Cuánto cuesta una alarma falsa —el tiempo de un analista— frente a una anomalía no detectada —un fraude, una avería—? Ese cociente fija el umbral, y no hay ningún criterio interno que lo sustituya. En la práctica se suele fijar por <strong>capacidad</strong>: si el equipo puede revisar cincuenta casos al día, el umbral es el que produce cincuenta alarmas al día, y la métrica relevante es la precisión entre los cincuenta primeros.</p>
+        </div>
+
+        <h2 id="contaminacion">Contaminación: el conjunto de referencia también miente</h2>
+
+        <p>El último bloque ataca el supuesto más frágil de todos. Casi siempre se ajusta el detector con datos «normales» que en realidad nadie ha revisado, y que por tanto ya contienen anomalías. ¿Cuánto importa?</p>
+
+        <p>Mucho. Con un 20 % de contaminación, el AUC del Mahalanobis clásico cae de <strong>0,9994 a 0,7678</strong>. El mecanismo es el <em>enmascaramiento</em>: las anomalías presentes en el ajuste inflan la covarianza estimada, la elipse se agranda para abarcarlas y dejan de parecer raras — se han escondido a sí mismas.</p>
+
+        <p>La solución es un estimador robusto. La versión implementada aquí es una forma simplificada del determinante mínimo de covarianza (MCD, Rousseeuw): ajustar, quedarse con el 75 % de los puntos más centrales, reajustar solo con ellos y repetir. Con eso el AUC se mantiene en <strong>0,9994 incluso con un 20 % de contaminación</strong>, y de hecho ni se inmuta: 0,9985 a 0,9994 en todo el rango.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 La lección general</div>
+          <p>Todo detector basado en estimar parámetros de lo normal es vulnerable a que lo «normal» esté contaminado. Los métodos que no estiman parámetros globales —LOF, que solo mira vecindarios; Isolation Forest, que usa cortes al azar— son intrínsecamente más robustos, y esa es otra razón de su popularidad más allá del coste computacional.</p>
+        </div>
+
+        <h2 id="cierre">Cierre del manual</h2>
+
+        <p>Hemos vuelto al punto de partida. El <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> proponía tres preguntas sobre la densidad desconocida $p^\star(x)$ —dónde está la masa, en qué grupos cae, cuántas direcciones hacen falta— y afirmaba que aprender sin supervisión es comprimir. Dieciocho capítulos después, cada método ha resultado ser un códec distinto:</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Método</th><th>Comprime cada dato a…</th><th>Y lo que no cabe es…</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>k-means (<a href="03-kmeans.html">3</a>)</td><td>el índice de un centroide</td><td>la inercia</td></tr>
+              <tr><td>Mixtura gaussiana (<a href="04-gmm-y-em.html">4</a>)</td><td>componente y desviación</td><td>la log-verosimilitud negativa</td></tr>
+              <tr><td>PCA y SVD (<a href="09-pca.html">9</a>, <a href="10-svd-y-ppca.html">10</a>)</td><td>$k$ coordenadas</td><td>$\sum_{j\gt k}\lambda_j$</td></tr>
+              <tr><td>NMF e ICA (<a href="11-nmf-e-ica.html">11</a>)</td><td>pesos de partes o de fuentes</td><td>el residuo de la factorización</td></tr>
+              <tr><td>Autoencoder (<a href="13-autoencoders.html">13</a>)</td><td>un vector latente</td><td>el error de reconstrucción</td></tr>
+              <tr><td>VAE (<a href="14-vae.html">14</a>)</td><td>una distribución latente</td><td>el ELBO</td></tr>
+              <tr><td>Contrastivo (<a href="16-autosupervisado-contrastivo.html">16</a>)</td><td>lo invariante a las aumentaciones</td><td>todo lo demás, deliberadamente</td></tr>
+              <tr><td>Anomalías (este)</td><td>—</td><td><strong>justamente lo que buscábamos</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La última fila es el cierre del círculo. En todos los capítulos anteriores, lo que no cabía en la compresión era el error a minimizar. Aquí es la señal: una anomalía es, precisamente, <strong>aquello que tu modelo de lo normal no sabe comprimir</strong>. Detectar anomalías no es una tarea aparte; es leer el residuo en lugar del modelo.</p>
+
+        <p>Y queda la advertencia que ha atravesado el manual entero y que conviene llevarse por encima de cualquier algoritmo. En no supervisado <strong>no hay respuesta correcta</strong>: hay hipótesis. El escalado del capítulo 1, la métrica del 2, el enlace del 5, el $\varepsilon$ del 6, el grafo del 7, la escala del 9, la perplejidad del 12, las aumentaciones del 16, la hipótesis del clúster del 17 y la definición de «raro» de este capítulo son todas la misma decisión con distintos disfraces: <em>qué supones que hace parecidos a dos datos</em>. El algoritmo solo desarrolla las consecuencias. La hipótesis la pones tú, y por eso conviene decirla en voz alta.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># cinco detectores en tres escenarios, más la maldición de la dimensión</span>
+<span class="prompt">$</span> python code/18-deteccion-anomalias/detectores_comparados.py
+
+<span class="comment"># el umbral y la contaminación del conjunto de ajuste</span>
+<span class="prompt">$</span> python code/18-deteccion-anomalias/umbral_y_contaminacion.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>«Anomalía» tapa cosas distintas: global, local, de subespacio y colectiva. Elegir detector es elegir cuál de ellas se busca.</li>
+            <li>LOF puntúa con un <em>cociente</em> de densidades locales, y por eso es el único que resuelve las anomalías locales: AUC 0,784 frente a 0,522 del $k$-NN y 0,537 del Isolation Forest.</li>
+            <li>Mahalanobis obtiene 0,007 en ese mismo escenario: no falla al azar, se equivoca de forma sistemática porque el centro de masas global está desplazado.</li>
+            <li>La reconstrucción por PCA gana en las anomalías de subespacio (0,907) y pierde en las globales (0,778). No hay detector universal.</li>
+            <li>Isolation Forest puntúa con $2^{-\mathbb{E}[h(x)]/c(n)}$, cuesta $O(n\log n)$ y no calcula distancias: por eso domina en la industria.</li>
+            <li>En dimensión alta todo se degrada: de un AUC de 0,99 en $d=2$ a 0,65 en $d=200$ con la misma señal. Reduce antes de detectar.</li>
+            <li>Un AUC de 1,0000 no da un umbral: la precisión va del 19,5 % al 98,0 % según la regla. El umbral es una decisión de costes o de capacidad.</li>
+            <li>Con un 20 % de contaminación en el ajuste, el Mahalanobis clásico cae a 0,7678 por enmascaramiento; un estimador robusto tipo MCD se mantiene en 0,9994.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

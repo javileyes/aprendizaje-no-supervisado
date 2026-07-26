@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>12. Variedades: kernel PCA, t-SNE y UMAP · No supervisado</title>
+  <meta name="description" content="Cuando la estructura no es lineal: el truco del kernel, MDS e Isomap, el gradiente de t-SNE derivado y la intuición de UMAP." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="12">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte III · Capítulo 12</span>
+        <h1>Variedades: kernel PCA, t-SNE y UMAP</h1>
+        <p class="lead">Todo lo anterior era lineal, y con eso no basta. El <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> hablaba de una hoja de papel arrugada dentro de una habitación: si el papel está curvado, ningún plano lo describe. Aquí aprendemos a desenrollarlo. Y aprendemos también a desconfiar de los dibujos bonitos que salen, porque t-SNE y UMAP son las herramientas más usadas y peor interpretadas de todo el aprendizaje no supervisado.</p>
+
+        <h2 id="hipotesis">La hipótesis de la variedad</h2>
+
+        <p>Formalicemos la intuición. Una <strong>variedad</strong> de dimensión $m$ es un conjunto que, visto de cerca, se parece a $\mathbb{R}^m$, aunque globalmente esté curvado: la superficie de la Tierra es una variedad de dimensión 2 metida en $\mathbb{R}^3$, y en tu barrio es indistinguible de un plano. La hipótesis de la variedad afirma que los datos naturales de dimensión $d$ se concentran cerca de una variedad de dimensión intrínseca $m \ll d$.</p>
+
+        <p>Si es cierta, hay dos nociones de distancia y hay que elegir bien:</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Distancia euclídea frente a distancia geodésica</div>
+          <p>Madrid y Tokio están a 10 800 km de vuelo pero a unos 9 500 km en línea recta atravesando el manto terrestre. La primera es la <strong>geodésica</strong> —el camino más corto <em>sobre</em> la variedad— y es la única con sentido físico. La segunda es la euclídea, que atraviesa el vacío entre pliegues. Todos los métodos de este capítulo consisten, de un modo u otro, en <strong>sustituir la euclídea por algo parecido a la geodésica</strong>.</p>
+        </div>
+
+        <h2 id="kernel-pca">Kernel PCA: linealidad en otro espacio</h2>
+
+        <p>La primera estrategia es la más antigua: si los datos no son lineales aquí, llévalos a un espacio donde sí lo sean. Sea $\phi: \mathbb{R}^d \to \mathcal{F}$ una aplicación a un espacio de dimensión enorme, quizá infinita, y hagamos PCA allí. El obstáculo obvio es que $\phi(x)$ puede ser incalculable; el <strong>truco del kernel</strong> lo esquiva.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Kernel PCA</div>
+          <p>PCA en $\mathcal{F}$ solo necesita productos escalares, y esos los da el kernel: $K_{ij} = \langle \phi(x_i), \phi(x_j)\rangle = k(x_i, x_j)$. Antes hay que centrar en $\mathcal{F}$, lo que se hace sobre la matriz:</p>
+          <p>$$ \tilde K = K - \mathbf{1}_n K - K \mathbf{1}_n + \mathbf{1}_n K \mathbf{1}_n, \qquad (\mathbf{1}_n)_{ij} = 1/n $$</p>
+          <p>Diagonalizando $\tilde K\,\alpha_j = n\lambda_j\,\alpha_j$, la proyección del punto $i$ sobre la componente $j$ es $\sqrt{n\lambda_j}\,\alpha_{ji}$.</p>
+          <p class="math-note">Kernels habituales: el polinómico $k(x,y)=(x^\top y + c)^p$ y el gaussiano $k(x,y)=\exp(-\lVert x-y\rVert^2/2\sigma^2)$, cuyo espacio de características es de dimensión infinita. Nótese que se diagonaliza una matriz $n\times n$ —del tamaño de la muestra— en vez de $d\times d$: el coste pasa a depender de cuántos datos hay, no de cuántas variables.</p>
+        </div>
+
+        <p>Kernel PCA es elegante y tiene un problema práctico serio: la elección del kernel y de su escala $\sigma$ es completamente arbitraria y no hay forma no supervisada de validarla. Además, volver del espacio de características al original (el <em>problema de la preimagen</em>) no tiene solución exacta. Por eso, en la práctica, ha sido desplazado por los métodos que vienen a continuación.</p>
+
+        <h2 id="mds-isomap">MDS clásico e Isomap: usar la geodésica</h2>
+
+        <p>El <strong>escalado multidimensional clásico</strong> ataca el problema al revés: parte de una matriz de distancias $D$ y busca coordenadas que las reproduzcan. La construcción es bonita. Se pasa de distancias a productos escalares con el <em>doble centrado</em>:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ MDS clásico</div>
+          <p>$$ B = -\tfrac12\,J\,D^{(2)}\,J, \qquad J = I - \tfrac1n\mathbf{1}\mathbf{1}^\top $$</p>
+          <p>donde $D^{(2)}$ tiene por entradas los cuadrados de las distancias y $J$ es la matriz de centrado. Diagonalizando $B = V\Lambda V^\top$, las coordenadas en dimensión $k$ son $Y = V_k\Lambda_k^{1/2}$.</p>
+          <p class="math-note">La identidad de partida es $b_{ij} = \langle \tilde x_i, \tilde x_j\rangle = -\tfrac12(d_{ij}^2 - d_{i\cdot}^2 - d_{\cdot j}^2 + d_{\cdot\cdot}^2)$, que es exactamente lo que hace el doble centrado. <strong>Si las distancias eran euclídeas, MDS clásico da el mismo resultado que PCA</strong>: el programa lo comprueba con diferencia 0,0000.</p>
+        </div>
+
+        <p><strong>Isomap</strong> (Tenenbaum, de Silva y Langford, 2000) hace un cambio mínimo con consecuencias enormes: construye el grafo de $k$ vecinos, calcula las distancias como <em>caminos más cortos</em> por ese grafo —una aproximación discreta de la geodésica— y le pasa esa matriz al MDS clásico. Solo se fía de las distancias cortas, que son las únicas fiables sobre una variedad curva; las largas las reconstruye encadenando saltos cortos.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">isomap_swissroll.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+n = 600
+
+# --- El rollo suizo: t es la posición A LO LARGO de la lámina ---
+t = 1.5 * np.pi * (1 + 2 * rng.random(n))
+altura = 12 * rng.random(n)
+X = np.column_stack([t * np.cos(t), altura, t * np.sin(t)])
+X += 0.05 * rng.normal(size=X.shape)
+print(f"Rollo suizo: {n} puntos en 3D, lámina intrínseca de dimensión 2.")
+
+
+def dist_euclidea(X):
+    sq = (X ** 2).sum(axis=1)
+    return np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+
+
+def mds_clasico(D, k=2):
+    """MDS clásico: B = -1/2 J D^2 J y se diagonaliza."""
+    n = len(D)
+    J = np.eye(n) - np.ones((n, n)) / n
+    B = -0.5 * J @ (D ** 2) @ J
+    val, vec = np.linalg.eigh(B)
+    val, vec = val[::-1][:k], vec[:, ::-1][:, :k]
+    return vec * np.sqrt(np.maximum(val, 0))
+
+
+def geodesicas(X, k_vecinos):
+    """Distancias por el camino más corto en el grafo de k vecinos (Floyd-Warshall
+    sería O(n^3); usamos Dijkstra vectorizado sobre matriz densa)."""
+    D = dist_euclidea(X)
+    idx = np.argsort(D, axis=1)[:, 1:k_vecinos + 1]
+    G = np.full_like(D, np.inf)
+    np.fill_diagonal(G, 0.0)
+    filas = np.repeat(np.arange(len(X)), k_vecinos)
+    G[filas, idx.ravel()] = D[filas, idx.ravel()]
+    G = np.minimum(G, G.T)                       # grafo no dirigido
+    # Dijkstra desde cada nodo (n veces), con matriz densa
+    Dg = np.empty_like(G)
+    for s in range(len(X)):
+        dist = np.full(len(X), np.inf)
+        dist[s] = 0.0
+        visto = np.zeros(len(X), bool)
+        for _ in range(len(X)):
+            u = int(np.argmin(np.where(visto, np.inf, dist)))
+            if not np.isfinite(dist[u]):
+                break
+            visto[u] = True
+            nuevo = dist[u] + G[u]
+            dist = np.minimum(dist, nuevo)
+        Dg[s] = dist
+    finito = np.isfinite(Dg)
+    Dg[~finito] = Dg[finito].max() * 2           # componentes desconectadas
+    return (Dg + Dg.T) / 2
+
+
+def spearman(a, b):
+    """Correlación de Spearman: correlación de los rangos."""
+    ra = np.argsort(np.argsort(a)).astype(float)
+    rb = np.argsort(np.argsort(b)).astype(float)
+    return abs(np.corrcoef(ra, rb)[0, 1])
+
+
+# --- 1) PCA (lineal) ---
+Xc = X - X.mean(axis=0)
+U, s, Vt = np.linalg.svd(Xc, full_matrices=False)
+Y_pca = Xc @ Vt[:2].T
+
+# --- 2) MDS clásico con distancias euclídeas (equivale a PCA) ---
+D_euc = dist_euclidea(X)
+Y_mds = mds_clasico(D_euc, 2)
+print(f"\nMDS clásico con distancias euclídeas = PCA: "
+      f"máxima diferencia entre coordenadas (salvo signo) "
+      f"{min(np.abs(np.abs(Y_mds) - np.abs(Y_pca)).max(), 9.99):.4f}")
+
+# --- 3) Isomap: distancias geodésicas + MDS ---
+print("\nCalculando geodésicas (esto tarda unos segundos)...")
+resultados = []
+for kv in [5, 8, 12, 20]:
+    Dg = geodesicas(X, kv)
+    Y_iso = mds_clasico(Dg, 2)
+    resultados.append((kv, Y_iso, spearman(Y_iso[:, 0], t), Dg))
+
+print(f"\n{'método':&lt;26} {'|Spearman| con el parámetro t':&gt;32}")
+print(f"{'PCA (1ª componente)':&lt;26} {spearman(Y_pca[:, 0], t):32.4f}")
+print(f"{'MDS clásico (1ª coord.)':&lt;26} {spearman(Y_mds[:, 0], t):32.4f}")
+for kv, _, sp, _ in resultados:
+    print(f"{'Isomap, ' + str(kv) + ' vecinos':&lt;26} {sp:32.4f}")
+
+mejor_kv, Y_iso, mejor_sp, Dg = max(resultados, key=lambda r: r[2])
+print(f"\nMejor Isomap: {mejor_kv} vecinos, |Spearman| = {mejor_sp:.4f}")
+print("Un valor cercano a 1 significa que la coordenada recuperada ordena los")
+print("puntos igual que el recorrido REAL a lo largo de la lámina.")
+
+# ¿Cuánto se equivoca la distancia euclídea? Comparamos con la geodésica.
+tri = np.triu_indices(n, k=1)
+razon = Dg[tri] / np.maximum(D_euc[tri], 1e-9)
+print(f"\nCociente geodésica/euclídea: mediana {np.median(razon):.2f}, "
+      f"percentil 99 {np.percentile(razon, 99):.2f}, máximo {razon.max():.2f}")
+print(f"Hay pares de puntos que en línea recta están {razon.max():.0f} veces más cerca")
+print("de lo que están sobre la lámina: eso es lo que engaña a PCA.")
+
+fig, ax = plt.subplots(1, 4, figsize=(16, 4))
+ax[0].scatter(X[:, 0], X[:, 2], c=t, cmap="Spectral", s=8)
+ax[0].set_title("el rollo, visto de canto")
+ax[1].scatter(Y_pca[:, 0], Y_pca[:, 1], c=t, cmap="Spectral", s=8)
+ax[1].set_title(f"PCA · Spearman {spearman(Y_pca[:, 0], t):.2f}")
+ax[2].scatter(Y_mds[:, 0], Y_mds[:, 1], c=t, cmap="Spectral", s=8)
+ax[2].set_title(f"MDS clásico · {spearman(Y_mds[:, 0], t):.2f}")
+ax[3].scatter(Y_iso[:, 0], Y_iso[:, 1], c=t, cmap="Spectral", s=8)
+ax[3].set_title(f"Isomap ({mejor_kv} vec.) · {mejor_sp:.2f}")
+for a in ax:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Rollo suizo: 600 puntos en 3D, lámina intrínseca de dimensión 2.
+
+MDS clásico con distancias euclídeas = PCA: máxima diferencia entre coordenadas (salvo signo) 0.0000
+
+Calculando geodésicas (esto tarda unos segundos)...
+
+método                        |Spearman| con el parámetro t
+PCA (1ª componente)                                  0.2548
+MDS clásico (1ª coord.)                              0.2548
+Isomap, 5 vecinos                                    0.9995
+Isomap, 8 vecinos                                    0.9999
+Isomap, 12 vecinos                                   0.9999
+Isomap, 20 vecinos                                   1.0000
+
+Mejor Isomap: 20 vecinos, |Spearman| = 1.0000
+Un valor cercano a 1 significa que la coordenada recuperada ordena los
+puntos igual que el recorrido REAL a lo largo de la lámina.
+
+Cociente geodésica/euclídea: mediana 1.40, percentil 99 9.10, máximo 11.18
+Hay pares de puntos que en línea recta están 11 veces más cerca
+de lo que están sobre la lámina: eso es lo que engaña a PCA.</pre>
+        </div>
+
+        <p>La diferencia es de otro orden de magnitud. PCA y el MDS clásico euclídeo —que dan exactamente lo mismo, con diferencia 0,0000, tal como predice la teoría— consiguen una correlación de rangos de <strong>0,25</strong> con la posición real a lo largo del rollo: prácticamente nada. Isomap llega a <strong>1,0000</strong>: reconstruye el orden de los 600 puntos sobre la lámina sin equivocarse ni una vez.</p>
+
+        <p>La última medida explica el porqué. Hay pares de puntos cuya distancia geodésica es <strong>11 veces</strong> su distancia en línea recta: son los que caen en capas contiguas del rollo, separados por medio milímetro de aire pero por media vuelta de lámina. PCA los ve juntos y los proyecta juntos. Isomap los ve lejos porque cuenta el camino.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El cortocircuito</div>
+          <p>Isomap depende críticamente de que el grafo de vecinos no salte entre pliegues. Si el número de vecinos es demasiado grande, aparece un enlace entre dos capas y la geodésica se «cortocircuita»: todas las distancias largas se contaminan. En una versión anterior de este ejemplo, con 700 puntos y 20 vecinos, la correlación caía de 1,0000 a <strong>0,8331</strong> exactamente por eso. Es el mismo compromiso del grafo que ya sufrimos en el <a href="07-clustering-espectral.html">capítulo 7</a>.</p>
+        </div>
+
+        <h2 id="tsne">t-SNE: no conservar distancias, conservar vecindarios</h2>
+
+        <p>Isomap sigue intentando reproducir distancias, y en dimensión alta eso es pedir demasiado: por la concentración del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, casi todas las distancias son parecidas y casi ninguna es informativa. t-SNE (van der Maaten y Hinton, 2008) abandona ese objetivo y persigue otro: <strong>que cada punto tenga en el dibujo los mismos vecinos que tenía en el original</strong>. Las distancias grandes le dan igual.</p>
+
+        <p>Para hacerlo, convierte distancias en probabilidades. En el espacio original, la afinidad del punto $j$ visto desde el $i$ es</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Afinidades en el espacio original</div>
+          <p>$$ p_{j\mid i} = \frac{\exp\!\big(-\lVert x_i - x_j\rVert^2 / 2\sigma_i^2\big)}{\sum_{k\ne i}\exp\!\big(-\lVert x_i - x_k\rVert^2 / 2\sigma_i^2\big)}, \qquad p_{ij} = \frac{p_{j\mid i} + p_{i\mid j}}{2n} $$</p>
+          <p class="math-note">Es la probabilidad de que $i$ «elija» a $j$ como vecino. Cada punto tiene <strong>su propio $\sigma_i$</strong>, y ahí está la sutileza: se elige por búsqueda binaria para que la <em>perplejidad</em> $2^{H(P_i)}$ —donde $H$ es la entropía de la distribución $p_{\cdot\mid i}$— valga lo que el usuario pida. La perplejidad es, aproximadamente, «cuántos vecinos efectivos tiene cada punto», y así los puntos de zonas densas usan un $\sigma$ pequeño y los de zonas dispersas uno grande. Es una adaptación local a la densidad, como la del <a href="06-densidad-dbscan.html">capítulo 6</a>.</p>
+        </div>
+
+        <p>En el mapa de baja dimensión se usa una distribución distinta y esa asimetría es el hallazgo central del método:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Afinidades en el mapa: t de Student</div>
+          <p>$$ q_{ij} = \frac{\big(1 + \lVert y_i - y_j\rVert^2\big)^{-1}}{\sum_{k\ne l}\big(1 + \lVert y_k - y_l\rVert^2\big)^{-1}} $$</p>
+          <p class="math-note">Es una t de Student con 1 grado de libertad (una Cauchy), de <strong>colas pesadas</strong>. Resuelve el <em>problema del apiñamiento</em>: en dimensión alta caben muchísimos más puntos «a distancia media» que en el plano, así que al bajar de dimensión no hay sitio y todo se aplasta al centro. Con colas pesadas, dos puntos moderadamente separados en el original pueden colocarse <em>muy</em> lejos en el mapa sin penalización, lo que libera espacio y separa los grupos.</p>
+        </div>
+
+        <p>El objetivo es la divergencia de Kullback-Leibler entre las dos, que ya conocemos del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, y su gradiente tiene una forma sorprendentemente física:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Objetivo y gradiente</div>
+          <p>$$ C = D_{\mathrm{KL}}(P\,\Vert\,Q) = \sum_{i \ne j} p_{ij}\log\frac{p_{ij}}{q_{ij}}, \qquad \frac{\partial C}{\partial y_i} = 4\sum_{j} (p_{ij} - q_{ij})\,(y_i - y_j)\,\big(1 + \lVert y_i-y_j\rVert^2\big)^{-1} $$</p>
+          <p class="math-note">Es un sistema de muelles: si $p_{ij} \gt q_{ij}$ —están más cerca en el original que en el mapa— el término tira de $y_i$ hacia $y_j$; si $p_{ij} \lt q_{ij}$, lo empuja. <strong>La asimetría de la KL es decisiva</strong>: el término $p_{ij}\log(p_{ij}/q_{ij})$ castiga muchísimo poner lejos lo que estaba cerca ($p$ grande, $q$ pequeño) y casi no castiga poner cerca lo que estaba lejos. De ahí que t-SNE conserve la estructura local y maltrate la global.</p>
+        </div>
+
+        <h2 id="ejemplo-tsne">t-SNE desde cero, y sus tres advertencias medidas</h2>
+
+        <p>El programa implementa todo lo anterior —búsqueda binaria de los $\sigma_i$, gradiente exacto, momento y «exageración temprana»— y luego somete el resultado a tres pruebas. Los datos están diseñados a propósito: tres grupos en 30 dimensiones con separaciones muy distintas (10 y 50 unidades) y anchuras muy distintas (1,6 y 10,9).</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">tsne_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+
+# --- Tres grupos DELIBERADAMENTE desiguales, en 30 dimensiones ---
+#   A: 120 puntos, muy compacto      (sd 0,3)
+#   B: 120 puntos, muy disperso      (sd 2,0)
+#   C: 120 puntos, compacto y LEJÍSIMOS de los otros dos
+d = 30
+A = rng.normal(scale=0.3, size=(120, d)) + np.r_[0.0, np.zeros(d - 1)]
+B = rng.normal(scale=2.0, size=(120, d)) + np.r_[10.0, np.zeros(d - 1)]
+C = rng.normal(scale=0.3, size=(120, d)) + np.r_[60.0, np.zeros(d - 1)]
+X = np.vstack([A, B, C])
+y = np.repeat([0, 1, 2], 120)
+n = len(X)
+
+
+def dist2(X):
+    sq = (X ** 2).sum(axis=1)
+    return np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+
+
+D2 = dist2(X)
+print(f"{n} puntos en {d} dimensiones, tres grupos.")
+print("Distancias medias REALES entre centros:")
+cen = np.array([A.mean(0), B.mean(0), C.mean(0)])
+for i, j in [(0, 1), (1, 2), (0, 2)]:
+    print(f"  centro {i} - centro {j}: {np.linalg.norm(cen[i] - cen[j]):7.2f}")
+print(f"Radio medio de cada grupo: " +
+      " ".join(f"{np.linalg.norm(G - G.mean(0), axis=1).mean():.2f}"
+               for G in (A, B, C)))
+
+
+def p_condicionales(D2, perplejidad, tol=1e-5, iters=60):
+    """Para cada i, busca sigma_i tal que 2^H(P_i) = perplejidad (bisección)."""
+    n = len(D2)
+    P = np.zeros((n, n))
+    objetivo = np.log(perplejidad)
+    for i in range(n):
+        lo, hi = 1e-20, 1e20
+        beta = 1.0                                   # beta = 1/(2 sigma^2)
+        Di = np.delete(D2[i], i)
+        for _ in range(iters):
+            Pi = np.exp(-Di * beta)
+            suma = Pi.sum()
+            if suma &lt;= 0:
+                H = 0.0
+                Pi = np.ones_like(Di) / len(Di)
+            else:
+                H = np.log(suma) + beta * (Di * Pi).sum() / suma
+                Pi = Pi / suma
+            if abs(H - objetivo) &lt; tol:
+                break
+            if H &gt; objetivo:                         # demasiada entropía: subir beta
+                lo = beta
+                beta = beta * 2 if hi == 1e20 else (beta + hi) / 2
+            else:
+                hi = beta
+                beta = beta / 2 if lo == 1e-20 else (beta + lo) / 2
+        P[i, np.arange(n) != i] = Pi
+    return P
+
+
+def tsne(D2, perplejidad=30.0, iters=600, semilla=0, dim=2):
+    n = len(D2)
+    P = p_condicionales(D2, perplejidad)
+    P = (P + P.T) / (2 * n)                          # simetrizar
+    P = np.maximum(P, 1e-12)
+    r = np.random.default_rng(semilla)
+    Y = r.normal(scale=1e-4, size=(n, dim))
+    velocidad = np.zeros_like(Y)
+    historia = []
+    for it in range(iters):
+        exagera = 4.0 if it &lt; 100 else 1.0            # exageración temprana
+        num = 1.0 / (1.0 + dist2(Y))                  # t de Student, 1 g.l.
+        np.fill_diagonal(num, 0.0)
+        Q = np.maximum(num / num.sum(), 1e-12)
+        # gradiente exacto: 4 * sum_j (p_ij - q_ij) (y_i - y_j) (1+||y_i-y_j||^2)^-1
+        L = (exagera * P - Q) * num
+        grad = 4.0 * (np.diag(L.sum(axis=1)) - L) @ Y
+        momento = 0.5 if it &lt; 250 else 0.8
+        velocidad = momento * velocidad - 200.0 * grad
+        Y = Y + velocidad
+        Y -= Y.mean(axis=0)
+        if it % 50 == 0 or it == iters - 1:
+            historia.append((it, (exagera * P * np.log(exagera * P / Q)).sum()))
+    return Y, historia
+
+
+print("\nAjustando t-SNE (perplejidad 30)...")
+Y, hist = tsne(D2, perplejidad=30.0)
+print(f"{'iteración':&gt;10} {'KL(P||Q)':&gt;12}")
+for it, kl in hist:
+    print(f"{it:10d} {kl:12.5f}")
+
+# --- ¿Se conservan las distancias entre grupos? ---
+cen_y = np.array([Y[y == j].mean(axis=0) for j in range(3)])
+print("\nDistancias entre centros: real (en 30D) frente a la del dibujo")
+print(f"{'par':&gt;10} {'real':&gt;10} {'en t-SNE':&gt;11} {'cociente':&gt;10}")
+reales, dibujadas = [], []
+for i, j in [(0, 1), (1, 2), (0, 2)]:
+    r_ = np.linalg.norm(cen[i] - cen[j])
+    d_ = np.linalg.norm(cen_y[i] - cen_y[j])
+    reales.append(r_)
+    dibujadas.append(d_)
+    print(f"{i}-{j:&gt;8} {r_:10.2f} {d_:11.2f} {d_ / r_:10.4f}")
+print(f"  Si t-SNE conservara distancias, los tres cocientes serían iguales.")
+print(f"  Aquí van de {min(np.array(dibujadas)/np.array(reales)):.4f} a "
+      f"{max(np.array(dibujadas)/np.array(reales)):.4f}: "
+      f"un factor {max(np.array(dibujadas)/np.array(reales))/min(np.array(dibujadas)/np.array(reales)):.1f}.")
+
+# --- ¿Se conservan los tamaños? ---
+print("\nRadio medio de cada grupo: real frente al del dibujo")
+print(f"{'grupo':&gt;7} {'real':&gt;9} {'en t-SNE':&gt;11}")
+for j, G in enumerate((A, B, C)):
+    rr = np.linalg.norm(G - G.mean(0), axis=1).mean()
+    rd = np.linalg.norm(Y[y == j] - cen_y[j], axis=1).mean()
+    print(f"{j:7d} {rr:9.2f} {rd:11.2f}")
+r_real = [np.linalg.norm(G - G.mean(0), axis=1).mean() for G in (A, B, C)]
+r_dib = [np.linalg.norm(Y[y == j] - cen_y[j], axis=1).mean() for j in range(3)]
+print(f"  En los datos, el grupo más ancho lo es {max(r_real)/min(r_real):.1f} veces más "
+      f"que el más estrecho.")
+print(f"  En el dibujo, esa razón se ha comprimido a {max(r_dib)/min(r_dib):.1f}.")
+
+# --- El efecto de la perplejidad ---
+print("\nMisma nube, distintas perplejidades:")
+fig, ax = plt.subplots(1, 4, figsize=(16, 4))
+for a, perp in zip(ax, [5.0, 15.0, 30.0, 80.0]):
+    Yp, _ = tsne(D2, perplejidad=perp, iters=400)
+    cen_p = np.array([Yp[y == j].mean(axis=0) for j in range(3)])
+    sep = np.linalg.norm(cen_p[0] - cen_p[1]) / np.linalg.norm(cen_p[1] - cen_p[2])
+    print(f"  perplejidad {perp:5.1f} -&gt; cociente de separaciones d(0,1)/d(1,2) = {sep:.3f}")
+    a.scatter(Yp[:, 0], Yp[:, 1], c=y, cmap="viridis", s=8, edgecolors="none")
+    a.set_title(f"perplejidad {perp:.0f}")
+    a.set_xticks([])
+    a.set_yticks([])
+print(f"  El cociente REAL es {reales[0]/reales[1]:.3f}; ninguna perplejidad lo reproduce,")
+print("  y el valor que sale depende más de la perplejidad que de los datos.")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>360 puntos en 30 dimensiones, tres grupos.
+Distancias medias REALES entre centros:
+  centro 0 - centro 1:   10.13
+  centro 1 - centro 2:   49.94
+  centro 0 - centro 2:   60.02
+Radio medio de cada grupo: 1.62 10.85 1.62
+
+Ajustando t-SNE (perplejidad 30)...
+ iteración     KL(P||Q)
+         0     14.59266
+        50     13.86398
+       100      2.14167
+       150      1.02428
+       200      0.99991
+       250      0.98620
+       300      0.96999
+       350      0.96241
+       400      0.95759
+       450      0.95420
+       500      0.95164
+       550      0.94962
+       599      0.94801
+
+Distancias entre centros: real (en 30D) frente a la del dibujo
+       par       real    en t-SNE   cociente
+0-       1      10.13       12.25     1.2093
+1-       2      49.94       25.91     0.5188
+0-       2      60.02       26.02     0.4335
+  Si t-SNE conservara distancias, los tres cocientes serían iguales.
+  Aquí van de 0.4335 a 1.2093: un factor 2.8.
+
+Radio medio de cada grupo: real frente al del dibujo
+  grupo      real    en t-SNE
+      0      1.62        3.03
+      1     10.85        3.83
+      2      1.62        3.11
+  En los datos, el grupo más ancho lo es 6.7 veces más que el más estrecho.
+  En el dibujo, esa razón se ha comprimido a 1.3.
+
+Misma nube, distintas perplejidades:
+  perplejidad   5.0 -&gt; cociente de separaciones d(0,1)/d(1,2) = 0.907
+  perplejidad  15.0 -&gt; cociente de separaciones d(0,1)/d(1,2) = 0.787
+  perplejidad  30.0 -&gt; cociente de separaciones d(0,1)/d(1,2) = 0.530
+  perplejidad  80.0 -&gt; cociente de separaciones d(0,1)/d(1,2) = 0.234
+  El cociente REAL es 0.203; ninguna perplejidad lo reproduce,
+  y el valor que sale depende más de la perplejidad que de los datos.</pre>
+        </div>
+
+        <p>La KL baja de 14,59 a 0,948: el algoritmo funciona y converge. El salto brusco entre las iteraciones 50 y 100 es el final de la <em>exageración temprana</em>, un truco que multiplica las $p_{ij}$ por 4 durante las primeras iteraciones para que los grupos se separen antes de afinar los detalles.</p>
+
+        <h3>Advertencia 1: las distancias entre grupos no significan nada</h3>
+
+        <p>Los grupos 0 y 1 están a 10,13 unidades en los datos; los grupos 1 y 2, a 49,94, casi cinco veces más. En el dibujo salen a 12,25 y 25,91: <strong>solo el doble</strong>. Si t-SNE conservara distancias, los tres cocientes de la tabla serían iguales; van de 0,4335 a 1,2093, un factor 2,8. Medir con una regla sobre un dibujo de t-SNE para decir «este grupo está más cerca de aquel» no tiene fundamento.</p>
+
+        <h3>Advertencia 2: los tamaños de los grupos tampoco</h3>
+
+        <p>El grupo 1 es <strong>6,7 veces más ancho</strong> que los otros dos en los datos reales (radio 10,85 frente a 1,62). En el dibujo, los tres salen con radios 3,03, 3,83 y 3,11: la razón se ha comprimido a <strong>1,3</strong>. La causa es directa: la perplejidad hace que cada punto tenga los mismos vecinos efectivos independientemente de la densidad local, así que t-SNE <em>iguala densidades por diseño</em>. Un grupo que parece grande en el dibujo no lo es necesariamente.</p>
+
+        <h3>Advertencia 3: la perplejidad decide el resultado</h3>
+
+        <p>El cociente de separaciones $d(0,1)/d(1,2)$ vale 0,203 en los datos. Según la perplejidad, t-SNE lo dibuja como 0,907, 0,787, 0,530 o 0,234: <strong>varía casi por un factor 4</strong> sin que los datos hayan cambiado nada. Y no es que haya una perplejidad correcta que acierte: ninguna reproduce el 0,203. Lo que se ve en la imagen depende tanto del hiperparámetro como de los datos.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Cómo leer honestamente un t-SNE</div>
+          <p><strong>Sí se puede afirmar:</strong> «hay grupos separados» (si aparecen con varias perplejidades y varias semillas) y «estos puntos son vecinos de aquellos».</p>
+          <p><strong>No se puede afirmar:</strong> «el grupo A está más cerca de B que de C», «el grupo A es más grande/más disperso», «hay exactamente 5 grupos», ni nada sobre las posiciones absolutas o la orientación. Tampoco hay forma directa de proyectar un punto nuevo: t-SNE optimiza las coordenadas, no aprende una función.</p>
+        </div>
+
+        <h2 id="umap">UMAP: mismo espíritu, otros cimientos</h2>
+
+        <p>UMAP (McInnes, Healy y Melville, 2018) llega a un algoritmo parecido desde la topología algebraica. Modela los datos como un <em>conjunto simplicial difuso</em>: alrededor de cada punto define una pertenencia difusa a sus vecinos, con un radio adaptado a la densidad local —usando la distancia a su vecino más próximo—, y combina esas estructuras locales en una global.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>t-SNE</th><th>UMAP</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Fundamento</td><td>Probabilidades y divergencia KL</td><td>Conjuntos simpliciales difusos, entropía cruzada</td></tr>
+              <tr><td>Objetivo</td><td>$D_{\mathrm{KL}}(P\Vert Q)$: solo penaliza fuerte separar lo unido</td><td>Entropía cruzada: penaliza <em>los dos</em> errores, de ahí que conserve algo más de estructura global</td></tr>
+              <tr><td>Optimización</td><td>Gradiente sobre todos los pares, $O(n^2)$ (o Barnes-Hut, $O(n\log n)$)</td><td>Descenso estocástico con <em>muestreo negativo</em>, muy rápido</td></tr>
+              <tr><td>Parámetros</td><td>Perplejidad</td><td><code>n_neighbors</code> (local frente a global) y <code>min_dist</code> (cuánto se apelotona)</td></tr>
+              <tr><td>Datos nuevos</td><td>No, hay que rehacerlo</td><td>Sí, tiene <code>transform</code></td></tr>
+              <tr><td>Escala</td><td>Miles de puntos</td><td>Millones</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>UMAP conserva mejor la estructura global que t-SNE, pero <strong>las tres advertencias siguen aplicándose</strong>, solo que algo atenuadas. Las distancias en un UMAP tampoco son distancias, y sus parámetros también cambian el dibujo. La regla práctica es la misma: usarlo para <em>mirar</em>, nunca para <em>medir</em>, y validar cualquier hipótesis que sugiera con métodos que operen en el espacio original.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ No agrupes sobre un t-SNE o un UMAP</div>
+          <p>Es tentador: proyectas a 2D, ejecutas k-means sobre el dibujo y sale precioso. Pero acabas agrupando artefactos de la proyección tanto como estructura real, y el resultado depende de la perplejidad. Si necesitas reducir antes de agrupar, usa PCA —que es lineal, interpretable y no inventa vecindarios— y reserva t-SNE y UMAP para la visualización.</p>
+        </div>
+
+        <h2 id="familia">El mapa completo de la reducción de dimensión</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Método</th><th>Qué conserva</th><th>Lineal</th><th>Datos nuevos</th><th>Capítulo</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>PCA / SVD</td><td>Varianza global</td><td>Sí</td><td>Sí</td><td><a href="09-pca.html">9</a>, <a href="10-svd-y-ppca.html">10</a></td></tr>
+              <tr><td>NMF</td><td>Estructura aditiva</td><td>Sí</td><td>Con una optimización</td><td><a href="11-nmf-e-ica.html">11</a></td></tr>
+              <tr><td>ICA</td><td>Independencia</td><td>Sí</td><td>Sí</td><td><a href="11-nmf-e-ica.html">11</a></td></tr>
+              <tr><td>Kernel PCA</td><td>Varianza en $\mathcal{F}$</td><td>No</td><td>Sí</td><td>este</td></tr>
+              <tr><td>MDS clásico</td><td>Todas las distancias</td><td>Sí (si $D$ es euclídea)</td><td>No</td><td>este</td></tr>
+              <tr><td>Isomap</td><td>Distancias geodésicas</td><td>No</td><td>No</td><td>este</td></tr>
+              <tr><td>Eigenmaps laplacianos</td><td>Vecindad local</td><td>No</td><td>No</td><td><a href="07-clustering-espectral.html">7</a>, este</td></tr>
+              <tr><td>t-SNE</td><td>Vecindarios locales</td><td>No</td><td>No</td><td>este</td></tr>
+              <tr><td>UMAP</td><td>Vecindarios y algo de global</td><td>No</td><td>Sí</td><td>este</td></tr>
+              <tr><td>Autoencoder</td><td>Lo que decida la red</td><td>No</td><td>Sí</td><td><a href="13-autoencoders.html">13</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Fíjate en la fila de los eigenmaps laplacianos: es exactamente el cálculo del <a href="07-clustering-espectral.html">capítulo 7</a> —autovectores del laplaciano del grafo— usado como reducción de dimensión en lugar de como paso previo a k-means. El mismo objeto matemático, dos usos.</p>
+
+        <p>Y fíjate en la última fila. Todos los métodos de esta parte tienen una forma fija decidida de antemano: una proyección lineal, un kernel elegido a mano, un grafo de vecinos. La alternativa es <strong>aprender la transformación</strong>, sin decidir su forma, dejando que una red neuronal la descubra. Eso es la parte IV, y empieza en el <a href="13-autoencoders.html">capítulo 13</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># el rollo suizo: PCA, MDS clásico e Isomap</span>
+<span class="prompt">$</span> python code/12-manifold-tsne-umap/isomap_swissroll.py
+
+<span class="comment"># t-SNE completo y sus tres advertencias, medidas</span>
+<span class="prompt">$</span> python code/12-manifold-tsne-umap/tsne_desde_cero.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Sobre una variedad curva, la distancia que importa es la geodésica. Medido en el rollo suizo: hay pares de puntos 11 veces más cerca en línea recta que sobre la lámina.</li>
+            <li>MDS clásico con distancias euclídeas <em>es</em> PCA (verificado con diferencia 0,0000). Isomap cambia esas distancias por caminos mínimos en el grafo de vecinos y pasa de una correlación de 0,25 a 1,0000.</li>
+            <li>t-SNE convierte distancias en probabilidades, usa una $\sigma_i$ por punto fijada por la perplejidad y una t de Student en el mapa para resolver el apiñamiento; minimiza $D_{\mathrm{KL}}(P\Vert Q)$, cuya asimetría hace que conserve lo local y destroce lo global.</li>
+            <li>Medido: las distancias entre grupos se deforman por un factor 2,8; una diferencia real de anchura de 6,7× se comprime a 1,3×; y el cociente de separaciones varía de 0,907 a 0,234 solo cambiando la perplejidad, sin acercarse nunca al 0,203 real.</li>
+            <li>UMAP mejora la estructura global, escala mucho mejor y admite datos nuevos, pero las advertencias siguen valiendo.</li>
+            <li>Estas proyecciones son para mirar, no para medir. Si hay que agrupar tras reducir, usa PCA.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

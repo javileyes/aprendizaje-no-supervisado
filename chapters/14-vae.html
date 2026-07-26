@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>14. Autoencoders variacionales · No supervisado</title>
+  <meta name="description" content="El ELBO derivado desde la verosimilitud, el truco de reparametrización, la KL en forma cerrada y qué significa realmente el espacio latente." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="14">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte IV · Capítulo 14</span>
+        <h1>Autoencoders variacionales</h1>
+        <p class="lead">El autoencoder del capítulo anterior comprime bien y no sirve para nada más: su espacio latente está lleno de agujeros y no asigna probabilidades. El VAE arregla las dos cosas a la vez aplicando al autoencoder exactamente la misma maquinaria del ELBO que derivamos para EM en el <a href="04-gmm-y-em.html">capítulo 4</a>, con dos ideas nuevas —inferencia amortizada y el truco de reparametrización— que convirtieron una técnica de estadística bayesiana en algo entrenable con retropropagación.</p>
+
+        <h2 id="problema">El agujero del latente</h2>
+
+        <p>Entrena un autoencoder con 10 000 caras, toma un vector $z$ cualquiera y pásalo por el decodificador. Lo que sale casi nunca es una cara: es una mancha. Y sin embargo esos códigos <em>viven</em> en el mismo $\mathbb{R}^k$ que los de las caras reales.</p>
+
+        <p>La razón es que al autoencoder nadie le dijo dónde poner los códigos. Con tal de reconstruir bien, puede repartirlos como le convenga —tres islas aquí, un filamento allá— dejando la mayor parte del espacio sin visitar jamás. En esas regiones el decodificador nunca ha sido entrenado y su comportamiento es arbitrario.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>La solución del VAE es dejar de codificar cada dato en un <strong>punto</strong> y codificarlo en una <strong>nubecita</strong>: una distribución gaussiana. Como las nubes tienen anchura, se solapan y llenan el espacio; y como además se les obliga a parecerse todas a una $\mathcal{N}(0,I)$ común, el latente acaba siendo una región compacta, continua y bien poblada. Muestrear de ella produce datos válidos.</p>
+        </div>
+
+        <h2 id="modelo">El modelo y su verosimilitud intratable</h2>
+
+        <p>El modelo generativo es el de siempre, con una red en medio:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El modelo</div>
+          <p>$$ z \sim p(z) = \mathcal{N}(0, I_k), \qquad x \mid z \;\sim\; p_\theta(x\mid z) \quad\text{con parámetros dados por una red } g_\theta(z) $$</p>
+          <p>$$ p_\theta(x) \;=\; \int p(z)\, p_\theta(x\mid z)\, dz $$</p>
+          <p class="math-note">Compara con PPCA del <a href="10-svd-y-ppca.html">capítulo 10</a>: allí $x\mid z \sim \mathcal{N}(Wz+\mu, \sigma^2I)$, una función <em>lineal</em> de $z$. Aquí la media (o los logits) los produce una red neuronal arbitraria. Ese es el único cambio conceptual, y basta para que la integral deje de tener solución cerrada: hay que integrar sobre todo $\mathbb{R}^k$ una función que pasa por una red no lineal.</p>
+        </div>
+
+        <p>Sin $p_\theta(x)$ no hay máxima verosimilitud, y sin la posterior $p_\theta(z\mid x) = p_\theta(x\mid z)p(z)/p_\theta(x)$ tampoco hay paso E. Estamos exactamente en la situación del capítulo 4, pero peor: allí la posterior sí se podía calcular.</p>
+
+        <h2 id="elbo">El ELBO, otra vez</h2>
+
+        <p>La salida es la misma: si no sabes calcular la posterior, <strong>aproxímala</strong>. Introducimos una familia $q_\phi(z\mid x)$ y repetimos la descomposición del capítulo 4. Partiendo de la identidad $\log p_\theta(x) = \mathbb{E}_{q}[\log p_\theta(x)]$ —lícita porque $\log p_\theta(x)$ no depende de $z$— y escribiendo $p_\theta(x) = \frac{p_\theta(x,z)}{p_\theta(z\mid x)}$:</p>
+
+        <p>$$ \log p_\theta(x) = \mathbb{E}_{q_\phi}\!\left[\log\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\right] + \mathbb{E}_{q_\phi}\!\left[\log\frac{q_\phi(z\mid x)}{p_\theta(z\mid x)}\right] = \mathcal{L}(\theta,\phi;x) \;+\; D_{\mathrm{KL}}\big(q_\phi \,\Vert\, p_\theta(z\mid x)\big). $$</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El ELBO de un VAE</div>
+          <p>$$ \mathcal{L}(\theta,\phi;x) \;=\; \underbrace{\mathbb{E}_{q_\phi(z\mid x)}\big[\log p_\theta(x\mid z)\big]}_{\text{reconstrucción}} \;-\; \underbrace{D_{\mathrm{KL}}\big(q_\phi(z\mid x)\,\Vert\, p(z)\big)}_{\text{regularización}} $$</p>
+          <p class="math-note">La segunda igualdad sale de separar $\log p_\theta(x,z) = \log p_\theta(x\mid z) + \log p(z)$ y juntar $\log p(z) - \log q_\phi$ en la KL. Como $D_{\mathrm{KL}} \ge 0$, se cumple $\mathcal{L} \le \log p_\theta(x)$: es una cota inferior, y el hueco es lo mal que $q_\phi$ aproxima la posterior verdadera. <strong>Los dos términos tienen lectura directa</strong>: el primero pide reconstruir bien —es el autoencoder de siempre—, el segundo pide que los códigos se parezcan al prior, y es exactamente la pieza que le faltaba al capítulo 13.</p>
+        </div>
+
+        <h3>Inferencia amortizada</h3>
+
+        <p>En EM había una $q_i$ por cada dato. Con millones de datos eso es inviable, y además no serviría para un dato nuevo. La idea del VAE (Kingma y Welling, 2013) es <strong>amortizar</strong>: entrenar una única red, el codificador, que dado $x$ produzca los parámetros de $q_\phi(z\mid x)$.</p>
+
+        <p>$$ q_\phi(z\mid x) = \mathcal{N}\big(\mu_\phi(x),\; \operatorname{diag}(\sigma^2_\phi(x))\big) $$</p>
+
+        <p>El coste es que $q_\phi$ tiene que ser buena para <em>todos</em> los datos con los mismos pesos, así que el ajuste es peor que optimizando cada $q_i$ por separado. Esa pérdida tiene nombre —<em>brecha de amortización</em>— y se acepta a cambio de poder inferir en una sola pasada.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Por qué la red predice $\log\sigma^2$ y no $\sigma$</div>
+          <p>Una desviación típica debe ser positiva, y una capa lineal puede devolver cualquier cosa. Prediciendo el logaritmo de la varianza, la positividad sale gratis ($\sigma = e^{\ell/2} \gt 0$ siempre) y además el rango numérico es manejable. Es un detalle de implementación que aparece en todas las implementaciones y casi nunca se explica.</p>
+        </div>
+
+        <h2 id="reparametrizacion">El truco de reparametrización</h2>
+
+        <p>Queda un obstáculo serio. Para optimizar $\phi$ hay que derivar $\mathbb{E}_{q_\phi(z\mid x)}[\log p_\theta(x\mid z)]$ respecto de $\phi$, y $\phi$ está en la <em>distribución</em> sobre la que se toma la esperanza, no en el integrando. El estimador clásico para eso (REINFORCE) existe, pero tiene una varianza enorme y es inservible en la práctica.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Reparametrización</div>
+          <p>$$ z = \mu_\phi(x) + \sigma_\phi(x) \odot \varepsilon, \qquad \varepsilon \sim \mathcal{N}(0, I) $$</p>
+          <p class="math-note">Muestrear $z \sim \mathcal{N}(\mu,\sigma^2)$ es lo mismo que muestrear un $\varepsilon$ <em>independiente de los parámetros</em> y transformarlo. Con eso, la aleatoriedad se sale del camino del gradiente: la esperanza pasa a ser sobre $\varepsilon$, y $\mathbb{E}_\varepsilon[\nabla_\phi f(\mu_\phi + \sigma_\phi\varepsilon)]$ se estima con una sola muestra por dato. El gradiente atraviesa la operación de muestreo como si fuera una capa más.</p>
+        </div>
+
+        <p>Es, en una línea, lo que hizo entrenable a toda esta familia de modelos. El precio es que solo funciona con distribuciones que admiten esa forma —gaussianas, y poco más—; para latentes discretos hacen falta otros trucos (Gumbel-softmax, estimadores con línea base).</p>
+
+        <h3>La KL en forma cerrada</h3>
+
+        <p>El segundo término del ELBO no hace falta estimarlo: con $q = \mathcal{N}(\mu, \sigma^2I)$ y $p = \mathcal{N}(0,I)$ se integra exactamente. Para una dimensión,</p>
+
+        <p>$$ \log\frac{q(z)}{p(z)} = -\frac{(z-\mu)^2}{2\sigma^2} - \log\sigma + \frac{z^2}{2}, $$</p>
+
+        <p>y tomando esperanza bajo $q$ —donde $\mathbb{E}[(z-\mu)^2] = \sigma^2$ y $\mathbb{E}[z^2] = \mu^2+\sigma^2$— queda $\tfrac12(\mu^2 + \sigma^2 - 1 - \log\sigma^2)$. Sumando sobre las $k$ dimensiones:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ KL entre dos gaussianas diagonales</div>
+          <p>$$ D_{\mathrm{KL}}\big(\mathcal{N}(\mu,\sigma^2 I) \,\Vert\, \mathcal{N}(0,I)\big) \;=\; -\frac{1}{2}\sum_{l=1}^{k}\Big(1 + \log\sigma_l^2 - \mu_l^2 - \sigma_l^2\Big) $$</p>
+          <p class="math-note">Vale $0$ exactamente cuando $\mu = 0$ y $\sigma = 1$, es decir, cuando el codificador ignora el dato y devuelve el prior. Guarda ese hecho: es la definición del <em>colapso posterior</em>, que mediremos al final del capítulo.</p>
+        </div>
+
+        <p>Juntando todo, la función que se minimiza por lote es</p>
+
+        <p>$$ -\mathcal{L} \;=\; \underbrace{-\log p_\theta(x\mid z)}_{\text{p. ej. entropía cruzada binaria}} \;+\; \beta\cdot\left(-\frac{1}{2}\sum_l \big(1 + \log\sigma_l^2 - \mu_l^2 - \sigma_l^2\big)\right), \qquad z = \mu + \sigma\odot\varepsilon . $$</p>
+
+        <p>Con $\beta = 1$ es el VAE original; con $\beta$ libre, el <em>$\beta$-VAE</em> (Higgins, 2017), que subiendo $\beta$ busca representaciones más desenredadas a costa de peor reconstrucción.</p>
+
+        <h2 id="ejemplo">Un VAE en numpy, con los gradientes a mano</h2>
+
+        <p>Nada de autodiferenciación: el programa deriva la retropropagación completa a través del muestreo, la verifica contra diferencias finitas y luego entrena. Los datos son imágenes binarias de 8×8 formadas por trazos rectos.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">vae_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+LADO, K, H = 8, 2, 64
+D = LADO * LADO
+
+
+def genera(n, r):
+    """Imágenes binarias: 1 o 2 trazos rectos (filas o columnas) por imagen."""
+    X = np.zeros((n, LADO, LADO), dtype=float)
+    for i in range(n):
+        for _ in range(r.integers(1, 3)):
+            if r.random() &lt; 0.5:
+                f = r.integers(0, LADO)
+                X[i, f, :] = 1.0
+            else:
+                c = r.integers(0, LADO)
+                X[i, :, c] = 1.0
+    return X.reshape(n, D)
+
+
+X = genera(3000, rng)
+X_te = genera(600, np.random.default_rng(99))
+print(f"{len(X)} imágenes de {LADO}x{LADO}; píxeles encendidos: {X.mean():.1%}")
+
+
+def sigmoide(u):
+    return 1.0 / (1.0 + np.exp(-np.clip(u, -30, 30)))
+
+
+def init(semilla=0):
+    r = np.random.default_rng(semilla)
+    def W(a, b):
+        return r.normal(scale=np.sqrt(2.0 / (a + b)), size=(a, b))
+    return dict(W1=W(D, H), b1=np.zeros(H), Wm=W(H, K), bm=np.zeros(K),
+                Wv=W(H, K), bv=np.zeros(K), W2=W(K, H), b2=np.zeros(H),
+                W3=W(H, D), b3=np.zeros(D))
+
+
+def adelante(p, x, eps):
+    h1 = np.tanh(x @ p["W1"] + p["b1"])
+    mu = h1 @ p["Wm"] + p["bm"]
+    lv = np.clip(h1 @ p["Wv"] + p["bv"], -8, 8)      # log sigma^2
+    sd = np.exp(0.5 * lv)
+    z = mu + sd * eps                                # truco de reparametrización
+    h2 = np.tanh(z @ p["W2"] + p["b2"])
+    logits = h2 @ p["W3"] + p["b3"]
+    return h1, mu, lv, sd, z, h2, logits
+
+
+def perdida_y_grad(p, x, eps, beta=1.0):
+    n = len(x)
+    h1, mu, lv, sd, z, h2, logits = adelante(p, x, eps)
+    xg = sigmoide(logits)
+    # --- reconstrucción: -log p(x|z) con verosimilitud Bernoulli ---
+    rec = np.maximum(logits, 0) - logits * x + np.log1p(np.exp(-np.abs(logits)))
+    rec = rec.sum(axis=1)
+    # --- KL(q||p) en forma cerrada para gaussianas diagonales ---
+    kl = -0.5 * (1 + lv - mu ** 2 - np.exp(lv)).sum(axis=1)
+    L = (rec + beta * kl).mean()
+
+    # ---------------- retropropagación ----------------
+    g = {}
+    dlogits = (xg - x) / n                            # d(rec)/d(logits)
+    g["W3"] = h2.T @ dlogits
+    g["b3"] = dlogits.sum(axis=0)
+    dh2 = dlogits @ p["W3"].T
+    dpre2 = dh2 * (1 - h2 ** 2)
+    g["W2"] = z.T @ dpre2
+    g["b2"] = dpre2.sum(axis=0)
+    dz = dpre2 @ p["W2"].T
+    # gradientes que llegan a mu y a lv: por el decodificador y por la KL
+    dmu = dz + beta * mu / n
+    dlv = dz * 0.5 * sd * eps + beta * 0.5 * (np.exp(lv) - 1) / n
+    g["Wm"] = h1.T @ dmu
+    g["bm"] = dmu.sum(axis=0)
+    g["Wv"] = h1.T @ dlv
+    g["bv"] = dlv.sum(axis=0)
+    dh1 = dmu @ p["Wm"].T + dlv @ p["Wv"].T
+    dpre1 = dh1 * (1 - h1 ** 2)
+    g["W1"] = x.T @ dpre1
+    g["b1"] = dpre1.sum(axis=0)
+    return L, g, rec.mean(), kl.mean()
+
+
+# ---------------- 1) Verificación del gradiente ----------------
+p = init(0)
+xb = X[:8]
+epsb = rng.normal(size=(8, K))
+L0, g0, _, _ = perdida_y_grad(p, xb, epsb)
+err = []
+for clave in ["W1", "Wm", "Wv", "W2", "W3"]:
+    A = p[clave]
+    for _ in range(3):
+        i, j = rng.integers(A.shape[0]), rng.integers(A.shape[1])
+        o = A[i, j]
+        A[i, j] = o + 1e-6
+        Lp = perdida_y_grad(p, xb, epsb)[0]
+        A[i, j] = o - 1e-6
+        Lm = perdida_y_grad(p, xb, epsb)[0]
+        A[i, j] = o
+        num = (Lp - Lm) / 2e-6
+        err.append(abs(num - g0[clave][i, j]) / max(abs(num), 1e-12))
+print(f"\n1) Gradiente analítico vs. numérico: error relativo máximo {max(err):.2e}")
+print("   (por debajo de 1e-5 la derivación es correcta)")
+
+
+def entrena(beta, epocas=60, lote=100, lr=2e-3, semilla=0):
+    p = init(semilla)
+    r = np.random.default_rng(semilla + 1)
+    m = {k_: np.zeros_like(v) for k_, v in p.items()}
+    v = {k_: np.zeros_like(v_) for k_, v_ in p.items()}
+    paso, hist = 0, []
+    for ep in range(epocas):
+        orden = r.permutation(len(X))
+        for i in range(0, len(X), lote):
+            xb = X[orden[i:i + lote]]
+            L, g, _, _ = perdida_y_grad(p, xb, r.normal(size=(len(xb), K)), beta)
+            paso += 1
+            for k_ in p:
+                m[k_] = 0.9 * m[k_] + 0.1 * g[k_]
+                v[k_] = 0.999 * v[k_] + 0.001 * g[k_] ** 2
+                p[k_] -= lr * (m[k_] / (1 - 0.9 ** paso)) / (
+                    np.sqrt(v[k_] / (1 - 0.999 ** paso)) + 1e-8)
+        if ep % 10 == 0 or ep == epocas - 1:
+            _, _, rec, kl = perdida_y_grad(p, X_te, r.normal(size=(len(X_te), K)), beta)
+            hist.append((ep, rec, kl, rec + kl))
+    return p, hist
+
+
+# ---------------- 2) Entrenamiento con beta = 1 ----------------
+print("\n2) Entrenamiento con beta = 1")
+print(f"{'época':&gt;7} {'reconstr.':&gt;11} {'KL':&gt;9} {'-ELBO':&gt;10}")
+p1, hist1 = entrena(1.0)
+for ep, rec, kl, tot in hist1:
+    print(f"{ep:7d} {rec:11.4f} {kl:9.4f} {tot:10.4f}")
+
+# ¿Sirve el prior para generar? Muestreamos z ~ N(0,I) y decodificamos.
+r = np.random.default_rng(7)
+z_prior = r.normal(size=(600, K))
+h2 = np.tanh(z_prior @ p1["W2"] + p1["b2"])
+muestras = sigmoide(h2 @ p1["W3"] + p1["b3"])
+print(f"\n   Muestreando z ~ N(0,I) y decodificando:")
+print(f"   fracción media de píxeles encendidos: generado {muestras.mean():.3f} "
+      f"| datos reales {X.mean():.3f}")
+# Un trazo recto hace que la varianza POR FILAS sea alta. Lo medimos.
+def estructura(A):
+    im = A.reshape(-1, LADO, LADO)
+    return im.mean(axis=2).std(axis=1).mean()
+print(f"   estructura (dispersión entre filas): generado {estructura(muestras):.3f} "
+      f"| real {estructura(X):.3f} | ruido puro {estructura(r.random((600, D))):.3f}")
+
+# ---------------- 3) Colapso posterior ----------------
+print("\n3) Colapso posterior: qué pasa al subir beta")
+print(f"{'beta':&gt;6} {'reconstr.':&gt;11} {'KL':&gt;9} {'unidades activas':&gt;18}")
+for beta in [0.2, 1.0, 4.0, 20.0]:
+    pb, hb = entrena(beta, epocas=40)
+    h1 = np.tanh(X_te @ pb["W1"] + pb["b1"])
+    mu = h1 @ pb["Wm"] + pb["bm"]
+    lv = np.clip(h1 @ pb["Wv"] + pb["bv"], -8, 8)
+    kl_por_dim = (-0.5 * (1 + lv - mu ** 2 - np.exp(lv))).mean(axis=0)
+    activas = int((kl_por_dim &gt; 0.01).sum())
+    print(f"{beta:6.2f} {hb[-1][1]:11.4f} {hb[-1][2]:9.4f} {activas:15d}/{K}")
+print("   Con beta grande, la KL se hunde: q(z|x) se pega al prior, deja de")
+print("   depender de x y el latente no transporta NADA. El decodificador")
+print("   responde siempre lo mismo y la reconstrucción se degrada.")
+
+fig, ax = plt.subplots(2, 4, figsize=(13, 6))
+for a, i in zip(ax[0], range(4)):
+    a.imshow(X_te[i].reshape(LADO, LADO), cmap="magma")
+    a.set_title("real", fontsize=10)
+for a, i in zip(ax[1], range(4)):
+    a.imshow(muestras[i].reshape(LADO, LADO), cmap="magma")
+    a.set_title("generado del prior", fontsize=10)
+for fila in ax:
+    for a in fila:
+        a.set_xticks([])
+        a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>3000 imágenes de 8x8; píxeles encendidos: 17.9%
+
+1) Gradiente analítico vs. numérico: error relativo máximo 9.26e-08
+   (por debajo de 1e-5 la derivación es correcta)
+
+2) Entrenamiento con beta = 1
+  época   reconstr.        KL      -ELBO
+      0     32.6583    2.5775    35.2358
+     10     27.4003    1.6250    29.0253
+     20     25.6758    2.0545    27.7303
+     30     23.8258    2.3953    26.2211
+     40     21.5272    2.8645    24.3917
+     50     19.3752    3.2789    22.6541
+     59     17.7535    3.5807    21.3342
+
+   Muestreando z ~ N(0,I) y decodificando:
+   fracción media de píxeles encendidos: generado 0.175 | datos reales 0.179
+   estructura (dispersión entre filas): generado 0.131 | real 0.207 | ruido puro 0.092
+
+3) Colapso posterior: qué pasa al subir beta
+  beta   reconstr.        KL   unidades activas
+  0.20     17.8907    6.5648               2/2
+  1.00     21.5483    2.9212               2/2
+  4.00     30.0784    0.1525               2/2
+ 20.00     30.6631    0.0001               0/2
+   Con beta grande, la KL se hunde: q(z|x) se pega al prior, deja de
+   depender de x y el latente no transporta NADA. El decodificador
+   responde siempre lo mismo y la reconstrucción se degrada.</pre>
+        </div>
+
+        <p>El primer bloque es la garantía de que todo lo derivado arriba está bien implementado: error relativo máximo $9{,}26\times10^{-8}$ entre el gradiente analítico y el numérico, incluidas las derivadas que atraviesan el muestreo reparametrizado.</p>
+
+        <p>El segundo enseña el tira y afloja característico. El $-\mathcal{L}$ total baja de 35,24 a 21,33, pero la reconstrucción baja mucho (de 32,66 a 17,75) <em>mientras la KL sube</em> (de 2,58 a 3,58). Es lo esperado: al principio el codificador no usa el latente —KL pequeña— y a medida que aprende a usarlo tiene que «pagar» en KL lo que gana en reconstrucción. El ELBO es la contabilidad de ese intercambio.</p>
+
+        <p>Y luego la prueba que un autoencoder normal no puede pasar: se muestrea $z\sim\mathcal{N}(0,I)$, se decodifica, y lo que sale tiene una densidad de píxeles de <strong>0,175 frente a 0,179</strong> de los datos reales, con una estructura de 0,131 —entre el 0,207 de los datos y el 0,092 del ruido puro—. El decodificador ha aprendido a responder en <em>todo</em> el espacio latente, no solo donde cayeron los datos.</p>
+
+        <h2 id="colapso">El colapso posterior</h2>
+
+        <p>El tercer bloque es la patología más importante del modelo y conviene entenderla bien. Recuerda que la KL vale cero exactamente cuando $q_\phi(z\mid x) = \mathcal{N}(0,I)$ para todo $x$. Si el término de KL pesa demasiado, el optimizador descubre que la forma barata de reducirlo es <strong>ignorar el dato</strong>: el codificador devuelve siempre el prior y la KL se anula. El latente deja de transportar información y el decodificador aprende a generar la media de los datos y poco más.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>$\beta$</th><th>Reconstrucción</th><th>KL</th><th>Unidades activas</th><th>Diagnóstico</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>0,2</td><td>17,89</td><td>6,56</td><td>2/2</td><td>El latente se usa a fondo; casi un autoencoder normal.</td></tr>
+              <tr><td>1,0</td><td>21,55</td><td>2,92</td><td>2/2</td><td>Equilibrio: el VAE original.</td></tr>
+              <tr><td>4,0</td><td>30,08</td><td>0,15</td><td>2/2</td><td>Al borde: la KL casi se ha extinguido.</td></tr>
+              <tr><td>20,0</td><td>30,66</td><td>0,0001</td><td><strong>0/2</strong></td><td><strong>Colapso total.</strong> El latente no lleva nada.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Con $\beta = 20$ la KL cae a $10^{-4}$, ninguna de las dos dimensiones latentes está activa y la reconstrucción se estanca en 30,66, un 73 % peor que con $\beta=0{,}2$. La cuenta de «unidades activas» —dimensiones cuya KL individual supera un umbral pequeño— es el diagnóstico estándar, y en modelos grandes es habitual encontrar que solo un puñado de las 256 dimensiones latentes están vivas.</p>
+
+        <p>Los remedios habituales: <em>KL annealing</em> (empezar con $\beta=0$ y subirlo poco a poco, para que el modelo aprenda primero a usar el latente), <em>free bits</em> (no penalizar la KL por debajo de un mínimo en cada dimensión) y debilitar el decodificador para que no pueda apañárselas sin $z$.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En la lista de betas del apartado 3, sustituye <code>[0.2, 1.0, 4.0, 20.0]</code> por <code>[0.05, 0.2, 1.0, 4.0]</code>. Verás que con $\beta = 0{,}05$ la reconstrucción baja a <strong>16,91</strong> y la KL se dispara a <strong>13,71</strong>: el modelo se acerca a un autoencoder normal, con un latente muy informativo pero mal repartido —codificar tanta información cuesta muchos nats de divergencia respecto al prior—. Es el otro extremo del mismo eje, y explica por qué $\beta$ no se puede elegir mirando solo la reconstrucción.</p>
+        </div>
+
+        <h2 id="torch">VAE frente a autoencoder, con PyTorch</h2>
+
+        <p>Con más capacidad se puede comparar de forma limpia lo que distingue a los dos modelos. Este bloque no se ejecuta en el navegador.</p>
+
+        <div class="code-example">
+          <div class="code-header">
+            <span class="file-name">vae_torch.py</span>
+            <div class="code-actions">
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+torch.manual_seed(0)
+rng = np.random.default_rng(0)
+LADO, D, K = 12, 144, 8
+
+
+def genera(n, r):
+    X = np.zeros((n, LADO, LADO), dtype=np.float32)
+    for i in range(n):
+        for _ in range(r.integers(1, 4)):
+            if r.random() &lt; 0.5:
+                X[i, r.integers(0, LADO), :] = 1.0
+            else:
+                X[i, :, r.integers(0, LADO)] = 1.0
+    return torch.tensor(X.reshape(n, D))
+
+
+X_tr = genera(6000, rng)
+X_te = genera(1000, np.random.default_rng(5))
+print(f"Entrenamiento {tuple(X_tr.shape)}; píxeles encendidos {X_tr.mean():.1%}")
+
+
+class VAE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.enc = nn.Sequential(nn.Linear(D, 256), nn.ReLU())
+        self.mu = nn.Linear(256, K)
+        self.lv = nn.Linear(256, K)
+        self.dec = nn.Sequential(nn.Linear(K, 256), nn.ReLU(), nn.Linear(256, D))
+
+    def forward(self, x):
+        h = self.enc(x)
+        mu, lv = self.mu(h), self.lv(h).clamp(-8, 8)
+        z = mu + torch.exp(0.5 * lv) * torch.randn_like(mu)   # reparametrización
+        return self.dec(z), mu, lv
+
+
+class AE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.enc = nn.Sequential(nn.Linear(D, 256), nn.ReLU(), nn.Linear(256, K))
+        self.dec = nn.Sequential(nn.Linear(K, 256), nn.ReLU(), nn.Linear(256, D))
+
+    def forward(self, x):
+        z = self.enc(x)
+        return self.dec(z), z, None
+
+
+def entrena(modelo, es_vae, epocas=60, lote=128):
+    opt = torch.optim.Adam(modelo.parameters(), lr=1e-3)
+    for _ in range(epocas):
+        perm = torch.randperm(len(X_tr))
+        for i in range(0, len(X_tr), lote):
+            xb = X_tr[perm[i:i + lote]]
+            logits, mu, lv = modelo(xb)
+            rec = F.binary_cross_entropy_with_logits(logits, xb, reduction="sum") / len(xb)
+            kl = (-0.5 * (1 + lv - mu ** 2 - lv.exp()).sum(1)).mean() if es_vae else 0.0
+            opt.zero_grad()
+            (rec + kl).backward()
+            opt.step()
+    return modelo
+
+
+vae = entrena(VAE(), True)
+ae = entrena(AE(), False)
+
+
+@torch.no_grad()
+def evalua(modelo, es_vae):
+    logits, mu, lv = modelo(X_te)
+    rec = F.binary_cross_entropy_with_logits(logits, X_te, reduction="sum") / len(X_te)
+    kl = (-0.5 * (1 + lv - mu ** 2 - lv.exp()).sum(1)).mean().item() if es_vae else 0.0
+    return rec.item(), kl
+
+
+for nombre, m, es in [("VAE", vae, True), ("autoencoder", ae, False)]:
+    rec, kl = evalua(m, es)
+    print(f"{nombre:12s} reconstrucción {rec:8.3f}  KL {kl:7.3f}")
+
+
+# --- A) Muestrear del prior ---
+@torch.no_grad()
+def muestrea(modelo, n=1000):
+    z = torch.randn(n, K)
+    return torch.sigmoid(modelo.dec(z))
+
+
+def estructura(A):
+    im = A.reshape(-1, LADO, LADO)
+    return im.mean(dim=2).std(dim=1).mean().item()
+
+
+@torch.no_grad()
+def dist_al_dato_mas_cercano(A):
+    """Cuánto se parece cada imagen generada al dato REAL más próximo."""
+    d = torch.cdist(A, X_te)
+    return d.min(dim=1).values.mean().item()
+
+
+print(f"\nA) Muestreo del prior z ~ N(0,I)")
+print(f"{'':14} {'píxeles ON':&gt;12} {'estructura':&gt;12} {'dist. al dato real':&gt;20}")
+otros = genera(1000, np.random.default_rng(77))
+print(f"{'datos reales':14} {X_te.mean().item():12.3f} {estructura(X_te):12.3f} "
+      f"{dist_al_dato_mas_cercano(otros):20.3f}")
+for nombre, m in [("VAE", vae), ("autoencoder", ae)]:
+    S = muestrea(m)
+    print(f"{nombre:14} {S.mean().item():12.3f} {estructura(S):12.3f} "
+          f"{dist_al_dato_mas_cercano(S):20.3f}")
+print("   'estructura' mide la dispersión entre filas: alta si hay trazos, baja si")
+print("   la imagen es una mancha. La última columna es la distancia a la imagen")
+print("   REAL más parecida: la fila de arriba es la referencia (datos de verdad).")
+
+
+# --- B) Interpolar entre dos datos ---
+@torch.no_grad()
+def interpola(modelo, es_vae, pasos=9):
+    x0, x1 = X_te[0:1], X_te[1:2]
+    if es_vae:
+        z0 = modelo.mu(modelo.enc(x0))
+        z1 = modelo.mu(modelo.enc(x1))
+    else:
+        z0, z1 = modelo.enc(x0), modelo.enc(x1)
+    alfas = torch.linspace(0, 1, pasos).unsqueeze(1)
+    Z = (1 - alfas) * z0 + alfas * z1
+    return torch.sigmoid(modelo.dec(Z))
+
+
+print(f"\nB) Interpolación entre los códigos de dos datos (9 pasos)")
+print(f"{'':14} {'dist. media al dato real más próximo':&gt;38}")
+for nombre, m, es in [("VAE", vae, True), ("autoencoder", ae, False)]:
+    C = interpola(m, es)
+    print(f"{nombre:14} {dist_al_dato_mas_cercano(C):38.3f}")
+print("   Más baja = el camino entre dos datos pasa por imágenes plausibles.")
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Entrenamiento (6000, 144); píxeles encendidos 15.8%
+VAE          reconstrucción    7.321  KL  11.490
+autoencoder  reconstrucción    4.963  KL   0.000
+
+A) Muestreo del prior z ~ N(0,I)
+                 píxeles ON   estructura   dist. al dato real
+datos reales          0.158        0.221                1.179
+VAE                   0.194        0.215                2.550
+autoencoder           0.296        0.194                3.537
+   'estructura' mide la dispersión entre filas: alta si hay trazos, baja si
+   la imagen es una mancha. La última columna es la distancia a la imagen
+   REAL más parecida: la fila de arriba es la referencia (datos de verdad).
+
+B) Interpolación entre los códigos de dos datos (9 pasos)
+                 dist. media al dato real más próximo
+VAE                                             0.838
+autoencoder                                     2.261
+   Más baja = el camino entre dos datos pasa por imágenes plausibles.</pre>
+        </div>
+
+        <p>La primera línea establece el precio: el autoencoder reconstruye <strong>mejor</strong> (4,96 frente a 7,32). No es una sorpresa, es el teorema: el VAE está optimizando una cota inferior de la verosimilitud, no el error de reconstrucción, y paga la regularización.</p>
+
+        <p>Lo que compra a cambio está en las dos pruebas. Al muestrear del prior, las imágenes del VAE tienen una estructura de 0,215 —casi idéntica al 0,221 de los datos reales— frente al 0,194 del autoencoder, y sobre todo quedan a distancia <strong>2,550</strong> del dato real más parecido, contra 3,537 del autoencoder (la referencia, entre datos reales distintos, es 1,179).</p>
+
+        <p>La prueba de la interpolación es la más clara: recorriendo el segmento entre los códigos de dos imágenes, el camino del VAE se mantiene a distancia media <strong>0,838</strong> de datos reales, mientras que el del autoencoder se va a <strong>2,261</strong>, casi tres veces más lejos. El latente del VAE es un espacio en el que uno puede <em>moverse</em>; el del autoencoder, un conjunto de islas.</p>
+
+        <h2 id="familia">Dónde encaja el VAE</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>PPCA (<a href="10-svd-y-ppca.html">cap. 10</a>)</th><th>Autoencoder (<a href="13-autoencoders.html">cap. 13</a>)</th><th>VAE</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>$p(x\mid z)$</td><td>Lineal gaussiana</td><td>—</td><td>Red neuronal</td></tr>
+              <tr><td>Inferencia</td><td>Posterior exacta</td><td>Determinista, sin modelo</td><td>Aproximada y amortizada</td></tr>
+              <tr><td>Optimización</td><td>Cerrada o EM</td><td>Gradiente</td><td>Gradiente sobre el ELBO</td></tr>
+              <tr><td>¿Genera?</td><td>Sí</td><td>No</td><td>Sí</td></tr>
+              <tr><td>¿Densidad?</td><td>Exacta</td><td>No</td><td>Cota inferior</td></tr>
+              <tr><td>Patología</td><td>Covarianzas singulares</td><td>Latente con agujeros</td><td>Colapso posterior</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Visto así, <strong>un VAE es un PPCA no lineal con inferencia aproximada</strong>, y EM es lo que se convierte en descenso de gradiente cuando el paso E deja de tener solución cerrada. La misma idea, tres niveles de generalidad.</p>
+
+        <p>Conviene decir también lo que el VAE no es: el campeón de la generación. Sus muestras son notoriamente borrosas, porque la verosimilitud gaussiana o Bernoulli independiente por píxel penaliza poco el promediado, y los modelos de difusión y los autorregresivos le ganan con claridad. Su valor hoy está en la <em>representación</em> —un latente continuo, estructurado y con incertidumbre— y como componente de sistemas mayores: los modelos de difusión latente, por ejemplo, generan dentro del espacio de un autoencoder.</p>
+
+        <p>Nos queda una pregunta de la parte II sin resolver en este contexto: si el latente es tan bueno, ¿por qué no agrupar en él? Se puede, y hacerlo bien exige más cuidado del que parece. Es el <a href="15-deep-clustering.html">capítulo 15</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># VAE en numpy con gradientes derivados a mano</span>
+<span class="prompt">$</span> python code/14-vae/vae_desde_cero.py
+
+<span class="comment"># VAE frente a autoencoder: muestreo e interpolación (solo terminal)</span>
+<span class="prompt">$</span> pip install torch
+<span class="prompt">$</span> python code/14-vae/vae_torch.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>$p_\theta(x) = \int p(z)p_\theta(x\mid z)dz$ es intratable con una red en medio, así que se optimiza el ELBO: reconstrucción menos $D_{\mathrm{KL}}(q_\phi(z\mid x)\Vert p(z))$.</li>
+            <li>Inferencia amortizada: una sola red produce $\mu_\phi(x)$ y $\log\sigma^2_\phi(x)$ para cualquier dato, incluidos los nuevos.</li>
+            <li>El truco de reparametrización, $z = \mu + \sigma\odot\varepsilon$, saca la aleatoriedad del camino del gradiente y es lo que hace el modelo entrenable. Verificado aquí con error $9{,}26\times10^{-8}$ frente a diferencias finitas.</li>
+            <li>La KL contra $\mathcal{N}(0,I)$ tiene forma cerrada, $-\frac12\sum_l(1+\log\sigma_l^2-\mu_l^2-\sigma_l^2)$, y vale cero justo cuando el codificador ignora el dato.</li>
+            <li>Colapso posterior medido: con $\beta=20$, KL $=10^{-4}$, 0 de 2 unidades activas y reconstrucción un 73 % peor. Se remedia con <em>annealing</em>, <em>free bits</em> o un decodificador más débil.</li>
+            <li>El precio frente a un autoencoder normal es reconstruir peor (7,32 frente a 4,96); la ganancia es un latente por el que se puede caminar: la interpolación se mantiene a distancia 0,838 de datos reales frente a 2,261.</li>
+            <li>Un VAE es un PPCA no lineal con inferencia aproximada. Su fuerte es la representación, no la calidad de las muestras.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

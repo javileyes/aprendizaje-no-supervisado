@@ -1,0 +1,13 @@
+# === Dependencias del manual ===
+# Instálalas con:  pip install -r requirements.txt
+
+# --- Núcleo: usado por casi todos los ejemplos (y por los del navegador) ---
+numpy>=1.26
+matplotlib>=3.7
+
+# --- Descomenta lo que use tu manual ---
+torch>=2.1            # Solo para los ejemplos *_torch.py (terminal); el navegador no los ejecuta
+# gymnasium>=0.29     # Entornos de RL
+# scipy>=1.11
+# pandas>=2.0
+# networkx>=3.0

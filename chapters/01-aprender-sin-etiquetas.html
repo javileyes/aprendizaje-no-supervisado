@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1. Aprender sin etiquetas · No supervisado</title>
+  <meta name="description" content="Qué significa aprender sin supervisión, las tres tareas canónicas (densidad, estructura, representación) y por qué no hay una respuesta correcta." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="1">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte I · Capítulo 1</span>
+        <h1>Aprender sin etiquetas</h1>
+        <p class="lead">En el aprendizaje supervisado alguien ha pasado antes que tú poniendo nombres. Aquí no hay nadie. Solo hay una nube de puntos y la sospecha de que no está repartida al azar. Este capítulo explica qué se puede aprender de esa sospecha, qué optimiza realmente un algoritmo no supervisado, y por qué la pregunta «¿cuál es la respuesta correcta?» está mal planteada.</p>
+
+        <h2 id="idea">Un botánico sin nombres</h2>
+
+        <p>Imagina que te dejan en una isla con diez mil plantas y ningún libro. Nadie te va a decir cuáles son rosas y cuáles margaritas, porque en esta isla esas palabras no existen. Y sin embargo, en una tarde, empezarás a hacer cosas útiles: dirás que <em>estas</em> de aquí se parecen entre sí, que <em>aquella</em> es rarísima y no se parece a nada, que da igual medir el largo de la hoja y el ancho porque en esta isla van siempre juntos, y que en el fondo casi todo se resume en «plantas de sombra» y «plantas de sol».</p>
+
+        <p>Acabas de hacer, por ese orden, clústering, detección de anomalías, reducción de dimensión y aprendizaje de representación. No has necesitado ni una etiqueta. Has necesitado otra cosa: la suposición de que las plantas parecidas se parecen <em>por algún motivo</em>, y de que ese motivo está escrito en las medidas que tomaste.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>El aprendizaje supervisado pregunta «¿qué etiqueta le corresponde a este dato?». El no supervisado pregunta algo anterior y más ambicioso: <strong>«¿cómo están repartidos los datos?»</strong>. Si conoces el reparto, la etiqueta —cuando llegue— será casi un detalle: bastará con nombrar los grupos que ya habías encontrado.</p>
+        </div>
+
+        <p>La diferencia se puede decir con precisión. En supervisado tienes pares $(x_i, y_i)$ y persigues la distribución condicional $p(y \mid x)$: hay una diana. Aquí solo tienes $x_1, \dots, x_n$, que suponemos extraídos de forma independiente de una densidad desconocida $p^\star(x)$ sobre $\mathbb{R}^d$. El único objeto que existe es $p^\star$, y todo lo que se hace en este manual es una manera distinta de agarrarlo.</p>
+
+        <h2 id="tres-preguntas">Las tres preguntas que se le hacen a una nube</h2>
+
+        <p>Casi todo el aprendizaje no supervisado se deja clasificar en tres preguntas sobre esa densidad desconocida. No son tres campos aislados: son tres formas de mirar lo mismo, y el manual va a saltar entre ellas continuamente.</p>
+
+        <figure class="figure">
+          <svg viewBox="0 0 720 250" width="100%" role="img" aria-label="Diagrama de las tres preguntas: densidad, estructura y representación">
+            <rect x="10" y="30" width="200" height="180" rx="12" fill="none" stroke="#5b8def" stroke-width="2"/>
+            <rect x="260" y="30" width="200" height="180" rx="12" fill="none" stroke="#43c59e" stroke-width="2"/>
+            <rect x="510" y="30" width="200" height="180" rx="12" fill="none" stroke="#e2b53d" stroke-width="2"/>
+
+            <text x="110" y="20" text-anchor="middle" font-size="14" font-weight="700" fill="#5b8def">1 · DENSIDAD</text>
+            <text x="360" y="20" text-anchor="middle" font-size="14" font-weight="700" fill="#43c59e">2 · ESTRUCTURA</text>
+            <text x="610" y="20" text-anchor="middle" font-size="14" font-weight="700" fill="#e2b53d">3 · REPRESENTACIÓN</text>
+
+            <ellipse cx="80" cy="110" rx="45" ry="32" fill="#5b8def" opacity="0.15"/>
+            <ellipse cx="80" cy="110" rx="26" ry="18" fill="#5b8def" opacity="0.32"/>
+            <ellipse cx="152" cy="152" rx="32" ry="24" fill="#5b8def" opacity="0.15"/>
+            <ellipse cx="152" cy="152" rx="16" ry="12" fill="#5b8def" opacity="0.32"/>
+            <text x="110" y="196" text-anchor="middle" font-size="12" fill="currentColor">¿dónde hay masa?</text>
+
+            <circle cx="310" cy="90" r="5" fill="#43c59e"/><circle cx="326" cy="102" r="5" fill="#43c59e"/>
+            <circle cx="300" cy="110" r="5" fill="#43c59e"/><circle cx="322" cy="80" r="5" fill="#43c59e"/>
+            <circle cx="400" cy="150" r="5" fill="#8b5cf6"/><circle cx="418" cy="140" r="5" fill="#8b5cf6"/>
+            <circle cx="405" cy="128" r="5" fill="#8b5cf6"/><circle cx="424" cy="160" r="5" fill="#8b5cf6"/>
+            <circle cx="372" cy="62" r="5" fill="#ef476f"/>
+            <text x="360" y="196" text-anchor="middle" font-size="12" fill="currentColor">¿qué se agrupa con qué?</text>
+
+            <line x1="540" y1="180" x2="680" y2="70" stroke="#e2b53d" stroke-width="2.5"/>
+            <circle cx="565" cy="150" r="4" fill="#8b93a7"/><circle cx="600" cy="135" r="4" fill="#8b93a7"/>
+            <circle cx="640" cy="105" r="4" fill="#8b93a7"/><circle cx="620" cy="100" r="4" fill="#8b93a7"/>
+            <line x1="565" y1="150" x2="576" y2="153" stroke="#8b93a7" stroke-width="1" stroke-dasharray="3 2"/>
+            <line x1="600" y1="135" x2="608" y2="141" stroke="#8b93a7" stroke-width="1" stroke-dasharray="3 2"/>
+            <line x1="640" y1="105" x2="637" y2="97" stroke="#8b93a7" stroke-width="1" stroke-dasharray="3 2"/>
+            <text x="610" y="196" text-anchor="middle" font-size="12" fill="currentColor">¿cuántos ejes hacen falta?</text>
+          </svg>
+          <figcaption>Las tres preguntas canónicas. La primera modela la densidad entera; la segunda, solo sus modos; la tercera, el subespacio donde vive.</figcaption>
+        </figure>
+
+        <p><strong>1. Estimación de densidad.</strong> Reconstruir $p^\star$ misma, o al menos poder evaluar cómo de típico es un punto nuevo. Es la más ambiciosa de las tres y de ella salen las mixturas gaussianas (<a href="04-gmm-y-em.html">capítulo 4</a>), los métodos de núcleo y, en el extremo profundo, los autoencoders variacionales (<a href="14-vae.html">capítulo 14</a>). De ella sale también, casi de regalo, la detección de anomalías: un dato raro es simplemente un punto con $p^\star(x)$ baja (<a href="18-deteccion-anomalias.html">capítulo 18</a>).</p>
+
+        <p><strong>2. Descubrimiento de estructura.</strong> No hace falta la densidad entera para tomar decisiones útiles: basta con saber dónde están sus <em>modos</em>, sus zonas de acumulación. Eso es el clústering, y ocupa toda la parte II (capítulos <a href="03-kmeans.html">3</a> a <a href="08-validacion-clusteres.html">8</a>). Es la pregunta más pedida en la práctica —segmentar clientes, agrupar documentos, encontrar tipos celulares— y también la que más se malinterpreta, por motivos que veremos al final del capítulo.</p>
+
+        <p><strong>3. Aprendizaje de representación.</strong> Los datos llegan con $d$ números por observación, pero rara vez hacen falta los $d$. Si el ancho y el largo de la hoja van siempre juntos, ahí hay una sola cantidad —«tamaño»— disfrazada de dos. Buscar esas coordenadas verdaderas es reducir la dimensión (<a href="09-pca.html">capítulo 9</a> en adelante) o aprender una representación con redes (<a href="13-autoencoders.html">capítulo 13</a> en adelante).</p>
+
+        <h2 id="matematicas">Qué optimiza, exactamente, un modelo no supervisado</h2>
+
+        <p>«Encontrar estructura» suena a intención, no a objetivo matemático. Vamos a convertirlo en uno. Propón una familia de densidades $\{p_\theta : \theta \in \Theta\}$ —gaussianas, mixturas, redes neuronales, lo que sea— y mide cómo de bien cada candidata explica los datos observados con la <strong>log-verosimilitud media</strong>:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Log-verosimilitud media</div>
+          <p>$$ \ell(\theta) \;=\; \frac{1}{n}\sum_{i=1}^{n} \log p_\theta(x_i) $$</p>
+          <p class="math-note">$n$ es el número de datos, $x_i$ el dato $i$-ésimo y $p_\theta(x_i)$ la densidad que el modelo con parámetros $\theta$ asigna a ese punto. Es una media de logaritmos porque los datos son independientes: la verosimilitud conjunta es el producto $\prod_i p_\theta(x_i)$, y el logaritmo lo convierte en suma —más estable numéricamente y más fácil de derivar—.</p>
+        </div>
+
+        <p>Con muchos datos, esa media converge por la ley de los grandes números a una esperanza respecto de la densidad <em>verdadera</em>: $\ell(\theta) \to \mathbb{E}_{x \sim p^\star}[\log p_\theta(x)]$. Y esa esperanza esconde una identidad que es, sin exagerar, la columna vertebral del manual. Partimos del logaritmo negativo medio y sumamos y restamos $\log p^\star(x)$ dentro de la integral:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La descomposición fundamental</div>
+          <p>$$ \mathbb{E}_{p^\star}\!\left[-\log p_\theta(x)\right] \;=\; \underbrace{-\!\int p^\star(x)\log p^\star(x)\,dx}_{H(p^\star)} \;+\; \underbrace{\int p^\star(x)\log\frac{p^\star(x)}{p_\theta(x)}\,dx}_{D_{\mathrm{KL}}(p^\star \,\|\, p_\theta)} $$</p>
+          <p class="math-note">$H(p^\star)$ es la <em>entropía</em> de la densidad verdadera: cuánta incertidumbre hay en los datos por naturaleza. $D_{\mathrm{KL}}$ es la <em>divergencia de Kullback-Leibler</em>: cuánto se equivoca tu modelo respecto a la verdad. La igualdad sale de escribir $-\log p_\theta = -\log p^\star + \log(p^\star/p_\theta)$ y separar la integral en dos.</p>
+        </div>
+
+        <p>Lee despacio lo que dice. El primer término, $H(p^\star)$, <strong>no depende de $\theta$</strong>: es una propiedad del mundo, no tuya. Así que al buscar el $\theta$ que maximiza la verosimilitud estás, exactamente y sin aproximación, minimizando $D_{\mathrm{KL}}(p^\star \| p_\theta)$, la distancia de tu modelo a la verdad. Y como $D_{\mathrm{KL}} \ge 0$ con igualdad solo cuando $p_\theta = p^\star$ en casi todo punto, si la verdad está dentro de tu familia, el óptimo la encuentra. Máxima verosimilitud no es una heurística: es minimización de distancia a la realidad, disfrazada.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Aprender es comprimir</div>
+          <p>Toma logaritmos en base 2. Entonces $-\log_2 p_\theta(x)$ es la longitud, en bits, del código óptimo de Shannon para el símbolo $x$ bajo la creencia $p_\theta$: lo probable se codifica corto, lo raro largo. La verosimilitud media negativa es, literalmente, <strong>la longitud media del mensaje</strong> necesaria para transmitir tus datos usando el modelo como diccionario.</p>
+          <p>Aprender sin supervisión es, por tanto, comprimir. Y esa frase da una lectura unificada de todo lo que viene: k-means comprime cada punto a la identidad de su centroide, PCA a $k$ coordenadas, el autoencoder a un vector latente, la mixtura gaussiana a «qué componente y cuánta desviación». Todos son códecs. Lo que cambia es el diccionario.</p>
+        </div>
+
+        <h2 id="panorama">El panorama, en Python</h2>
+
+        <p>Basta de abstracción. Vamos a generar una nube de puntos y a hacerle las tres preguntas, una detrás de otra, en cincuenta líneas. No te preocupes por los detalles de cada algoritmo: cada uno tiene su capítulo. Lo que importa ahora es ver que las tres miradas son <em>compatibles</em> y se aplican a los mismos datos.</p>
+
+        <p>Los datos se fabrican a partir de tres centros conocidos, pero en cuanto están generados se barajan y se olvida su origen: a partir de ahí el código no sabe —ni puede saber— de dónde vino cada punto. Ese olvido deliberado es lo que hace honesto el ejercicio.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">panorama.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(7)
+
+# --- Los datos: tres grupos, pero NADIE nos dice que son tres ni cuáles ---
+centros = np.array([[-2.5, 0.0], [2.0, 1.5], [0.5, -2.5]])
+n_por_grupo = 120
+X = np.vstack([c + rng.normal(scale=0.75, size=(n_por_grupo, 2)) for c in centros])
+X = X[rng.permutation(len(X))]          # barajamos: perdemos todo rastro del origen
+print(f"Datos: {X.shape[0]} puntos en {X.shape[1]} dimensiones, sin etiquetas.")
+
+# --- Pregunta 1: ¿dónde está la masa? Densidad por histograma 2D ---
+H, xe, ye = np.histogram2d(X[:, 0], X[:, 1], bins=24)
+densidad = H / (H.sum() * (xe[1] - xe[0]) * (ye[1] - ye[0]))
+print(f"Densidad máxima estimada: {densidad.max():.4f} puntos por unidad de área.")
+
+# --- Pregunta 2: ¿en cuántos grupos cae? k-means en 12 líneas ---
+def kmeans(X, k, semilla=0, iters=50):
+    r = np.random.default_rng(semilla)
+    C = X[r.choice(len(X), k, replace=False)]          # centros iniciales al azar
+    for _ in range(iters):
+        d2 = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+        z = d2.argmin(axis=1)                          # asignar cada punto al centro más cercano
+        C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                            for j in range(k)])
+        if np.allclose(C_nuevo, C):
+            break
+        C = C_nuevo
+    inercia = ((X - C[z]) ** 2).sum()
+    return z, C, inercia
+
+z, C, inercia = kmeans(X, k=3, semilla=0)
+print(f"k-means con k=3 -&gt; tamaños {np.bincount(z)}, inercia {inercia:.2f}")
+
+# --- Pregunta 3: ¿cuántas direcciones hacen falta? La primera componente ---
+Xc = X - X.mean(axis=0)
+S = (Xc.T @ Xc) / (len(Xc) - 1)                        # matriz de covarianza 2x2
+valores, vectores = np.linalg.eigh(S)
+orden = valores.argsort()[::-1]
+valores, vectores = valores[orden], vectores[:, orden]
+u1 = vectores[:, 0]
+proy = Xc @ u1                                         # coordenada sobre la 1ª componente
+frac = valores[0] / valores.sum()
+print(f"Varianza explicada por la 1ª componente: {frac:.1%}")
+
+# --- Las cuatro miradas, una al lado de la otra ---
+fig, ax = plt.subplots(1, 4, figsize=(15, 3.6))
+
+ax[0].scatter(X[:, 0], X[:, 1], s=12, c="#8b93a7")
+ax[0].set_title("1. Lo que ve la máquina")
+
+ax[1].imshow(densidad.T, origin="lower", aspect="auto", cmap="magma",
+             extent=[xe[0], xe[-1], ye[0], ye[-1]])
+ax[1].set_title("2. Densidad: ¿dónde hay masa?")
+
+ax[2].scatter(X[:, 0], X[:, 1], s=12, c=z, cmap="viridis")
+ax[2].scatter(C[:, 0], C[:, 1], s=200, marker="X", c="red", edgecolors="k")
+ax[2].set_title("3. Clústering: ¿qué grupos hay?")
+
+ax[3].hist(proy, bins=30, color="#5b8def")
+ax[3].set_title(f"4. 1ª componente ({frac:.0%} de varianza)")
+
+for a in ax[:3]:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <p>Al pulsar ▶ verás cuatro paneles y esta salida exacta:</p>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Datos: 360 puntos en 2 dimensiones, sin etiquetas.
+Densidad máxima estimada: 0.1977 puntos por unidad de área.
+k-means con k=3 -&gt; tamaños [120 120 120], inercia 351.06
+Varianza explicada por la 1ª componente: 60.0%</pre>
+        </div>
+
+        <p>Fíjate en los tamaños: <code>[120 120 120]</code>. El algoritmo ha recuperado los tres grupos originales <em>exactamente</em>, sin fallar ni un punto, pese a que nunca vio de dónde venía cada uno. No siempre pasa —los grupos estaban bien separados y eran esféricos, que es justo el caso favorable de k-means, como veremos en el <a href="03-kmeans.html">capítulo 3</a>—, pero ilustra la promesa entera del campo: la estructura estaba en los datos, no en las etiquetas.</p>
+
+        <p>El último número merece atención. La primera componente explica el 60 % de la varianza; la segunda, el 40 % restante. Es decir: en estos datos <strong>no</strong> puedes tirar una dimensión sin perder mucho, porque los tres centros no están alineados. La reducción de dimensión no siempre es posible, y ese panel te dice cuándo.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>scale=0.75</code> por <code>scale=2.0</code> en la generación de los datos y vuelve a pulsar ▶. Con ese ruido los grupos se solapan y k-means deja de recuperarlos: los tamaños se desequilibran a <code>[124 125 111]</code> y la inercia sube a <code>1797.75</code>. El algoritmo no ha empeorado; es que la estructura que buscaba ha dejado de existir. Nota también que la varianza de la primera componente baja al 56,3 %: al inflar el ruido isótropo, las dos direcciones se igualan.</p>
+        </div>
+
+        <h2 id="sin-respuesta-correcta">Por qué no hay una respuesta correcta</h2>
+
+        <p>Aquí está la incomodidad fundamental del campo, y conviene mirarla de frente ya, en el capítulo 1, en vez de tropezar con ella en el 8. En supervisado hay una verdad: la etiqueta. Un modelo acierta o falla, y se puede medir. En no supervisado <strong>no existe esa verdad</strong>. Y no es que aún no la hayamos encontrado: es que estructuralmente no hay ninguna.</p>
+
+        <p>El ejemplo siguiente lo hace doloroso. Tienes clientes descritos por dos columnas: gasto en euros y antigüedad en años. Aplicamos el mismo algoritmo, con la misma semilla, buscando los mismos dos grupos. Lo único que cambia entre las dos ejecuciones es si normalizamos las columnas antes o no.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">dos_respuestas.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(3)
+
+# Dos "bandas" en gasto (300 y 900 euros) y dos en antigüedad (1 y 9 años).
+gasto = np.concatenate([rng.normal(300, 60, 100), rng.normal(900, 60, 100)])
+antig = np.concatenate([rng.normal(1.0, 0.6, 50), rng.normal(9.0, 0.6, 50)] * 2)
+X = np.column_stack([gasto, antig])
+
+
+def kmeans(X, k, semilla=0, iters=100):
+    r = np.random.default_rng(semilla)
+    C = X[r.choice(len(X), k, replace=False)]
+    for _ in range(iters):
+        d2 = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+        z = d2.argmin(axis=1)
+        C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                            for j in range(k)])
+        if np.allclose(C_nuevo, C):
+            break
+        C = C_nuevo
+    return z
+
+
+# --- Respuesta A: unidades originales. El euro aplasta al año ---
+z_bruto = kmeans(X, k=2, semilla=0)
+
+# --- Respuesta B: cada columna con media 0 y desviación 1 ---
+Z = (X - X.mean(axis=0)) / X.std(axis=0)
+z_norm = kmeans(Z, k=2, semilla=0)
+
+# ¿Cuánto se parecen las dos particiones? Como las etiquetas 0/1 son arbitrarias,
+# medimos el acuerdo por PAREJAS: ¿los mismos dos puntos caen juntos en ambas?
+def acuerdo_por_parejas(a, b):
+    ia = a[:, None] == a[None, :]
+    ib = b[:, None] == b[None, :]
+    triu = np.triu_indices(len(a), k=1)
+    return (ia[triu] == ib[triu]).mean()
+
+print(f"Reparto con unidades originales : {np.bincount(z_bruto)}")
+print(f"Reparto tras normalizar         : {np.bincount(z_norm)}")
+print(f"Acuerdo por parejas entre ambas : {acuerdo_por_parejas(z_bruto, z_norm):.1%}")
+
+# ¿Qué separa cada una? Diferencia entre los dos centros, en unidades originales.
+c_bruto = np.array([X[z_bruto == j].mean(axis=0) for j in range(2)])
+c_norm = np.array([X[z_norm == j].mean(axis=0) for j in range(2)])
+print(f"Sin normalizar, los centros difieren en {abs(c_bruto[0,0]-c_bruto[1,0]):7.1f} EUR "
+      f"y {abs(c_bruto[0,1]-c_bruto[1,1]):.2f} anios")
+print(f"Normalizando,   los centros difieren en {abs(c_norm[0,0]-c_norm[1,0]):7.1f} EUR "
+      f"y {abs(c_norm[0,1]-c_norm[1,1]):.2f} anios")
+
+fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharex=True, sharey=True)
+for a, z, t in [(ax[0], z_bruto, "A: unidades originales"),
+                (ax[1], z_norm, "B: columnas normalizadas")]:
+    a.scatter(X[:, 0], X[:, 1], c=z, cmap="coolwarm", s=18, edgecolors="none")
+    a.set_title(t)
+    a.set_xlabel("gasto (EUR)")
+ax[0].set_ylabel("antiguedad (anios)")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Reparto con unidades originales : [100 100]
+Reparto tras normalizar         : [100 100]
+Acuerdo por parejas entre ambas : 49.7%
+Sin normalizar, los centros difieren en   613.2 EUR y 0.00 anios
+Normalizando,   los centros difieren en     4.1 EUR y 8.25 anios</pre>
+        </div>
+
+        <p>Las dos particiones dividen la población en dos mitades exactas de cien, y coinciden en el <strong>49,7 %</strong> de las parejas: menos que si hubiéramos echado una moneda. Son respuestas ortogonales. Sin normalizar, el algoritmo separa por gasto (613 € entre centros, 0,00 años de diferencia): los euros son números grandes y dominan la distancia euclídea. Normalizando, separa por antigüedad (8,25 años, 4,1 € de diferencia). Ambas son <em>correctas</em>. Corresponden a preguntas de negocio distintas: «¿quién gasta más?» frente a «¿quién lleva más tiempo?».</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El escalado no es preprocesado: es modelado</div>
+          <p>Normalizar las columnas se enseña a menudo como un paso de higiene, junto a rellenar valores ausentes. No lo es. En no supervisado, <strong>elegir la escala es elegir qué preguntas puede responder el algoritmo</strong>, porque define qué significa «cerca». Es la decisión más consecuente que vas a tomar, y ningún criterio interno te la va a validar: la validación está fuera de los datos. Volveremos sobre ello en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</p>
+        </div>
+
+        <p>Que esto no tiene arreglo no es una opinión: es un teorema. En 2002 Jon Kleinberg demostró que <strong>ninguna</strong> función de clústering puede satisfacer a la vez tres propiedades que cualquiera consideraría irrenunciables: <em>invariancia de escala</em> (multiplicar todas las distancias por una constante positiva no debe cambiar el resultado), <em>riqueza</em> (con las distancias adecuadas debe poder producirse cualquier partición) y <em>consistencia</em> (encoger las distancias dentro de los grupos y estirar las que van entre grupos no debe cambiar el resultado). Las tres a la vez son contradictorias. Todo algoritmo de clústering renuncia a alguna, y saber a cuál renuncia el tuyo es la mitad de entenderlo.</p>
+
+        <h2 id="evaluacion">Entonces, ¿cómo se sabe si funciona?</h2>
+
+        <p>Si no hay verdad, ¿qué se mide? Hay tres respuestas, en orden creciente de honestidad, y el manual las usa las tres.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Criterio</th><th>Qué mide</th><th>Cuándo sirve</th><th>Capítulo</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Interno</strong></td>
+                <td>Coherencia geométrica de la solución: cohesión dentro del grupo, separación entre grupos. Silueta, inercia, gap statistic.</td>
+                <td>Siempre disponible, pero premia la forma de grupo que el propio criterio supone. Circular por diseño.</td>
+                <td><a href="08-validacion-clusteres.html">8</a></td>
+              </tr>
+              <tr>
+                <td><strong>Externo</strong></td>
+                <td>Acuerdo con etiquetas de referencia que tenías guardadas: índice de Rand ajustado, información mutua normalizada.</td>
+                <td>Solo en experimentos y auditorías. Si tuvieras etiquetas para todo, no estarías aquí.</td>
+                <td><a href="08-validacion-clusteres.html">8</a></td>
+              </tr>
+              <tr>
+                <td><strong>De tarea</strong></td>
+                <td>Cuánto mejora un problema posterior: precisión con pocas etiquetas, recuperación de documentos, detección de fraude.</td>
+                <td>El más honesto y el más caro. Es el estándar de facto en representación profunda.</td>
+                <td><a href="16-autosupervisado-contrastivo.html">16</a> y <a href="17-semisupervisado.html">17</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Y hay un cuarto criterio que no sale en las tablas pero decide la mayoría de los proyectos reales: <strong>que un humano mire el resultado y le encuentre sentido</strong>. En clústering de clientes, de genes o de documentos, la prueba final suele ser si los grupos se pueden nombrar. No es rigor, pero tampoco es trampa: es reconocer que el sesgo inductivo que falta en los datos lo pone quien interpreta.</p>
+
+        <h2 id="mapa">Cómo está organizado el manual</h2>
+
+        <p>El orden de los capítulos no es temático sino <em>acumulativo</em>: cada uno resuelve una limitación concreta del anterior. Si lees en orden, nunca te vas a encontrar con una herramienta cuya motivación no hayas sufrido antes.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Parte</th><th>Pregunta que resuelve</th><th>Y qué se le queda pendiente</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>I · Fundamentos</strong> (1–2)</td>
+                <td>Qué es «parecido» y cómo se mide. Por qué en dimensión alta la intuición geométrica te traiciona.</td>
+                <td>Aún no agrupamos nada.</td>
+              </tr>
+              <tr>
+                <td><strong>II · Clústering</strong> (3–8)</td>
+                <td>Encontrar grupos: por centroides, por densidad, por jerarquía, por conectividad. Y cuántos hay.</td>
+                <td>Todo ocurre en el espacio original, que puede ser malísimo.</td>
+              </tr>
+              <tr>
+                <td><strong>III · Componentes</strong> (9–12)</td>
+                <td>Construir un espacio mejor: proyecciones lineales, factorizaciones, variedades no lineales.</td>
+                <td>Las transformaciones son fijas o poco expresivas.</td>
+              </tr>
+              <tr>
+                <td><strong>IV · Profundo</strong> (13–16)</td>
+                <td>Aprender la representación con redes: autoencoders, VAE, deep clustering, contrastivo.</td>
+                <td>Sigue sin usarse ni una etiqueta, y a veces tenemos unas pocas.</td>
+              </tr>
+              <tr>
+                <td><strong>V · La frontera</strong> (17–18)</td>
+                <td>Mezclar lo no supervisado con las pocas etiquetas que haya. Y encontrar lo que no encaja.</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <p>Todos los ejemplos del manual funcionan igual dentro del navegador que fuera. Para ejecutarlos en tu máquina —donde puedes modificarlos con comodidad y guardar las figuras— basta con numpy y matplotlib:</p>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># instala las dependencias del manual</span>
+<span class="prompt">$</span> pip install -r requirements.txt
+
+<span class="comment"># el panorama de las tres preguntas</span>
+<span class="prompt">$</span> python code/01-aprender-sin-etiquetas/panorama.py
+
+<span class="comment"># la misma nube con dos respuestas distintas</span>
+<span class="prompt">$</span> python code/01-aprender-sin-etiquetas/dos_respuestas.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Sin etiquetas, el único objeto que existe es la densidad desconocida $p^\star(x)$. Las tres tareas canónicas —densidad, estructura y representación— son tres formas de agarrarla.</li>
+            <li>Maximizar la verosimilitud es <em>exactamente</em> minimizar $D_{\mathrm{KL}}(p^\star\|p_\theta)$, porque la entropía $H(p^\star)$ no depende de los parámetros. No es una heurística: es minimizar la distancia a la verdad.</li>
+            <li>En bits, $-\log_2 p_\theta(x)$ es una longitud de código. Aprender sin supervisión es comprimir, y cada algoritmo del manual es un códec con un diccionario distinto.</li>
+            <li>No hay respuesta correcta. La misma nube da particiones con un 49,7 % de acuerdo según se normalicen o no las columnas, y el teorema de Kleinberg garantiza que ningún algoritmo puede ser a la vez invariante de escala, rico y consistente.</li>
+            <li>El escalado no es preprocesado: define qué significa «cerca» y, por tanto, qué pregunta estás haciendo. De eso trata el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

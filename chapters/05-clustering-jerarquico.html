@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>5. Clústering jerárquico y dendrogramas · No supervisado</title>
+  <meta name="description" content="Enlaces simple, completo, medio y de Ward; la fórmula de Lance-Williams que los unifica; cómo se lee y se corta un dendrograma." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="5">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 5</span>
+        <h1>Clústering jerárquico y dendrogramas</h1>
+        <p class="lead">k-means y las mixturas exigen decidir $k$ antes de empezar. Aquí no: el clústering jerárquico devuelve <em>todas</em> las particiones a la vez, ordenadas en un árbol que se corta a la altura que convenga. A cambio hay que elegir otra cosa —cómo se mide la distancia entre grupos, no entre puntos— y esa elección resulta ser mucho más consecuente de lo que parece.</p>
+
+        <h2 id="idea">Un árbol en vez de una partición</h2>
+
+        <p>Piensa en la clasificación de los seres vivos. No hay un número correcto de grupos: según a qué altura mires, tienes dos reinos, cien filos o dos millones de especies. La estructura no es una partición, es un <strong>árbol</strong>, y cualquier partición concreta se obtiene cortándolo a una altura.</p>
+
+        <p>Muchos datos reales son así. Los clientes de un banco se dividen en dos grandes bloques que a su vez se subdividen; los documentos de un archivo, en temas y subtemas. Obligarse a elegir $k$ de antemano tira esa información. El clústering jerárquico la conserva entera.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Empieza con $n$ grupos de un solo elemento. Busca los dos más parecidos y fusiónalos. Repite hasta que quede uno solo. La secuencia de fusiones, dibujada con la altura de cada una, <strong>es</strong> el resultado: un <em>dendrograma</em>. Elegir $k$ ya no es una decisión previa, sino una lectura posterior.</p>
+        </div>
+
+        <p>Hay dos familias. La <strong>aglomerativa</strong> (de abajo arriba) es la que acabamos de describir y la que domina en la práctica. La <strong>divisiva</strong> (de arriba abajo) empieza con todo junto y va partiendo; es más cara —hay $2^{n-1}-1$ formas de partir un grupo en dos— y solo se usa con heurísticas como DIANA o aplicando k-means con $k=2$ recursivamente.</p>
+
+        <h2 id="enlaces">El enlace: cómo se mide la distancia entre dos grupos</h2>
+
+        <p>Sabemos medir la distancia entre dos puntos (el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> iba de eso). Pero el algoritmo necesita la distancia entre dos <em>conjuntos</em> de puntos, y ahí hay varias respuestas razonables. Cada una define un algoritmo distinto con un sesgo distinto.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Los cuatro enlaces clásicos</div>
+          <p>$$ d_{\text{simple}}(A,B) = \min_{a\in A,\, b\in B} d(a,b), \qquad d_{\text{completo}}(A,B) = \max_{a\in A,\, b\in B} d(a,b) $$</p>
+          <p>$$ d_{\text{medio}}(A,B) = \frac{1}{|A||B|}\sum_{a\in A}\sum_{b\in B} d(a,b), \qquad d_{\text{centroide}}(A,B) = \lVert \mu_A - \mu_B\rVert $$</p>
+          <p class="math-note">$|A|$ es el número de elementos de $A$ y $\mu_A$ su media. El <em>simple</em> mira solo el par más próximo: basta un camino de puntos cercanos para unir dos grupos. El <em>completo</em> mira el par más lejano: exige que <em>todo</em> el grupo resultante sea compacto. El <em>medio</em> promedia. El de <em>centroide</em> compara solo las medias, con lo que ignora las formas.</p>
+        </div>
+
+        <h3>Ward: el enlace que minimiza lo que minimiza k-means</h3>
+
+        <p>Hay un quinto criterio, distinto en espíritu: en lugar de definir una distancia entre grupos, Ward pregunta <strong>cuánto empeora la inercia si fusiono estos dos</strong>. Fusiona la pareja que menos la aumente. Como la inercia $W$ es exactamente el objetivo del <a href="03-kmeans.html">capítulo 3</a>, Ward es un k-means codicioso y jerárquico.</p>
+
+        <p>Lo bonito es que ese coste tiene una fórmula cerrada muy simple, que merece la pena derivar. Sea $\mu_{AB}$ la media del grupo fusionado. Aplicando la identidad ANOVA del capítulo 3 dentro del grupo $A\cup B$ —la dispersión total se descompone en intra más entre—:</p>
+
+        <p>$$ W(A\cup B) \;=\; W(A) + W(B) + n_A\lVert \mu_A - \mu_{AB}\rVert^2 + n_B\lVert \mu_B - \mu_{AB}\rVert^2 . $$</p>
+
+        <p>Ahora, como $\mu_{AB} = \dfrac{n_A\mu_A + n_B\mu_B}{n_A + n_B}$, restando se obtiene $\mu_A - \mu_{AB} = \dfrac{n_B}{n_A+n_B}(\mu_A - \mu_B)$ y análogamente para $B$. Sustituyendo:</p>
+
+        <p>$$ n_A\frac{n_B^2}{(n_A+n_B)^2}\lVert\mu_A-\mu_B\rVert^2 + n_B\frac{n_A^2}{(n_A+n_B)^2}\lVert\mu_A-\mu_B\rVert^2 = \frac{n_An_B(n_B+n_A)}{(n_A+n_B)^2}\lVert\mu_A-\mu_B\rVert^2 . $$</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El coste de Ward</div>
+          <p>$$ \Delta(A,B) \;=\; W(A\cup B) - W(A) - W(B) \;=\; \frac{n_A\,n_B}{n_A+n_B}\,\big\lVert \mu_A - \mu_B \big\rVert^2 $$</p>
+          <p class="math-note">$n_A$ y $n_B$ son los tamaños. El factor $\frac{n_An_B}{n_A+n_B}$ es la <em>media armónica</em> de los tamaños dividida por 2, y es la clave del comportamiento de Ward: penaliza fusionar dos grupos <strong>grandes</strong> mucho más que fusionar uno grande con uno pequeño. De ahí su tendencia a producir grupos de tamaño parecido, para bien y para mal.</p>
+        </div>
+
+        <h2 id="lance-williams">Lance-Williams: los cinco son el mismo algoritmo</h2>
+
+        <p>La implementación ingenua recalcula distancias entre conjuntos después de cada fusión, lo que cuesta caro. En 1967, Lance y Williams observaron algo notable: <strong>todos estos criterios se pueden actualizar con la misma fórmula</strong>, sin volver a mirar los datos originales. Si acabas de fusionar $A$ y $B$, la distancia del grupo nuevo a cualquier otro grupo $C$ es</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La recurrencia de Lance-Williams</div>
+          <p>$$ d(A\cup B,\, C) \;=\; \alpha_A\, d(A,C) \;+\; \alpha_B\, d(B,C) \;+\; \beta\, d(A,B) \;+\; \gamma\,\big| d(A,C) - d(B,C) \big| $$</p>
+          <p class="math-note">Los cuatro coeficientes dependen solo de los tamaños $n_A, n_B, n_C$. Cambiarlos cambia el algoritmo entero. Es una de esas unificaciones que convierten cinco métodos en uno con cinco configuraciones, y permite implementarlos todos con veinte líneas compartidas.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Enlace</th><th>$\alpha_A$</th><th>$\alpha_B$</th><th>$\beta$</th><th>$\gamma$</th><th>Opera sobre</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Simple</td><td>$1/2$</td><td>$1/2$</td><td>$0$</td><td>$-1/2$</td><td>$d$</td></tr>
+              <tr><td>Completo</td><td>$1/2$</td><td>$1/2$</td><td>$0$</td><td>$+1/2$</td><td>$d$</td></tr>
+              <tr><td>Medio (UPGMA)</td><td>$\frac{n_A}{n_A+n_B}$</td><td>$\frac{n_B}{n_A+n_B}$</td><td>$0$</td><td>$0$</td><td>$d$</td></tr>
+              <tr><td>Centroide</td><td>$\frac{n_A}{n_A+n_B}$</td><td>$\frac{n_B}{n_A+n_B}$</td><td>$-\frac{n_An_B}{(n_A+n_B)^2}$</td><td>$0$</td><td>$d^2$</td></tr>
+              <tr><td>Ward</td><td>$\frac{n_A+n_C}{n_A+n_B+n_C}$</td><td>$\frac{n_B+n_C}{n_A+n_B+n_C}$</td><td>$-\frac{n_C}{n_A+n_B+n_C}$</td><td>$0$</td><td>$d^2$</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Nota la última columna: centroide y Ward operan sobre distancias <em>al cuadrado</em>; los otros tres, sobre distancias. Es la única asimetría del cuadro, y olvidarla es el error de implementación más común.</p>
+
+        <p>Los truquitos de $\gamma$ merecen un momento. Con $\gamma = -1/2$, la fórmula $\tfrac12 d_{AC} + \tfrac12 d_{BC} - \tfrac12|d_{AC}-d_{BC}|$ es exactamente $\min(d_{AC}, d_{BC})$; con $\gamma=+1/2$, es $\max$. Las identidades $\min(u,v) = \tfrac{u+v-|u-v|}{2}$ y $\max(u,v) = \tfrac{u+v+|u-v|}{2}$ son las que permiten meter enlace simple y completo dentro del mismo molde algebraico.</p>
+
+        <h2 id="inversiones">Monotonía e inversiones</h2>
+
+        <p>Para que un dendrograma se pueda dibujar y leer, las alturas de fusión deben ser no decrecientes: cada fusión, a mayor altura que las anteriores. Formalmente, eso equivale a que las distancias cofenéticas formen una <strong>ultramétrica</strong>, es decir, que cumplan $d(x,z) \le \max\{d(x,y), d(y,z)\}$ —una condición más fuerte que la desigualdad triangular—.</p>
+
+        <p>Simple, completo, medio y Ward la cumplen. <strong>El de centroide y el de mediana, no.</strong> Pueden producir <em>inversiones</em>: una fusión a menor altura que la anterior, que en el dibujo aparece como una rama que baja. Ocurre cuando el centroide del grupo fusionado se acerca a un tercer grupo más de lo que estaban los originales; el caso más simple es un triángulo casi equilátero.</p>
+
+        <h2 id="ejemplo">Verificarlo todo con código</h2>
+
+        <p>El programa comprueba las tres afirmaciones del capítulo: que la fórmula de Ward es exacta, que Lance-Williams reproduce los cinco enlaces, y que el de centroide se invierte.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">jerarquico_lance_williams.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(4)
+
+# --- Coeficientes de Lance-Williams: d(A∪B, C) en función de d(A,C), d(B,C), d(A,B) ---
+# Devuelven (alpha_A, alpha_B, beta, gamma) a partir de los tamaños nA, nB, nC.
+COEFS = {
+    "simple":   lambda a, b, c: (0.5, 0.5, 0.0, -0.5),
+    "completo": lambda a, b, c: (0.5, 0.5, 0.0, +0.5),
+    "medio":    lambda a, b, c: (a / (a + b), b / (a + b), 0.0, 0.0),
+    "centroide": lambda a, b, c: (a / (a + b), b / (a + b), -a * b / (a + b) ** 2, 0.0),
+    "ward":     lambda a, b, c: ((a + c) / (a + b + c), (b + c) / (a + b + c),
+                                 -c / (a + b + c), 0.0),
+}
+# "centroide" y "ward" trabajan sobre distancias AL CUADRADO; los otros, sobre
+# distancias sin elevar. Es la única diferencia de tratamiento.
+CUADRATICOS = {"centroide", "ward"}
+
+
+def aglomerativo(X, enlace):
+    """Devuelve la matriz de enlace en formato (i, j, altura, tamaño)."""
+    n = len(X)
+    sq = (X ** 2).sum(axis=1)
+    D = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)   # cuadrados
+    if enlace not in CUADRATICOS:
+        D = np.sqrt(D)
+    np.fill_diagonal(D, np.inf)
+
+    tam = {i: 1 for i in range(n)}
+    activos = list(range(n))
+    Z = []
+    siguiente = n
+    idx = {i: i for i in range(n)}          # posición en D -&gt; identificador
+
+    for _ in range(n - 1):
+        sub = np.array(activos)
+        M = D[np.ix_(sub, sub)]
+        p, q = np.unravel_index(np.argmin(M), M.shape)
+        a, b = sub[p], sub[q]
+        altura = D[a, b]
+        if enlace in CUADRATICOS:
+            altura = np.sqrt(max(altura, 0.0))
+        na, nb = tam[a], tam[b]
+        Z.append((idx[a], idx[b], altura, na + nb))
+
+        # --- actualización de Lance-Williams para el nuevo grupo (reusamos la fila a) ---
+        for c in activos:
+            if c in (a, b):
+                continue
+            al, be, bt, ga = COEFS[enlace](na, nb, tam[c])
+            nueva = (al * D[a, c] + be * D[b, c] + bt * D[a, b]
+                     + ga * abs(D[a, c] - D[b, c]))
+            D[a, c] = D[c, a] = nueva
+        tam[a] = na + nb
+        idx[a] = siguiente
+        siguiente += 1
+        activos.remove(b)
+        D[b, :] = D[:, b] = np.inf
+    return np.array(Z, dtype=float)
+
+
+def cortar(Z, n, k):
+    """Etiquetas al cortar el dendrograma para quedarse con k grupos."""
+    padre = {}
+    for t, (i, j, _, _) in enumerate(Z[:n - k]):
+        padre[int(i)] = n + t
+        padre[int(j)] = n + t
+    def raiz(x):
+        while x in padre:
+            x = padre[x]
+        return x
+    raices = [raiz(i) for i in range(n)]
+    unicas = {r: c for c, r in enumerate(sorted(set(raices)))}
+    return np.array([unicas[r] for r in raices])
+
+
+# ---------------- 1) La fórmula de Ward, comprobada ----------------
+A = rng.normal(size=(7, 3)) + 1.0
+B = rng.normal(size=(11, 3)) - 1.5
+
+
+def W(P):
+    return ((P - P.mean(axis=0)) ** 2).sum()
+
+
+real = W(np.vstack([A, B])) - W(A) - W(B)
+formula = len(A) * len(B) / (len(A) + len(B)) * ((A.mean(0) - B.mean(0)) ** 2).sum()
+print("1) Coste de Ward al fusionar dos grupos")
+print(f"   aumento real de la suma de cuadrados : {real:.10f}")
+print(f"   fórmula nA*nB/(nA+nB)*||muA-muB||^2  : {formula:.10f}")
+print(f"   diferencia                           : {abs(real - formula):.2e}\n")
+
+# ---------------- 2) Los cuatro enlaces sobre los mismos datos ----------------
+centros = np.array([[0.0, 0.0], [4.0, 0.5], [2.0, 4.0]])
+X = np.vstack([c + rng.normal(scale=0.7, size=(40, 2)) for c in centros])
+y = np.repeat([0, 1, 2], 40)
+n = len(X)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+print("2) Acuerdo con la verdad al cortar en k=3, y monotonía del dendrograma")
+print(f"   {'enlace':&lt;10} {'acuerdo':&gt;9} {'alturas monótonas':&gt;19} {'inversiones':&gt;12}")
+Zs = {}
+for enlace in ["simple", "completo", "medio", "centroide", "ward"]:
+    Z = aglomerativo(X, enlace)
+    Zs[enlace] = Z
+    z = cortar(Z, n, 3)
+    alturas = Z[:, 2]
+    inversiones = int((np.diff(alturas) &lt; -1e-12).sum())
+    print(f"   {enlace:&lt;10} {acuerdo(z, y):8.1%} {'sí' if inversiones == 0 else 'NO':&gt;19} "
+          f"{inversiones:12d}")
+
+# ---------------- 3) Un caso donde el centroide SÍ se invierte ----------------
+print("\n3) Tres puntos casi equiláteros: el caso clásico de inversión")
+T = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2 * 1.02]])
+for enlace in ["ward", "centroide"]:
+    Z = aglomerativo(T, enlace)
+    alturas = np.round(Z[:, 2], 4)
+    inv = "INVERSIÓN" if alturas[1] &lt; alturas[0] else "monótono"
+    print(f"   {enlace:&lt;10} alturas {alturas} -&gt; {inv}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+for a, enlace in zip(ax, ["simple", "completo", "ward"]):
+    z = cortar(Zs[enlace], n, 3)
+    a.scatter(X[:, 0], X[:, 1], c=z, cmap="viridis", s=16, edgecolors="none")
+    a.set_title(f"{enlace}: {acuerdo(z, y):.0%}")
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1) Coste de Ward al fusionar dos grupos
+   aumento real de la suma de cuadrados : 86.3792229181
+   fórmula nA*nB/(nA+nB)*||muA-muB||^2  : 86.3792229181
+   diferencia                           : 2.84e-14
+
+2) Acuerdo con la verdad al cortar en k=3, y monotonía del dendrograma
+   enlace       acuerdo   alturas monótonas  inversiones
+   simple        97.8%                  sí            0
+   completo      97.8%                  sí            0
+   medio         97.8%                  sí            0
+   centroide     97.8%                  NO            4
+   ward          97.8%                  sí            0
+
+3) Tres puntos casi equiláteros: el caso clásico de inversión
+   ward       alturas [1.   1.02] -&gt; monótono
+   centroide  alturas [1.     0.8833] -&gt; INVERSIÓN</pre>
+        </div>
+
+        <p>La primera comprobación es exacta hasta el error de redondeo de punto flotante: $2{,}84\times 10^{-14}$ sobre un valor de 86,38. La fórmula de Ward no es una aproximación.</p>
+
+        <p>La segunda es deliberadamente aburrida: con tres grupos esféricos bien separados, <strong>los cinco enlaces dan el mismo 97,8 %</strong>. Cuando los datos son fáciles, la elección del enlace da igual, y conviene saberlo antes de perder una tarde comparándolos. Lo que no da igual es la columna de la derecha: el enlace por centroide produce 4 inversiones en el dendrograma, y por tanto un árbol que no se puede dibujar honestamente.</p>
+
+        <p>El tercer bloque aísla el mecanismo con tres puntos. Dos están a distancia 1 y el tercero forma un triángulo casi equilátero (lado 1,02). Ward fusiona primero a altura 1,00 y después a 1,02: creciente. El centroide fusiona a 1,00 y luego a <strong>0,8833</strong>, porque el centroide de los dos primeros puntos queda <em>más cerca</em> del tercero de lo que ninguno de ellos estaba. La segunda fusión aparece por debajo de la primera.</p>
+
+        <h2 id="comparacion">Cuándo sí importa el enlace: encadenamiento</h2>
+
+        <p>El sesgo característico del enlace simple se llama <strong>encadenamiento</strong> (<em>chaining</em>): como solo necesita un par de puntos próximos, puede recorrer una cadena de vecinos y unir dos grupos que están lejísimos. Eso es exactamente lo que hace falta para seguir formas curvas... y exactamente lo que lo arruina en cuanto hay un poco de ruido en medio. Vamos a medir las dos caras.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">enlaces_y_dendrograma.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(12)
+
+COEFS = {
+    "simple":   lambda a, b, c: (0.5, 0.5, 0.0, -0.5),
+    "completo": lambda a, b, c: (0.5, 0.5, 0.0, +0.5),
+    "medio":    lambda a, b, c: (a / (a + b), b / (a + b), 0.0, 0.0),
+    "ward":     lambda a, b, c: ((a + c) / (a + b + c), (b + c) / (a + b + c),
+                                 -c / (a + b + c), 0.0),
+}
+CUADRATICOS = {"ward"}
+
+
+def aglomerativo(X, enlace):
+    n = len(X)
+    sq = (X ** 2).sum(axis=1)
+    D = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+    if enlace not in CUADRATICOS:
+        D = np.sqrt(D)
+    np.fill_diagonal(D, np.inf)
+    tam = {i: 1 for i in range(n)}
+    activos, Z, idx, siguiente = list(range(n)), [], {i: i for i in range(n)}, n
+    for _ in range(n - 1):
+        sub = np.array(activos)
+        M = D[np.ix_(sub, sub)]
+        p, q = np.unravel_index(np.argmin(M), M.shape)
+        a, b = sub[p], sub[q]
+        h = D[a, b]
+        if enlace in CUADRATICOS:
+            h = np.sqrt(max(h, 0.0))
+        na, nb = tam[a], tam[b]
+        Z.append((idx[a], idx[b], h, na + nb))
+        for c in activos:
+            if c in (a, b):
+                continue
+            al, be, bt, ga = COEFS[enlace](na, nb, tam[c])
+            D[a, c] = D[c, a] = (al * D[a, c] + be * D[b, c] + bt * D[a, b]
+                                 + ga * abs(D[a, c] - D[b, c]))
+        tam[a] = na + nb
+        idx[a] = siguiente
+        siguiente += 1
+        activos.remove(b)
+        D[b, :] = D[:, b] = np.inf
+    return np.array(Z, dtype=float)
+
+
+def cortar(Z, n, k):
+    padre = {}
+    for t, (i, j, _, _) in enumerate(Z[:n - k]):
+        padre[int(i)] = n + t
+        padre[int(j)] = n + t
+    def raiz(x):
+        while x in padre:
+            x = padre[x]
+        return x
+    raices = [raiz(i) for i in range(n)]
+    unicas = {r: c for c, r in enumerate(sorted(set(raices)))}
+    return np.array([unicas[r] for r in raices])
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def cofenetica(Z, X):
+    """Correlación entre la distancia original y la altura de fusión."""
+    n = len(X)
+    cof = np.zeros((n, n))
+    miembros = {i: [i] for i in range(n)}
+    for t, (i, j, h, _) in enumerate(Z):
+        a, b = miembros[int(i)], miembros[int(j)]
+        for u in a:
+            for v in b:
+                cof[u, v] = cof[v, u] = h
+        miembros[n + t] = a + b
+    sq = (X ** 2).sum(axis=1)
+    D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+    t = np.triu_indices(n, k=1)
+    return np.corrcoef(D[t], cof[t])[0, 1]
+
+
+def dibuja_dendrograma(ax, Z, n, corte=None):
+    """Dendrograma desde cero: posición x de cada nodo = media de sus hijos."""
+    pos, orden = {}, []
+
+    def hojas(nodo):
+        if nodo &lt; n:
+            orden.append(int(nodo))
+            return
+        i, j = int(Z[int(nodo) - n, 0]), int(Z[int(nodo) - n, 1])
+        hojas(i)
+        hojas(j)
+
+    hojas(2 * n - 2)
+    for x, hoja in enumerate(orden):
+        pos[hoja] = (x, 0.0)
+    for t, (i, j, h, _) in enumerate(Z):
+        xi, yi = pos[int(i)]
+        xj, yj = pos[int(j)]
+        ax.plot([xi, xi, xj, xj], [yi, h, h, yj], c="#5b8def", lw=0.9)
+        pos[n + t] = ((xi + xj) / 2, h)
+    if corte is not None:
+        ax.axhline(corte, color="#ef476f", ls="--", lw=1.4)
+    ax.set_xticks([])
+
+
+# ---------------- Escenario A: dos lunas ----------------
+t = rng.uniform(0, np.pi, 90)
+XA = np.vstack([np.column_stack([np.cos(t), np.sin(t)]) + rng.normal(scale=0.07, size=(90, 2)),
+                np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)]) + rng.normal(scale=0.07, size=(90, 2))])
+yA = np.repeat([0, 1], 90)
+
+# ------- Escenario B: dos grupos claros unidos por un puente de 16 puntos -------
+n_puente = 16                       # &lt;-- cambia este número y verás el efecto
+B0 = rng.normal(scale=0.55, size=(80, 2))
+B1 = rng.normal(scale=0.55, size=(80, 2)) + [6.0, 0.0]
+puente = np.column_stack([np.linspace(1.2, 4.8, n_puente), np.zeros(n_puente)]) \
+    + rng.normal(scale=0.06, size=(n_puente, 2))
+XB = np.vstack([B0, B1, puente])
+yB = np.concatenate([np.zeros(80, int), np.ones(80, int)])   # el puente no se evalúa
+
+print(f"{'escenario':&lt;28} {'simple':&gt;9} {'completo':&gt;10} {'medio':&gt;8} {'ward':&gt;8}")
+fila = [acuerdo(cortar(aglomerativo(XA, e), len(XA), 2), yA)
+        for e in ["simple", "completo", "medio", "ward"]]
+print(f"{'A · dos lunas limpias':&lt;28} {fila[0]:8.1%} {fila[1]:9.1%} {fila[2]:7.1%} {fila[3]:7.1%}")
+fila, tam = [], []
+for e in ["simple", "completo", "medio", "ward"]:
+    z = cortar(aglomerativo(XB, e), len(XB), 2)
+    fila.append(acuerdo(z[:160], yB))          # solo los 160 puntos de los grupos
+    tam.append(np.bincount(z))
+print(f"{'B · dos grupos con puente':&lt;28} {fila[0]:8.1%} {fila[1]:9.1%} {fila[2]:7.1%} {fila[3]:7.1%}")
+print(f"   tamaños de los 2 grupos: " +
+      "  ".join(f"{e}={t.tolist()}" for e, t in zip(["simple", "completo", "medio", "ward"], tam)))
+
+print("\nCorrelación cofenética (cuánto respeta el dendrograma las distancias reales):")
+for enlace in ["simple", "completo", "medio", "ward"]:
+    Z = aglomerativo(XA, enlace)
+    print(f"  {enlace:&lt;10} {cofenetica(Z, XA):.4f}")
+
+fig, ax = plt.subplots(2, 3, figsize=(14, 7))
+casos = [(XA, yA, np.arange(len(XA)), "A · lunas"),
+         (XB, yB, np.arange(160), "B · con puente")]
+for f, (X, y, ev, titulo) in enumerate(casos):
+    Zs, Zw = aglomerativo(X, "simple"), aglomerativo(X, "ward")
+    zs, zw = cortar(Zs, len(X), 2), cortar(Zw, len(X), 2)
+    ax[f, 0].scatter(X[:, 0], X[:, 1], c=zs, cmap="coolwarm", s=12, edgecolors="none")
+    ax[f, 0].set_title(f"{titulo} · simple: {acuerdo(zs[ev], y):.0%}")
+    ax[f, 1].scatter(X[:, 0], X[:, 1], c=zw, cmap="coolwarm", s=12, edgecolors="none")
+    ax[f, 1].set_title(f"{titulo} · ward: {acuerdo(zw[ev], y):.0%}")
+    for c in (0, 1):
+        ax[f, c].set_xticks([])
+        ax[f, c].set_yticks([])
+    dibuja_dendrograma(ax[f, 2], Zs, len(X), corte=Zs[-1, 2] * 0.6)
+    ax[f, 2].set_title(f"{titulo} · dendrograma (simple)")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>escenario                       simple   completo    medio     ward
+A · dos lunas limpias          100.0%     72.8%   60.2%   60.2%
+B · dos grupos con puente       49.7%    100.0%  100.0%  100.0%
+   tamaños de los 2 grupos: simple=[1, 175]  completo=[84, 92]  medio=[82, 94]  ward=[87, 89]
+
+Correlación cofenética (cuánto respeta el dendrograma las distancias reales):
+  simple     0.5522
+  completo   0.7439
+  medio      0.7270
+  ward       0.7203</pre>
+        </div>
+
+        <p>El resultado es de manual, y en los dos sentidos. En el escenario A —las lunas que el <a href="03-kmeans.html">capítulo 3</a> no supo separar— el enlace simple acierta el <strong>100 %</strong>, mientras Ward y el medio se quedan en el 60,2 %, poco por encima del azar. El encadenamiento sigue la curva.</p>
+
+        <p>En el escenario B, la misma virtud se convierte en desastre: bastan 16 puntos formando un puente entre dos grupos claramente separados para que el enlace simple cruce por ahí y fusione ambos. Su partición en dos grupos acaba siendo <code>[1, 175]</code>: un punto suelto contra todo lo demás, un 49,7 % de acuerdo. Los otros tres enlaces ignoran el puente y aciertan el 100 %.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El enlace es una hipótesis sobre la forma de tus grupos</div>
+          <p>Simple: grupos <em>conectados</em>, de cualquier forma, sin ruido de por medio. Completo: grupos <em>compactos</em>, sensible a valores atípicos porque mira el par más lejano. Medio: intermedio y razonablemente robusto. Ward: grupos <em>esféricos y de tamaño parecido</em>, el más cercano a k-means. No hay uno mejor; hay uno que coincide con tus datos.</p>
+        </div>
+
+        <p>La correlación cofenética mide otra cosa: cuánto respeta el árbol las distancias originales. Se calcula correlacionando la distancia real entre cada par de puntos con la altura a la que se fusionan en el dendrograma. En las lunas, el enlace simple obtiene 0,5522 y el completo 0,7439 — el árbol del completo es una representación más fiel de la matriz de distancias. Fíjate en que <strong>ese criterio elegiría el enlace equivocado</strong>: el simple es el que da el clústering correcto y el que peor puntúa. La correlación cofenética evalúa la fidelidad del árbol, no la calidad de los grupos, y confundirlas es un error frecuente.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En el escenario B, cambia <code>n_puente = 16</code> por <code>n_puente = 4</code>. Con cuatro puntos el puente queda demasiado espaciado —los huecos entre ellos superan la distancia típica dentro de cada grupo— y el enlace simple pasa del 49,7 % al <strong>100 %</strong>, con tamaños <code>[81, 83]</code> idénticos a los de los demás enlaces. Los 16 puntos eran el 9 % de la muestra y los únicos responsables del fracaso: el enlace simple no es «peor», es <em>frágil</em>, y su umbral de fragilidad es la separación del puente.</p>
+        </div>
+
+        <h2 id="lectura">Cómo se lee y se corta un dendrograma</h2>
+
+        <p>El dendrograma se lee de abajo arriba. Cada hoja es un dato, cada horizontal una fusión, y <strong>la altura de esa horizontal es la distancia a la que ocurrió</strong>. Un salto vertical largo sin fusiones significa que hubo que aumentar mucho la tolerancia para que algo más se uniera: señal de que la estructura de ese nivel era estable.</p>
+
+        <p>De ahí la heurística habitual para elegir $k$: <strong>cortar por el salto vertical más grande</strong>. Es el equivalente jerárquico del método del codo, con la misma naturaleza cualitativa y las mismas limitaciones. En el <a href="08-validacion-clusteres.html">capítulo 8</a> veremos criterios menos artesanales.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Aspecto</th><th>Jerárquico</th><th>k-means / GMM</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>¿Hay que fijar $k$?</td><td>No, se decide al final</td><td>Sí, antes de empezar</td></tr>
+              <tr><td>Determinismo</td><td>Total: sin semilla ni inicialización</td><td>Depende del arranque</td></tr>
+              <tr><td>Coste en memoria</td><td>$O(n^2)$ — la matriz de distancias</td><td>$O(nk)$</td></tr>
+              <tr><td>Coste en tiempo</td><td>$O(n^2\log n)$, u $O(n^2)$ con cadenas de vecinos</td><td>$O(nkd)$ por iteración</td></tr>
+              <tr><td>Datos nuevos</td><td>Hay que rehacerlo todo</td><td>Basta evaluar el centroide más próximo</td></tr>
+              <tr><td>Métrica</td><td>Cualquiera, incluso sin coordenadas</td><td>Euclídea (k-means) o gaussiana (GMM)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La fila del coste es la que decide en la práctica. Con $n = 100\,000$, la matriz de distancias ocupa 40 GB en doble precisión: el jerárquico clásico queda descartado. Ahí es donde reaparece un pariente suyo que sí escala, porque el dendrograma de enlace simple <strong>es exactamente el árbol de recubrimiento mínimo</strong> del grafo de distancias, y ese sí se puede calcular sin materializar la matriz. Ese puente nos lleva directamente al <a href="06-densidad-dbscan.html">capítulo 6</a>, donde HDBSCAN construye un dendrograma sobre una distancia modificada por la densidad.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># Lance-Williams, fórmula de Ward e inversiones</span>
+<span class="prompt">$</span> python code/05-clustering-jerarquico/jerarquico_lance_williams.py
+
+<span class="comment"># encadenamiento, dendrogramas y correlación cofenética</span>
+<span class="prompt">$</span> python code/05-clustering-jerarquico/enlaces_y_dendrograma.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>El clústering aglomerativo devuelve un árbol, no una partición: $k$ se elige cortándolo, después de ver el resultado.</li>
+            <li>El enlace define la distancia entre conjuntos y es la decisión de modelado del método. Simple = conectividad; completo = compacidad; medio = compromiso; Ward = inercia.</li>
+            <li>El coste de Ward vale exactamente $\frac{n_An_B}{n_A+n_B}\lVert\mu_A-\mu_B\rVert^2$ (verificado con error $2{,}84\times10^{-14}$), y ese factor es el que empuja a grupos de tamaño parecido.</li>
+            <li>La recurrencia de Lance-Williams implementa los cinco criterios con cuatro coeficientes. Centroide y Ward operan sobre distancias al cuadrado; los demás, no.</li>
+            <li>Centroide y mediana pueden invertir el dendrograma: medido, 4 inversiones en datos normales y una fusión a 0,8833 después de otra a 1,00 en el triángulo equilátero.</li>
+            <li>El encadenamiento del enlace simple acierta el 100 % en las lunas y se derrumba al 49,7 % con un puente de 16 puntos. La correlación cofenética mide la fidelidad del árbol, no la calidad de los grupos, y aquí premiaría al enlace equivocado.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

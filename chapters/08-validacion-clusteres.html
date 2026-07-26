@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>8. ¿Cuántos clústeres? Validar sin etiquetas · No supervisado</title>
+  <meta name="description" content="Silueta, gap statistic, Calinski-Harabasz, estabilidad por remuestreo, y ARI/NMI cuando sí hay etiquetas de referencia." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="8">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 8</span>
+        <h1>¿Cuántos clústeres? Validar sin etiquetas</h1>
+        <p class="lead">Llevamos cinco capítulos aplazando la pregunta: he ejecutado el algoritmo y me ha devuelto seis grupos, ¿son reales? Este capítulo da las herramientas que existen, las implementa desde cero y, sobre todo, enseña dónde mienten. Porque van a mentir: el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> ya advertía de que ningún criterio interno puede validar lo que no tiene verdad.</p>
+
+        <h2 id="tres-familias">Tres familias de criterios</h2>
+
+        <p>La tabla del capítulo 1 vuelve, ahora con contenido. Hay tres formas de evaluar una partición, y solo la primera está siempre disponible.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Familia</th><th>Usa</th><th>Responde a</th><th>Riesgo</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Interna</strong></td><td>Solo los datos y la partición</td><td>¿Es geométricamente coherente?</td><td>Premia la forma de grupo que ella misma supone. Circular.</td></tr>
+              <tr><td><strong>De estabilidad</strong></td><td>Los datos, remuestreados</td><td>¿Se repite si cambio la muestra?</td><td>Un artefacto estable sigue siendo estable.</td></tr>
+              <tr><td><strong>Externa</strong></td><td>Etiquetas de referencia</td><td>¿Coincide con lo que ya sabía?</td><td>Rara vez disponibles. Y si lo están, ¿por qué agrupas?</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="internos">Los índices internos y sus fórmulas</h2>
+
+        <p>Todos parten de la misma idea —premiar grupos compactos y separados— y se diferencian en cómo la formalizan.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Silueta (Rousseeuw, 1987)</div>
+          <p>Para cada punto $i$, sea $a(i)$ la distancia media a los demás puntos de <em>su</em> grupo y $b(i)$ la menor de las distancias medias a los puntos de <em>otro</em> grupo:</p>
+          <p>$$ s(i) \;=\; \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}} \;\in\; [-1, 1] $$</p>
+          <p class="math-note">$s(i) \approx 1$ significa que $i$ está mucho más cerca de los suyos que de cualquier otro grupo; $s(i) \approx 0$, que está en la frontera; $s(i) \lt 0$, que estaría mejor en otro grupo. El índice global es la media sobre todos los puntos. Su gran virtud es que también se puede mirar punto a punto, para localizar quién está mal colocado.</p>
+        </div>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Calinski-Harabasz (1974)</div>
+          <p>$$ \mathrm{CH}(k) \;=\; \frac{B / (k-1)}{W / (n-k)} $$</p>
+          <p class="math-note">$B$ y $W$ son la dispersión entre grupos y dentro de los grupos de la identidad ANOVA del <a href="03-kmeans.html">capítulo 3</a>, y $B + W = T$ es constante. Es literalmente el estadístico $F$ de un análisis de la varianza: mide cuánta varianza se explica por grupo <em>por cada grado de libertad gastado</em>. Los denominadores $k-1$ y $n-k$ son los que impiden que subir $k$ salga siempre gratis. Más alto, mejor.</p>
+        </div>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Davies-Bouldin (1979)</div>
+          <p>$$ \mathrm{DB}(k) \;=\; \frac{1}{k}\sum_{i=1}^{k} \max_{j \ne i} \frac{S_i + S_j}{\lVert \mu_i - \mu_j\rVert}, \qquad S_i = \sqrt{\frac{1}{n_i}\sum_{x \in C_i} \lVert x - \mu_i\rVert^2} $$</p>
+          <p class="math-note">$S_i$ es la dispersión media del grupo $i$ y el denominador, la distancia entre centroides. Para cada grupo se toma su <em>peor</em> vecino —el que más se le solapa— y se promedia. Aquí, más bajo es mejor.</p>
+        </div>
+
+        <p>Y está el veterano, el <strong>método del codo</strong>: dibujar la inercia frente a $k$ y buscar dónde deja de bajar deprisa. Es cualitativo, subjetivo y con frecuencia no hay codo. Lo incluimos en la salida para que se vea por qué no basta.</p>
+
+        <h2 id="punto-ciego">El punto ciego de los índices internos</h2>
+
+        <p>Aplicamos los tres a dos conjuntos: tres grupos esféricos y las dos lunas de siempre.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">indices_internos.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+
+
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return z, C
+
+
+def matriz_dist(X):
+    sq = (X ** 2).sum(axis=1)
+    return np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+
+
+def silueta(X, z):
+    """a(i): distancia media a su grupo. b(i): la menor media a otro grupo."""
+    D = matriz_dist(X)
+    k = z.max() + 1
+    s = np.zeros(len(X))
+    for i in range(len(X)):
+        propio = z == z[i]
+        n_propio = propio.sum()
+        if n_propio &lt;= 1:
+            s[i] = 0.0
+            continue
+        a = D[i, propio].sum() / (n_propio - 1)          # se excluye él mismo
+        b = min(D[i, z == j].mean() for j in range(k) if j != z[i])
+        s[i] = (b - a) / max(a, b)
+    return s.mean()
+
+
+def calinski_harabasz(X, z):
+    n, k = len(X), z.max() + 1
+    mu = X.mean(axis=0)
+    W = sum(((X[z == j] - X[z == j].mean(axis=0)) ** 2).sum() for j in range(k))
+    B = sum((z == j).sum() * ((X[z == j].mean(axis=0) - mu) ** 2).sum() for j in range(k))
+    return (B / (k - 1)) / (W / (n - k))
+
+
+def davies_bouldin(X, z):
+    k = z.max() + 1
+    C = np.array([X[z == j].mean(axis=0) for j in range(k)])
+    S = np.array([np.sqrt(((X[z == j] - C[j]) ** 2).sum(axis=1).mean()) for j in range(k)])
+    total = 0.0
+    for i in range(k):
+        peor = max((S[i] + S[j]) / np.linalg.norm(C[i] - C[j])
+                   for j in range(k) if j != i)
+        total += peor
+    return total / k
+
+
+def inercia(X, z, C):
+    return ((X - C[z]) ** 2).sum()
+
+
+# ---------------- Conjunto A: tres grupos esféricos ----------------
+centros = np.array([[0.0, 0.0], [5.0, 0.5], [2.5, 5.0]])
+XA = np.vstack([c + rng.normal(scale=0.8, size=(100, 2)) for c in centros])
+
+# ---------------- Conjunto B: dos lunas ----------------
+t = rng.uniform(0, np.pi, 150)
+XB = np.vstack([np.column_stack([np.cos(t), np.sin(t)]),
+                np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)])]) \
+    + rng.normal(scale=0.07, size=(300, 2))
+yB = np.repeat([0, 1], 150)
+
+for nombre, X, verdad in [("A · tres grupos esféricos", XA, 3),
+                          ("B · dos lunas", XB, 2)]:
+    print(f"\n{nombre}  (k verdadero = {verdad})")
+    print(f"{'k':&gt;3} {'inercia':&gt;11} {'silueta':&gt;9} {'Calinski-H':&gt;12} {'Davies-B':&gt;10}")
+    sil, ch, db = [], [], []
+    for k in range(2, 8):
+        z, C = kmeans(X, k, semilla=0)
+        s = silueta(X, z)
+        c = calinski_harabasz(X, z)
+        d = davies_bouldin(X, z)
+        sil.append(s)
+        ch.append(c)
+        db.append(d)
+        print(f"{k:3d} {inercia(X, z, C):11.2f} {s:9.4f} {c:12.2f} {d:10.4f}")
+    ks = list(range(2, 8))
+    print(f"    -&gt; silueta elige k={ks[int(np.argmax(sil))]}, "
+          f"Calinski-H elige k={ks[int(np.argmax(ch))]}, "
+          f"Davies-B elige k={ks[int(np.argmin(db))]}")
+
+# --- El punto ciego: la partición CORRECTA de las lunas puntúa PEOR ---
+z_km, _ = kmeans(XB, 2, semilla=0)
+print("\nEn las lunas, comparemos la partición de k-means con la verdadera:")
+print(f"  silueta de k-means (k=2)      : {silueta(XB, z_km):.4f}")
+print(f"  silueta de la partición REAL  : {silueta(XB, yB):.4f}")
+print(f"  Calinski-H de k-means         : {calinski_harabasz(XB, z_km):.2f}")
+print(f"  Calinski-H de la partición REAL: {calinski_harabasz(XB, yB):.2f}")
+print("  Los índices prefieren la respuesta EQUIVOCADA: premian la compacidad,")
+print("  y las lunas correctas no son compactas.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+for nombre, X, col in [("A", XA, "#5b8def"), ("B", XB, "#ef476f")]:
+    valores = [silueta(X, kmeans(X, k, semilla=0)[0]) for k in range(2, 8)]
+    ax[0].plot(range(2, 8), valores, "o-", color=col, label=nombre)
+ax[0].set_xlabel("k")
+ax[0].set_ylabel("silueta media")
+ax[0].legend()
+ax[0].set_title("silueta frente a k")
+ax[1].scatter(XB[:, 0], XB[:, 1], c=z_km, cmap="coolwarm", s=10, edgecolors="none")
+ax[1].set_title(f"k-means: silueta {silueta(XB, z_km):.3f}")
+ax[2].scatter(XB[:, 0], XB[:, 1], c=yB, cmap="coolwarm", s=10, edgecolors="none")
+ax[2].set_title(f"verdad: silueta {silueta(XB, yB):.3f}")
+for a in ax[1:]:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>A · tres grupos esféricos  (k verdadero = 3)
+  k     inercia   silueta   Calinski-H   Davies-B
+  2     1730.32    0.4879       243.01     0.8606
+  3      379.08    0.7078      1082.10     0.4472
+  4      332.53    0.5643       833.44     0.8715
+  5      307.70    0.5610       679.17     0.8203
+  6      258.81    0.4489       654.90     1.0209
+  7      221.06    0.3409       645.12     1.2123
+    -&gt; silueta elige k=3, Calinski-H elige k=3, Davies-B elige k=3
+
+B · dos lunas  (k verdadero = 2)
+  k     inercia   silueta   Calinski-H   Davies-B
+  2      138.20    0.4571       394.66     0.8655
+  3       87.34    0.4453       397.65     0.9105
+  4       49.17    0.5336       545.88     0.7479
+  5       36.00    0.5445       584.28     0.6940
+  6       24.89    0.5618       699.94     0.6298
+  7       21.68    0.5266       674.87     0.6750
+    -&gt; silueta elige k=6, Calinski-H elige k=6, Davies-B elige k=6
+
+En las lunas, comparemos la partición de k-means con la verdadera:
+  silueta de k-means (k=2)      : 0.4571
+  silueta de la partición REAL  : 0.3607
+  Calinski-H de k-means         : 394.66
+  Calinski-H de la partición REAL: 219.06
+  Los índices prefieren la respuesta EQUIVOCADA: premian la compacidad,
+  y las lunas correctas no son compactas.</pre>
+        </div>
+
+        <p>En el conjunto A todo funciona de maravilla: los tres índices coinciden en $k=3$, la silueta marca un pico nítido de 0,708 y la inercia cae de 1730 a 379 justo ahí. Cuando los datos son esféricos y separados, esto es fácil.</p>
+
+        <p>En el conjunto B, los tres se equivocan y se equivocan <em>juntos</em>: los tres eligen $k=6$ para unos datos con dos grupos. No es que uno falle y otro acierte: comparten la misma hipótesis, y por eso comparten el error. <strong>Que tres índices coincidan no es una confirmación.</strong></p>
+
+        <p>El bloque final es todavía peor y conviene leerlo dos veces. Con $k=2$ fijo, comparamos la partición de k-means (que ya sabemos incorrecta) con la <em>verdadera</em>. La silueta le da 0,457 a la incorrecta y <strong>0,361 a la correcta</strong>; Calinski-Harabasz, 394,66 frente a 219,06. Es decir: si usaras estos índices para elegir entre dos algoritmos, elegirías el peor. No están midiendo acierto. Están midiendo <em>compacidad</em>, y las lunas correctas no son compactas.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Circularidad</div>
+          <p>Un índice interno codifica una definición de «buen grupo». Si tu algoritmo optimiza esa misma definición, el índice le dará la razón: la silueta y Calinski-Harabasz premian exactamente lo que k-means minimiza. Usar un índice interno para comparar k-means con DBSCAN es como pedirle a un equipo que arbitre su propio partido.</p>
+        </div>
+
+        <h2 id="gap">El estadístico de hueco: el único que sabe decir «aquí no hay nada»</h2>
+
+        <p>Todos los índices anteriores comparten un defecto aún más grave: <strong>no están definidos para $k=1$</strong>. La silueta necesita al menos dos grupos para calcular $b(i)$; Calinski-Harabasz divide por $k-1$. Así que, por construcción, <em>siempre</em> encuentran grupos. Aunque los datos sean ruido puro.</p>
+
+        <p>Tibshirani, Walther y Hastie propusieron en 2001 la solución: comparar tu inercia no con otras $k$, sino con la que obtendrías <em>en datos sin ninguna estructura</em>.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Estadístico de hueco (gap)</div>
+          <p>$$ \mathrm{Gap}(k) \;=\; \mathbb{E}^{*}\!\big[\log W_k\big] \;-\; \log W_k $$</p>
+          <p class="math-note">$W_k$ es la inercia obtenida con $k$ grupos en tus datos, y $\mathbb{E}^{*}$ la esperanza de la misma cantidad sobre conjuntos de <em>referencia</em> generados sin estructura (uniformes dentro de la envolvente de tus datos), estimada con $B$ repeticiones. El «hueco» mide cuánto mejor agrupan tus datos que el ruido. Con $s_k = \mathrm{sd}^*(\log W_k)\sqrt{1 + 1/B}$ como error típico, la regla es quedarse con el <strong>menor $k$ tal que $\mathrm{Gap}(k) \ge \mathrm{Gap}(k+1) - s_{k+1}$</strong>: el primer $k$ a partir del cual añadir grupos ya no aporta nada por encima del ruido.</p>
+        </div>
+
+        <p>La virtud decisiva es que $k=1$ es un candidato legítimo. Vamos a comprobarlo con dos conjuntos: uno con cuatro grupos claros y otro que es literalmente ruido uniforme.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">gap_y_sin_estructura.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(3)
+B_REF = 20          # número de conjuntos de referencia por cada k
+
+
+def kmeans_inercia(X, k, semilla=0, iters=100):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return ((X - C[z]) ** 2).sum()
+
+
+def gap(X, ks, semilla=0):
+    lo, hi = X.min(axis=0), X.max(axis=0)
+    r = np.random.default_rng(semilla)
+    gaps, sks, logW = [], [], []
+    for k in ks:
+        W = kmeans_inercia(X, k, semilla=0)
+        logW.append(np.log(max(W, 1e-12)))
+        refs = []
+        for b in range(B_REF):
+            Xr = r.uniform(lo, hi, size=X.shape)      # referencia sin estructura
+            refs.append(np.log(max(kmeans_inercia(Xr, k, semilla=b), 1e-12)))
+        refs = np.array(refs)
+        gaps.append(refs.mean() - logW[-1])
+        sks.append(refs.std() * np.sqrt(1 + 1.0 / B_REF))
+    return np.array(gaps), np.array(sks), np.array(logW)
+
+
+def elegir_k(ks, gaps, sks):
+    """Regla de Tibshirani: el menor k con Gap(k) &gt;= Gap(k+1) - s_{k+1}."""
+    for i in range(len(ks) - 1):
+        if gaps[i] &gt;= gaps[i + 1] - sks[i + 1]:
+            return ks[i]
+    return ks[-1]
+
+
+# ---------------- Caso 1: cuatro grupos de verdad ----------------
+centros = np.array([[0.0, 0.0], [6.0, 0.0], [0.0, 6.0], [6.0, 6.0]])
+X1 = np.vstack([c + rng.normal(scale=0.9, size=(75, 2)) for c in centros])
+
+# ---------------- Caso 2: nube uniforme, SIN estructura ninguna ----------------
+X2 = rng.uniform([0, 0], [10, 10], size=(300, 2))
+
+ks = list(range(1, 9))
+for nombre, X, verdad in [("cuatro grupos", X1, "4"), ("uniforme (sin grupos)", X2, "1")]:
+    g, s, lw = gap(X, ks)
+    print(f"\n{nombre}   (respuesta correcta: k = {verdad})")
+    print(f"{'k':&gt;3} {'log W_k':&gt;10} {'Gap(k)':&gt;9} {'s_k':&gt;8}   ¿se para aquí?")
+    for i, k in enumerate(ks):
+        if i &lt; len(ks) - 1:
+            para = "SÍ" if g[i] &gt;= g[i + 1] - s[i + 1] else "no"
+        else:
+            para = "-"
+        print(f"{k:3d} {lw[i]:10.4f} {g[i]:9.4f} {s[i]:8.4f}   {para}")
+    print(f"    -&gt; el gap elige k = {elegir_k(ks, g, s)}")
+
+fig, ax = plt.subplots(2, 2, figsize=(11, 8))
+for f, (nombre, X) in enumerate([("cuatro grupos", X1), ("uniforme", X2)]):
+    g, s, lw = gap(X, ks)
+    ax[f, 0].scatter(X[:, 0], X[:, 1], s=10, c="#8b93a7")
+    ax[f, 0].set_title(nombre)
+    ax[f, 0].set_xticks([])
+    ax[f, 0].set_yticks([])
+    ax[f, 1].errorbar(ks, g, yerr=s, fmt="o-", color="#5b8def", capsize=3)
+    ax[f, 1].axvline(elegir_k(ks, g, s), ls="--", c="#ef476f")
+    ax[f, 1].set_xlabel("k")
+    ax[f, 1].set_ylabel("Gap(k)")
+    ax[f, 1].set_title(f"gap -&gt; k = {elegir_k(ks, g, s)}")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>cuatro grupos   (respuesta correcta: k = 4)
+  k    log W_k    Gap(k)      s_k   ¿se para aquí?
+  1     8.7039   -0.0172   0.0304   no
+  2     8.0723    0.1137   0.0326   no
+  3     7.5356    0.2046   0.0337   no
+  4     6.1562    1.1353   0.0767   SÍ
+  5     6.0562    1.0468   0.0384   SÍ
+  6     5.9780    0.9508   0.0372   SÍ
+  7     5.8798    0.8767   0.0438   SÍ
+  8     5.7713    0.8441   0.0562   -
+    -&gt; el gap elige k = 4
+
+uniforme (sin grupos)   (respuesta correcta: k = 1)
+  k    log W_k    Gap(k)      s_k   ¿se para aquí?
+  1     8.5258   -0.0348   0.0303   SÍ
+  2     7.9983   -0.0094   0.0316   no
+  3     7.5149    0.0321   0.0341   SÍ
+  4     7.1232   -0.0272   0.0770   SÍ
+  5     6.9612   -0.0543   0.0380   SÍ
+  6     6.7694   -0.0416   0.0311   SÍ
+  7     6.5845   -0.0204   0.0425   SÍ
+  8     6.4410   -0.0218   0.0549   -
+    -&gt; el gap elige k = 1</pre>
+        </div>
+
+        <p>En el primer conjunto el gap salta de 0,205 a <strong>1,135</strong> exactamente en $k=4$, y a partir de ahí baja. La regla se para ahí y acierta. Fíjate en que $\log W_k$ por sí solo no habría dicho nada: baja monótonamente de 8,70 a 5,77, como siempre.</p>
+
+        <p>En el segundo conjunto —300 puntos uniformes, sin la menor estructura— el gap se queda <strong>pegado a cero para todo $k$</strong>: los valores oscilan entre $-0{,}054$ y $+0{,}032$, todos dentro del error típico $s_k \approx 0{,}03$. La regla se detiene en $k=1$ y declara, correctamente, que no hay grupos. Ese es el resultado que ningún índice interno del apartado anterior podía dar.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sube <code>B_REF = 20</code> a <code>B_REF = 60</code> y compara. Las dos decisiones se mantienen ($k=4$ y $k=1$), pero fíjate en algo que sorprende: <strong>los $s_k$ no se encogen</strong>. Con 20 referencias, $s_4 = 0{,}0767$; con 60, $s_4 = 0{,}0547$, y otros suben (por ejemplo $s_1$ pasa de 0,0303 a 0,0326). La diferencia es simple ruido de Monte Carlo.</p>
+          <p>El motivo está en la fórmula: $s_k = \mathrm{sd}^{*}(\log W_k)\sqrt{1 + 1/B}$ <em>no</em> es el error típico de una media —eso sería dividir por $\sqrt{B}$—, sino la desviación de la <em>distribución</em> de referencia, corregida para predecir una observación nueva. El factor $\sqrt{1+1/B}$ solo pasa de 1,025 a 1,008. Lo que sí mejora al subir $B$ es la estimación de $\mathbb{E}^{*}[\log W_k]$, y con ella la estabilidad de la decisión.</p>
+        </div>
+
+        <h2 id="estabilidad">Estabilidad: ¿sobreviviría a otra muestra?</h2>
+
+        <p>Hay una intuición distinta y muy potente, formulada por Ben-Hur, Elisseeff y Guyon (2002): <strong>una estructura real se repite; un artefacto, no</strong>. Toma dos submuestras al azar de tus datos, agrupa cada una por separado y mira si coinciden en los puntos que comparten. Repítelo muchas veces y para cada $k$.</p>
+
+        <p>La ventaja es que el criterio no supone nada sobre la <em>forma</em> de los grupos: sirve igual para k-means, DBSCAN o el espectral. La desventaja es que un sesgo sistemático —un algoritmo que siempre parte por la mitad— es perfectamente estable, y la estabilidad le dará la razón.</p>
+
+        <h2 id="externos">Cuando sí hay etiquetas: Rand, ARI y NMI</h2>
+
+        <p>En experimentos, auditorías y comparativas sí tenemos una partición de referencia. Pero compararlas no es trivial, porque <em>las etiquetas son arbitrarias</em>: llamar «0» y «1» a lo que el otro llama «1» y «0» no es un error. La solución universal es comparar <strong>parejas de puntos</strong>: ¿están juntas en ambas particiones, o separadas en ambas?</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Índice de Rand y su versión ajustada</div>
+          <p>$$ \mathrm{RI} = \frac{a + d}{\binom{n}{2}} $$</p>
+          <p>donde $a$ es el número de parejas que van juntas en las dos particiones y $d$ el de parejas separadas en las dos. Con $n_{ij}$ la tabla de contingencia, $a_i$ y $b_j$ sus márgenes:</p>
+          <p>$$ \mathrm{ARI} = \frac{\displaystyle\sum_{ij}\binom{n_{ij}}{2} \;-\; \frac{\sum_i \binom{a_i}{2}\,\sum_j\binom{b_j}{2}}{\binom{n}{2}}}{\displaystyle\frac12\left[\sum_i\binom{a_i}{2} + \sum_j\binom{b_j}{2}\right] \;-\; \frac{\sum_i \binom{a_i}{2}\,\sum_j\binom{b_j}{2}}{\binom{n}{2}}} $$</p>
+          <p class="math-note">El numerador resta al índice observado el que se esperaría <em>por azar</em> (bajo un modelo hipergeométrico con los márgenes fijos), y el denominador normaliza para que el máximo sea 1. Resultado: <strong>ARI $=1$ si coinciden, $\approx 0$ si son independientes</strong>, y puede ser negativo si coinciden menos de lo esperable al azar. Es la corrección de línea base que le falta al Rand crudo.</p>
+        </div>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Información mutua normalizada</div>
+          <p>$$ \mathrm{NMI}(U,V) = \frac{2\,I(U;V)}{H(U) + H(V)}, \qquad I(U;V) = \sum_{i,j} p_{ij}\log\frac{p_{ij}}{p_i\,p_j} $$</p>
+          <p class="math-note">$p_{ij}$ es la proporción de puntos en el grupo $i$ de $U$ y el $j$ de $V$; $p_i$ y $p_j$ son sus marginales; $H$ es la entropía. $I(U;V)$ mide cuánta información sobre una partición aporta conocer la otra —y vuelve a aparecer la teoría de la información del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>—. Vale 1 si son idénticas y 0 si son independientes, pero <em>no está corregido por azar</em>: con muchos grupos y pocos datos sube por sí solo.</p>
+        </div>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">indices_externos.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(5)
+
+
+def contingencia(a, b):
+    ka, kb = a.max() + 1, b.max() + 1
+    M = np.zeros((ka, kb), dtype=np.int64)
+    np.add.at(M, (a, b), 1)
+    return M
+
+
+def comb2(x):
+    return x * (x - 1) // 2
+
+
+def rand_index(a, b):
+    """Fracción de PAREJAS clasificadas igual (juntas-juntas o separadas-separadas)."""
+    M = contingencia(a, b)
+    n = len(a)
+    suma_ij = comb2(M).sum()
+    suma_i = comb2(M.sum(axis=1)).sum()
+    suma_j = comb2(M.sum(axis=0)).sum()
+    acuerdos = comb2(n) + 2 * suma_ij - suma_i - suma_j
+    return acuerdos / comb2(n)
+
+
+def ari(a, b):
+    """Rand ajustado: (índice - esperado) / (máximo - esperado)."""
+    M = contingencia(a, b)
+    n = len(a)
+    suma_ij = comb2(M).sum()
+    suma_i = comb2(M.sum(axis=1)).sum()
+    suma_j = comb2(M.sum(axis=0)).sum()
+    esperado = suma_i * suma_j / comb2(n)
+    maximo = 0.5 * (suma_i + suma_j)
+    return (suma_ij - esperado) / (maximo - esperado)
+
+
+def nmi(a, b):
+    """Información mutua normalizada: 2 I(A;B) / (H(A) + H(B))."""
+    M = contingencia(a, b).astype(float)
+    n = M.sum()
+    P = M / n
+    pa, pb = P.sum(axis=1), P.sum(axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        I = np.nansum(np.where(P &gt; 0, P * np.log(P / np.outer(pa, pb)), 0.0))
+    Ha = -np.sum(pa[pa &gt; 0] * np.log(pa[pa &gt; 0]))
+    Hb = -np.sum(pb[pb &gt; 0] * np.log(pb[pb &gt; 0]))
+    return 2 * I / (Ha + Hb) if (Ha + Hb) &gt; 0 else 1.0
+
+
+# ---------------- 1) Línea base: dos particiones AL AZAR ----------------
+print("1) Dos particiones aleatorias e independientes (no hay ninguna relación real)")
+print(f"{'k':&gt;4} {'Rand':&gt;9} {'ARI':&gt;10} {'NMI':&gt;9}")
+for k in [2, 5, 10, 20]:
+    R, A, N = [], [], []
+    for _ in range(200):
+        a = rng.integers(0, k, 300)
+        b = rng.integers(0, k, 300)
+        R.append(rand_index(a, b))
+        A.append(ari(a, b))
+        N.append(nmi(a, b))
+    print(f"{k:4d} {np.mean(R):9.4f} {np.mean(A):10.4f} {np.mean(N):9.4f}")
+print("   El Rand crudo sube con k hasta rozar 1 sin que haya NADA que descubrir.")
+print("   El ARI se queda pegado a 0, que es lo correcto. El NMI sube un poco:")
+print("   también está sesgado al alza cuando hay muchos grupos y pocos datos.\n")
+
+# ---------------- 2) Degradación controlada ----------------
+print("2) Partimos de la verdad y estropeamos una fracción creciente de etiquetas")
+verdad = np.repeat([0, 1, 2], 100)
+print(f"{'% cambiado':&gt;11} {'Rand':&gt;9} {'ARI':&gt;10} {'NMI':&gt;9}")
+frac, Rs, As, Ns = [], [], [], []
+for p in [0.0, 0.1, 0.2, 0.35, 0.5, 0.67, 0.85, 1.0]:
+    z = verdad.copy()
+    idx = rng.choice(len(z), int(p * len(z)), replace=False)
+    z[idx] = rng.integers(0, 3, len(idx))
+    frac.append(p)
+    Rs.append(rand_index(verdad, z))
+    As.append(ari(verdad, z))
+    Ns.append(nmi(verdad, z))
+    print(f"{p:10.0%} {Rs[-1]:10.4f} {As[-1]:10.4f} {Ns[-1]:9.4f}")
+
+# ---------------- 3) Un caso instructivo: partir un grupo en dos ----------------
+print("\n3) ¿Y si la partición es CORRECTA pero más fina que la verdad?")
+fina = verdad.copy()
+fina[:50] = 3                      # partimos el grupo 0 en dos mitades
+print(f"   verdad: 3 grupos de 100. Propuesta: 4 grupos (el primero, partido).")
+print(f"   Rand {rand_index(verdad, fina):.4f} | ARI {ari(verdad, fina):.4f} "
+      f"| NMI {nmi(verdad, fina):.4f}")
+print("   Ningún índice llega a 1: una subdivisión pura se penaliza igual que un error.")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+ax[0].plot([2, 5, 10, 20],
+           [np.mean([rand_index(rng.integers(0, k, 300), rng.integers(0, k, 300))
+                     for _ in range(60)]) for k in [2, 5, 10, 20]], "o-", label="Rand")
+ax[0].plot([2, 5, 10, 20],
+           [np.mean([ari(rng.integers(0, k, 300), rng.integers(0, k, 300))
+                     for _ in range(60)]) for k in [2, 5, 10, 20]], "s-", label="ARI")
+ax[0].set_xlabel("número de grupos")
+ax[0].set_ylabel("valor con etiquetas al azar")
+ax[0].legend()
+ax[0].set_title("línea base: debería ser 0")
+ax[1].plot(frac, Rs, "o-", label="Rand")
+ax[1].plot(frac, As, "s-", label="ARI")
+ax[1].plot(frac, Ns, "^-", label="NMI")
+ax[1].set_xlabel("fracción de etiquetas estropeadas")
+ax[1].legend()
+ax[1].set_title("degradación controlada")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1) Dos particiones aleatorias e independientes (no hay ninguna relación real)
+   k      Rand        ARI       NMI
+   2    0.4999    -0.0002    0.0023
+   5    0.6799    -0.0003    0.0166
+  10    0.8202     0.0005    0.0667
+  20    0.9048    -0.0002    0.2259
+   El Rand crudo sube con k hasta rozar 1 sin que haya NADA que descubrir.
+   El ARI se queda pegado a 0, que es lo correcto. El NMI sube un poco:
+   también está sesgado al alza cuando hay muchos grupos y pocos datos.
+
+2) Partimos de la verdad y estropeamos una fracción creciente de etiquetas
+ % cambiado      Rand        ARI       NMI
+        0%     1.0000     1.0000    1.0000
+       10%     0.9074     0.7910    0.7192
+       20%     0.8545     0.6717    0.5981
+       35%     0.7266     0.3831    0.3299
+       50%     0.6647     0.2433    0.2130
+       67%     0.6120     0.1244    0.1111
+       85%     0.5582     0.0030    0.0087
+      100%     0.5538    -0.0029    0.0034
+
+3) ¿Y si la partición es CORRECTA pero más fina que la verdad?
+   verdad: 3 grupos de 100. Propuesta: 4 grupos (el primero, partido).
+   Rand 0.9443 | ARI 0.8686 | NMI 0.9049
+   Ningún índice llega a 1: una subdivisión pura se penaliza igual que un error.</pre>
+        </div>
+
+        <p>El primer bloque es el argumento entero a favor del ajuste. Con dos particiones <em>completamente aleatorias e independientes</em> en 20 grupos, el índice de Rand crudo da <strong>0,9048</strong>. Cualquiera que leyera «90 % de acuerdo» pensaría que ha descubierto algo, y no hay absolutamente nada. La razón es combinatoria: con 20 grupos, casi todas las parejas están separadas en ambas particiones, y esas coincidencias triviales cuentan como aciertos. El ARI, que resta esa expectativa, se queda en $-0{,}0002$.</p>
+
+        <p>El NMI queda a medio camino: 0,0023 con dos grupos pero <strong>0,2259 con veinte</strong>. También está sesgado al alza, aunque mucho menos. Si comparas particiones con distinto número de grupos, usa ARI o alguna variante ajustada del NMI (AMI); el NMI a secas favorece al que proponga más grupos.</p>
+
+        <p>El segundo bloque muestra la sensibilidad. Al estropear el 10 % de las etiquetas, el Rand solo baja a 0,907 —apenas se entera— mientras que el ARI cae a 0,791 y el NMI a 0,719. El ARI discrimina; el Rand comprime todo el rango interesante entre 0,55 y 1,00.</p>
+
+        <p>El tercer bloque señala un límite que afecta a los tres. Si tu partición es <em>correcta pero más fina</em> —encuentras 4 grupos donde había 3, sin mezclar nada—, ninguno llega a 1: ARI 0,869, NMI 0,905. Puede que hayas descubierto una subestructura real que las etiquetas de referencia no recogían, y el índice te penaliza igual que si te hubieras equivocado. Es la razón de que en la práctica se reporte también la matriz de contingencia.</p>
+
+        <h2 id="receta">Una receta razonable</h2>
+
+        <p>Reuniendo todo lo del capítulo, así es como conviene proceder cuando de verdad hay que decidir:</p>
+
+        <ol>
+          <li><strong>Empieza por el gap</strong>, o por cualquier prueba que admita $k=1$. Si dice que no hay estructura, párate: lo demás es alucinar.</li>
+          <li><strong>Cruza índices con distintos supuestos.</strong> Que la silueta y Calinski-Harabasz coincidan no significa nada, porque suponen lo mismo. Añade estabilidad por remuestreo, que no supone forma.</li>
+          <li><strong>Cambia de algoritmo, no solo de $k$.</strong> Si k-means, la mixtura gaussiana y HDBSCAN encuentran lo mismo, la estructura es robusta. Si cada uno dice una cosa, la respuesta depende del método y hay que justificar la elección con el problema, no con un número.</li>
+          <li><strong>Mira los grupos.</strong> Proyecta a dos dimensiones (parte III), examina los centroides, describe cada grupo con las variables originales. Si no se pueden nombrar, probablemente no existen.</li>
+          <li><strong>Evalúa en la tarea final</strong> siempre que sea posible: si el clústering es un paso intermedio, lo que importa es si mejora lo que viene después. Es el criterio de la <a href="16-autosupervisado-contrastivo.html">parte IV</a>.</li>
+        </ol>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Los índices internos (silueta, Calinski-Harabasz, Davies-Bouldin) aciertan cuando los grupos son esféricos: los tres eligen $k=3$ en el conjunto fácil.</li>
+            <li>Y fallan a la vez cuando no lo son: los tres eligen $k=6$ en dos lunas, y con $k=2$ prefieren la partición equivocada (silueta 0,457 frente a 0,361 de la verdadera). Miden compacidad, no acierto.</li>
+            <li>Ninguno admite $k=1$, así que siempre encuentran grupos. El estadístico de hueco sí: en 300 puntos uniformes se queda pegado a cero y elige $k=1$; en cuatro grupos reales salta a 1,135 en $k=4$.</li>
+            <li>La estabilidad por remuestreo no supone forma, pero es ciega a los sesgos sistemáticos del algoritmo.</li>
+            <li>El índice de Rand sin ajustar está inflado: dos particiones aleatorias en 20 grupos dan 0,9048. El ARI corrige la línea base y da $-0{,}0002$. El NMI queda a medio camino (0,2259) y también favorece a quien proponga más grupos.</li>
+            <li>Una subdivisión correcta pero más fina penaliza igual que un error: ARI 0,869. Los índices resumen; la matriz de contingencia informa.</li>
+          </ul>
+        </div>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># silueta, Calinski-Harabasz y Davies-Bouldin, con su punto ciego</span>
+<span class="prompt">$</span> python code/08-validacion-clusteres/indices_internos.py
+
+<span class="comment"># el gap statistic y los datos sin estructura</span>
+<span class="prompt">$</span> python code/08-validacion-clusteres/gap_y_sin_estructura.py
+
+<span class="comment"># Rand, ARI y NMI con sus líneas base</span>
+<span class="prompt">$</span> python code/08-validacion-clusteres/indices_externos.py</pre>
+        </div>
+
+        <p>Con esto se cierra la parte II. Hemos visto cinco familias de algoritmos de clústering y hemos aprendido a desconfiar de las tres formas de validarlos. Todos comparten una limitación que no hemos tocado: <strong>trabajan en el espacio original</strong>, ese mismo espacio del que el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> demostró que en dimensión alta es casi inservible. La parte III se dedica a construir un espacio mejor, y empieza por la herramienta más antigua y más usada de todas: el <a href="09-pca.html">análisis de componentes principales</a>.</p>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

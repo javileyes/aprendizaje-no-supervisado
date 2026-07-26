@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>16. Autosupervisado y contrastivo: SimCLR e InfoNCE · No supervisado</title>
+  <meta name="description" content="Fabricar la supervisión desde los propios datos: aumentaciones, InfoNCE como cota inferior de la información mutua, colapso y BYOL." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="16">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte IV · Capítulo 16</span>
+        <h1>Autosupervisado y contrastivo: SimCLR e InfoNCE</h1>
+        <p class="lead">Todos los métodos anteriores comparten un objetivo: <em>reconstruir</em>. Y reconstruir obliga a conservar cosas que no importan —el color exacto del fondo, la fase de una señal—, porque también hay que reproducirlas. El aprendizaje contrastivo cambia la pregunta: en vez de «¿puedes reproducir este dato?», pregunta «¿puedes reconocer que estos dos son el mismo?». Ese giro es el que ha producido las representaciones no supervisadas que compiten de tú a tú con las supervisadas.</p>
+
+        <h2 id="idea">Declarar lo que no importa</h2>
+
+        <p>Una foto de un gato, girada 10°, recortada, en blanco y negro y algo más oscura, sigue siendo una foto del mismo gato. Esa afirmación no está en los píxeles: la pones tú. Y contiene muchísima información, porque decir qué transformaciones <em>no</em> cambian el significado es, casi, decir qué es el significado.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Fabrica dos versiones distorsionadas del mismo dato y entrena la red para que sus representaciones se parezcan; y para que la de otro dato cualquiera <em>no</em> se les parezca. Sin la segunda condición hay una solución trivial —devolver siempre el mismo vector—, y por eso al método se le llama <strong>contrastivo</strong>: aprende comparando.</p>
+        </div>
+
+        <p>Esto es <em>autosupervisado</em>, no exactamente no supervisado: hay una etiqueta, pero la genera el propio procedimiento —«estos dos vienen del mismo original»— en vez de un humano. Es la misma familia que el autoencoder denoising del <a href="13-autoencoders.html">capítulo 13</a>, y la misma que BERT o los modelos de difusión: fabricar un problema supervisado cuya solución exija entender los datos.</p>
+
+        <h2 id="infonce">InfoNCE: la pérdida</h2>
+
+        <p>Sea un lote de $n$ datos. De cada uno se generan dos vistas, con lo que hay $2n$ representaciones $z_1,\dots,z_{2n}$, normalizadas a norma 1 —volvemos a la esfera del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, donde el coseno y la distancia euclídea son equivalentes—. Para cada $i$, su <em>positivo</em> es la otra vista del mismo dato, y todo lo demás son negativos.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ NT-Xent / InfoNCE</div>
+          <p>$$ \mathcal{L}_i \;=\; -\log \frac{\exp\big(\mathrm{sim}(z_i, z_{p(i)})/\tau\big)}{\displaystyle\sum_{j \ne i} \exp\big(\mathrm{sim}(z_i, z_j)/\tau\big)}, \qquad \mathrm{sim}(u,v) = \frac{u^\top v}{\lVert u\rVert\,\lVert v\rVert} $$</p>
+          <p class="math-note">$p(i)$ es el índice de la vista hermana y $\tau \gt 0$ es la <em>temperatura</em>. Léelo como una clasificación: dado $z_i$, hay que acertar cuál de los $2n-1$ candidatos es su pareja. Es literalmente una entropía cruzada con $2n-1$ clases, y por eso la pérdida de un modelo que no ha aprendido nada vale $\log(2n-1)$.</p>
+        </div>
+
+        <p>La temperatura no es un detalle. $\tau$ pequeña hace la distribución muy picuda, con lo que el gradiente se concentra en los negativos <em>difíciles</em> —los que ya están cerca— y la representación se separa más. $\tau$ grande la aplana, todos los negativos pesan igual y el aprendizaje se vuelve laxo. Lo mediremos.</p>
+
+        <h3>Por qué se llama «Info»</h3>
+
+        <p>El nombre viene de que esta pérdida acota la información mutua. Sean $v_1, v_2$ las dos vistas; se demuestra (Oord et al., 2018; Poole et al., 2019) que</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Cota de información mutua</div>
+          <p>$$ I(v_1; v_2) \;\ge\; \log(N) - \mathcal{L}_{\mathrm{InfoNCE}} $$</p>
+          <p class="math-note">$N$ es el número de candidatos (el tamaño del lote, en la práctica). Minimizar la pérdida <em>sube</em> una cota inferior de la información mutua entre las dos vistas: la red aprende justo lo que las dos vistas comparten, que por construcción es lo que las transformaciones no destruyeron. Es la formalización exacta de «aprende a ignorar lo irrelevante».</p>
+          <p class="math-note">La cota tiene un límite duro que explica un fenómeno práctico muy conocido: como $I \ge \log N - \mathcal{L}$ y $\mathcal{L}\ge 0$, <strong>ninguna estimación puede superar $\log N$</strong>. Con lotes de 128 eso son 4,85 nats. De ahí que SimCLR necesitara lotes de 4096 y que MoCo inventara una cola de negativos para simular lotes enormes sin pagarlos en memoria.</p>
+        </div>
+
+        <h2 id="ejemplo">Contrastivo en numpy, con los gradientes derivados</h2>
+
+        <p>Los datos son señales de longitud 64 caracterizadas por su <strong>frecuencia</strong>: seis clases, con frecuencias próximas entre sí y bastante ruido. Las transformaciones son un desplazamiento circular (cambia la fase), un reescalado (cambia la amplitud) y ruido añadido. Ninguna de las tres altera la frecuencia, así que al declararlas estamos diciéndole a la red exactamente qué debe ignorar.</p>
+
+        <p>La evaluación es la estándar del campo: una <strong>sonda lineal</strong>, es decir, una regresión logística entrenada sobre la representación congelada. Mide cuánta información <em>linealmente accesible</em> sobre la clase hay en el código.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">infonce_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+T, N_CLASES, N = 64, 6, 1600
+FRECS = np.array([2.0, 2.6, 3.2, 4.0, 5.0, 6.2])
+t_grid = np.linspace(0, 2 * np.pi, T)
+
+
+def genera(n, r):
+    y = r.integers(0, N_CLASES, n)
+    fase = r.uniform(0, 2 * np.pi, n)
+    amp = r.uniform(0.5, 2.0, n)
+    X = amp[:, None] * np.sin(FRECS[y][:, None] * t_grid[None, :] + fase[:, None])
+    X += 0.45 * r.normal(size=(n, T))
+    return X, y
+
+
+X, y = genera(N, rng)
+X_te, y_te = genera(400, np.random.default_rng(5))
+print(f"{N} señales de longitud {T}; {N_CLASES} frecuencias distintas y próximas.")
+print("La fase y la amplitud son ruido: NO definen la clase.")
+
+
+def aumenta(X, r):
+    """Dos vistas: desplazamiento circular (fase), reescalado y ruido."""
+    n = len(X)
+    despl = r.integers(0, T, n)
+    idx = (np.arange(T)[None, :] + despl[:, None]) % T
+    V = np.take_along_axis(X, idx, axis=1)
+    V = V * r.uniform(0.6, 1.6, (n, 1))
+    return V + 0.35 * r.normal(size=V.shape)
+
+
+CAPAS = [T, 96, 64, 16]
+
+
+def init(semilla=0):
+    r = np.random.default_rng(semilla)
+    return [[r.normal(scale=np.sqrt(2.0 / (a + b)), size=(a, b)), np.zeros(b)]
+            for a, b in zip(CAPAS[:-1], CAPAS[1:])]
+
+
+def adelante(par, X):
+    acts, A = [X], X
+    for i, (W, b) in enumerate(par):
+        Zl = A @ W + b
+        A = Zl if i == len(par) - 1 else np.tanh(Zl)
+        acts.append(A)
+    return acts
+
+
+def normaliza(H):
+    n = np.linalg.norm(H, axis=1, keepdims=True) + 1e-12
+    return H / n, n
+
+
+def nt_xent(H, tau=0.2):
+    """Pérdida InfoNCE simétrica. H tiene 2n filas: [vista A ; vista B]."""
+    Z, norm = normaliza(H)
+    m = len(Z)
+    n = m // 2
+    S = (Z @ Z.T) / tau
+    np.fill_diagonal(S, -1e9)                     # nadie es su propio positivo
+    pos = np.concatenate([np.arange(n, m), np.arange(0, n)])
+    S = S - S.max(axis=1, keepdims=True)
+    P = np.exp(S)
+    P /= P.sum(axis=1, keepdims=True)
+    L = -np.log(P[np.arange(m), pos] + 1e-12).mean()
+    # ---- gradiente ----
+    dS = P.copy()
+    dS[np.arange(m), pos] -= 1.0
+    dS /= m
+    np.fill_diagonal(dS, 0.0)
+    dZ = ((dS + dS.T) @ Z) / tau                  # S_ij aparece en la fila i y en la j
+    dH = (dZ - Z * (Z * dZ).sum(axis=1, keepdims=True)) / norm   # por la normalización
+    return L, dH, Z
+
+
+def atras(par, acts, dA):
+    grads = []
+    for i in range(len(par) - 1, -1, -1):
+        if i != len(par) - 1:
+            dA = dA * (1.0 - acts[i + 1] ** 2)
+        grads.append([acts[i].T @ dA, dA.sum(axis=0)])
+        dA = dA @ par[i][0].T
+    return grads[::-1]
+
+
+# ---------------- Verificación del gradiente ----------------
+par = init(0)
+Xa = aumenta(X[:16], rng)
+Xb = aumenta(X[:16], rng)
+V = np.vstack([Xa, Xb])
+
+
+def perdida(par, V):
+    return nt_xent(adelante(par, V)[-1])[0]
+
+
+acts = adelante(par, V)
+L0, dH, _ = nt_xent(acts[-1])
+g = atras(par, acts, dH)
+err = []
+for capa in range(len(par)):
+    W = par[capa][0]
+    for _ in range(4):
+        i, j = rng.integers(W.shape[0]), rng.integers(W.shape[1])
+        o = W[i, j]
+        W[i, j] = o + 1e-6
+        Lp = perdida(par, V)
+        W[i, j] = o - 1e-6
+        Lm = perdida(par, V)
+        W[i, j] = o
+        num = (Lp - Lm) / 2e-6
+        err.append(abs(num - g[capa][0][i, j]) / max(abs(num), 1e-12))
+print(f"\nGradiente analítico vs. numérico: error relativo máximo {max(err):.2e}")
+
+
+# ---------------- Entrenamiento contrastivo ----------------
+def entrena_contrastivo(tau=0.2, epocas=120, lote=128, lr=2e-3, semilla=0):
+    par = init(semilla)
+    r = np.random.default_rng(semilla + 3)
+    m = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+    v = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+    paso, hist = 0, []
+    for ep in range(epocas):
+        orden = r.permutation(N)
+        for i in range(0, N, lote):
+            xb = X[orden[i:i + lote]]
+            V = np.vstack([aumenta(xb, r), aumenta(xb, r)])
+            acts = adelante(par, V)
+            L, dH, _ = nt_xent(acts[-1], tau)
+            g = atras(par, acts, dH)
+            paso += 1
+            for a in range(len(par)):
+                for b_ in range(2):
+                    m[a][b_] = 0.9 * m[a][b_] + 0.1 * g[a][b_]
+                    v[a][b_] = 0.999 * v[a][b_] + 0.001 * g[a][b_] ** 2
+                    par[a][b_] -= lr * (m[a][b_] / (1 - 0.9 ** paso)) / (
+                        np.sqrt(v[a][b_] / (1 - 0.999 ** paso)) + 1e-8)
+        if ep % 20 == 0 or ep == epocas - 1:
+            hist.append((ep, L))
+    return par, hist
+
+
+def sonda_lineal(Ztr, ytr, Zte, yte, iters=800, lr=0.5):
+    """Regresión logística multiclase: mide cuánta información LINEAL hay."""
+    Ztr = np.column_stack([Ztr, np.ones(len(Ztr))])
+    Zte = np.column_stack([Zte, np.ones(len(Zte))])
+    W = np.zeros((Ztr.shape[1], N_CLASES))
+    Y = np.eye(N_CLASES)[ytr]
+    for _ in range(iters):
+        S = Ztr @ W
+        S -= S.max(axis=1, keepdims=True)
+        P = np.exp(S)
+        P /= P.sum(axis=1, keepdims=True)
+        W -= lr * Ztr.T @ (P - Y) / len(Ztr)
+    return ((Zte @ W).argmax(axis=1) == yte).mean()
+
+
+print("\nEntrenando el modelo contrastivo...")
+par_c, hist = entrena_contrastivo()
+print(f"{'época':&gt;7} {'InfoNCE':&gt;10}")
+for ep, L in hist:
+    print(f"{ep:7d} {L:10.4f}")
+print(f"  (una pérdida de log(2*128-1) = {np.log(255):.4f} sería no haber "
+      f"aprendido nada)")
+
+Z_tr = normaliza(adelante(par_c, X)[-1])[0]
+Z_te = normaliza(adelante(par_c, X_te)[-1])[0]
+
+# --- Comparación con otras representaciones ---
+mu = X.mean(axis=0)
+S = ((X - mu).T @ (X - mu)) / (N - 1)
+val, vec = np.linalg.eigh(S)
+U = vec[:, ::-1][:, :16]
+
+print(f"\n{'representación':32} {'dimensión':&gt;10} {'sonda lineal':&gt;14}")
+print(f"{'señal en bruto':32} {T:10d} "
+      f"{sonda_lineal(X, y, X_te, y_te):13.1%}")
+print(f"{'PCA (16 componentes)':32} {16:10d} "
+      f"{sonda_lineal((X - mu) @ U, y, (X_te - mu) @ U, y_te):13.1%}")
+print(f"{'contrastivo (InfoNCE)':32} {16:10d} "
+      f"{sonda_lineal(Z_tr, y, Z_te, y_te):13.1%}")
+
+# --- ¿Ha aprendido a IGNORAR la fase y la amplitud? ---
+Xa = aumenta(X_te, np.random.default_rng(11))
+Xb = aumenta(X_te, np.random.default_rng(12))
+Za = normaliza(adelante(par_c, Xa)[-1])[0]
+Zb = normaliza(adelante(par_c, Xb)[-1])[0]
+print(f"\nInvariancia frente a las transformaciones (coseno entre dos vistas):")
+print(f"  representación contrastiva : {(Za * Zb).sum(axis=1).mean():.4f}")
+Pa = (Xa - mu) @ U
+Pb = (Xb - mu) @ U
+Pa /= np.linalg.norm(Pa, axis=1, keepdims=True)
+Pb /= np.linalg.norm(Pb, axis=1, keepdims=True)
+print(f"  PCA                        : {(Pa * Pb).sum(axis=1).mean():.4f}")
+print("  1,0 significa 'las dos vistas del mismo dato son indistinguibles'.")
+
+# --- El papel de la temperatura ---
+print(f"\nEfecto de la temperatura tau:")
+print(f"{'tau':&gt;6} {'sonda lineal':&gt;14}")
+for tau in [0.05, 0.2, 0.5, 2.0]:
+    p, _ = entrena_contrastivo(tau=tau, epocas=60)
+    Ztr = normaliza(adelante(p, X)[-1])[0]
+    Zte = normaliza(adelante(p, X_te)[-1])[0]
+    print(f"{tau:6.2f} {sonda_lineal(Ztr, y, Zte, y_te):13.1%}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+for c in range(N_CLASES):
+    ax[0].plot(t_grid, X[y == c][0], lw=1)
+ax[0].set_title("una señal de cada clase")
+ax[0].set_xticks([])
+P2 = (X_te - mu) @ U
+ax[1].scatter(P2[:, 0], P2[:, 1], c=y_te, cmap="viridis", s=10, edgecolors="none")
+ax[1].set_title("PCA (2 primeras)")
+ax[2].scatter(Z_te[:, 0], Z_te[:, 1], c=y_te, cmap="viridis", s=10, edgecolors="none")
+ax[2].set_title("contrastivo (2 primeras)")
+for a in ax[1:]:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1600 señales de longitud 64; 6 frecuencias distintas y próximas.
+La fase y la amplitud son ruido: NO definen la clase.
+
+Gradiente analítico vs. numérico: error relativo máximo 1.18e-07
+
+Entrenando el modelo contrastivo...
+  época    InfoNCE
+      0     6.1924
+     20     4.2562
+     40     3.0275
+     60     2.8529
+     80     2.7922
+    100     2.8585
+    119     2.7938
+  (una pérdida de log(2*128-1) = 5.5413 sería no haber aprendido nada)
+
+representación                    dimensión   sonda lineal
+señal en bruto                           64         27.0%
+PCA (16 componentes)                     16         44.8%
+contrastivo (InfoNCE)                    16         98.0%
+
+Invariancia frente a las transformaciones (coseno entre dos vistas):
+  representación contrastiva : 0.8604
+  PCA                        : 0.0445
+  1,0 significa 'las dos vistas del mismo dato son indistinguibles'.
+
+Efecto de la temperatura tau:
+   tau   sonda lineal
+  0.05         97.5%
+  0.20         98.2%
+  0.50         98.2%
+  2.00         38.0%</pre>
+        </div>
+
+        <p>El resultado principal es contundente. Una regresión logística sobre la señal en bruto acierta el <strong>27,0 %</strong> —con 6 clases, el azar es el 16,7 %— porque la fase desplaza la señal y hace la clase linealmente inaccesible. Sobre 16 componentes de PCA sube al <strong>44,8 %</strong>. Sobre las 16 dimensiones del modelo contrastivo: <strong>98,0 %</strong>.</p>
+
+        <p>Es la misma dimensión latente, los mismos datos y ninguna etiqueta en el entrenamiento. La única diferencia es el objetivo, y basta para pasar del 45 % al 98 %.</p>
+
+        <p>El bloque de la invariancia explica <em>por qué</em>. Se generan dos vistas del mismo dato y se mide el coseno entre sus representaciones: <strong>0,8604</strong> en el modelo contrastivo, <strong>0,0445</strong> en PCA. Para PCA, dos vistas del mismo dato son prácticamente ortogonales —o sea, objetos sin relación—; para el modelo contrastivo son casi la misma cosa. La invariancia no ha aparecido sola: se la hemos pedido, y el modelo la ha aprendido.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Las transformaciones son el modelo</div>
+          <p>Si hubiéramos incluido el reescalado temporal entre las transformaciones, la red habría aprendido a ignorar la frecuencia y la sonda lineal daría el 17 %. <strong>Elegir las aumentaciones es declarar qué información es irrelevante</strong>, y es la decisión más consecuente de todo el método —igual que la métrica en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> o el grafo en el <a href="07-clustering-espectral.html">capítulo 7</a>—. En visión, el recorte aleatorio y la distorsión de color hacen casi todo el trabajo; en otros dominios, encontrar las buenas es el problema abierto.</p>
+        </div>
+
+        <p>La tabla de la temperatura confirma su papel: con $\tau$ entre 0,05 y 0,5 el resultado es estable (97,5 % a 98,2 %), pero con $\tau = 2$ se desploma al <strong>38,0 %</strong>. Con la distribución tan aplanada, el positivo apenas destaca sobre los negativos y el gradiente deja de discriminar. Es un hiperparámetro con un rango útil ancho y un acantilado al final.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Quita el desplazamiento circular de <code>aumenta</code>: sustituye las tres líneas de <code>despl</code>, <code>idx</code> y <code>V = np.take_along_axis(...)</code> por una sola, <code>V = X.copy()</code>, dejando el resto igual. Sin esa transformación la red ya no tiene motivo para volverse invariante a la fase, y la sonda lineal se desploma del 98,0 % al <strong>40,5 %</strong>: por debajo incluso de PCA (44,8 %).</p>
+          <p>Y fíjate en el detalle revelador: la invariancia medida <em>sube</em> a 0,9386 desde 0,8604. El modelo es más invariante que antes… a unas transformaciones que ya no incluyen lo que importaba. Ser invariante no es la meta; serlo <em>a lo correcto</em>, sí. La aumentación que quitas es la información que dejas de dar.</p>
+        </div>
+
+        <h2 id="colapso">El colapso, y cómo lo evita cada método</h2>
+
+        <p>Si solo pidiéramos «que las dos vistas se parezcan», la solución óptima sería devolver siempre el mismo vector: pérdida cero, representación inútil. Es el <strong>colapso</strong>, y toda la familia se organiza en torno a cómo evitarlo.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Método</th><th>Cómo evita el colapso</th><th>Precio</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>SimCLR</strong> (2020)</td><td>Negativos explícitos en la propia pérdida</td><td>Necesita lotes enormes (4096) para tener suficientes negativos</td></tr>
+              <tr><td><strong>MoCo</strong> (2020)</td><td>Negativos guardados en una cola, con un codificador «momentum» que se actualiza despacio</td><td>Complejidad extra; la cola puede quedarse obsoleta</td></tr>
+              <tr><td><strong>BYOL</strong> (2020)</td><td><em>Sin negativos.</em> Una red «estudiante» predice la salida de una «profesora» que es su media móvil, con un predictor asimétrico</td><td>Funciona y durante un tiempo nadie supo explicar del todo por qué</td></tr>
+              <tr><td><strong>SimSiam</strong> (2021)</td><td>Como BYOL pero sin media móvil: basta con <em>parar el gradiente</em> en una de las ramas</td><td>Demuestra que la asimetría, no los negativos, es lo esencial</td></tr>
+              <tr><td><strong>Barlow Twins</strong> (2021)</td><td>Fuerza que la matriz de correlación cruzada entre las dos vistas sea la identidad</td><td>Evita el colapso por decorrelación, sin negativos ni asimetría</td></tr>
+              <tr><td><strong>VICReg</strong> (2021)</td><td>Tres términos explícitos: invariancia, varianza mínima por dimensión y covarianza nula</td><td>El más interpretable: cada patología tiene su término</td></tr>
+              <tr><td><strong>DINO</strong> (2021)</td><td>Autodestilación con centrado y afilado de la salida del profesor</td><td>Produce mapas de atención que segmentan objetos sin haberlo pedido</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La progresión de esa tabla es una de las historias más instructivas del aprendizaje profundo reciente. Se empezó creyendo que los negativos eran imprescindibles —de ahí los lotes gigantes de SimCLR—; BYOL demostró que no; SimSiam redujo lo imprescindible a una línea de <code>stop_gradient</code>; y Barlow Twins y VICReg enseñaron que basta con impedir explícitamente que las dimensiones se vuelvan redundantes. El colapso no se evita con negativos: se evita <strong>impidiendo que la representación pierda rango</strong>, y hay muchas maneras de conseguirlo.</p>
+
+        <h2 id="alineamiento">Qué optimiza realmente InfoNCE</h2>
+
+        <p>Hay una descomposición muy iluminadora (Wang y Isola, 2020). En el límite de infinitos negativos, la pérdida contrastiva se separa en dos términos con significado geométrico:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Alineamiento y uniformidad</div>
+          <p>$$ \mathcal{L}_{\text{alin}} = \mathbb{E}_{(x,x^+)}\big\lVert f(x) - f(x^+)\big\rVert^2, \qquad \mathcal{L}_{\text{unif}} = \log\,\mathbb{E}_{x,y}\,e^{-2\lVert f(x)-f(y)\rVert^2} $$</p>
+          <p class="math-note"><strong>Alineamiento</strong>: las vistas del mismo dato deben caer en el mismo sitio de la esfera. <strong>Uniformidad</strong>: las representaciones deben repartirse por toda la esfera, conservando el máximo de información. El colapso es alineamiento perfecto con uniformidad nula. Y las dos propiedades, medidas por separado, predicen el rendimiento en tareas posteriores mejor que la propia pérdida.</p>
+        </div>
+
+        <p>Nótese lo que ha ocurrido con el hilo del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>. Empezamos diciendo que aprender sin supervisión es comprimir —modelar $p(x)$—. El aprendizaje contrastivo ha renunciado explícitamente a eso: no modela la densidad, no reconstruye, no asigna probabilidades. Solo aprende <em>qué distingue un dato de otro salvo las transformaciones declaradas</em>. Y resulta que, para las tareas posteriores, eso vale más que la densidad completa: reconstruir obliga a gastar capacidad en detalles irrelevantes que el contraste puede tirar.</p>
+
+        <h2 id="cierre">Cierre de la parte IV</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Capítulo</th><th>Objetivo</th><th>Qué aprende</th><th>Lo que le falta</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><a href="13-autoencoders.html">13</a> Autoencoder</td><td>Reconstruir</td><td>Una compresión</td><td>Latente con agujeros, sin densidad</td></tr>
+              <tr><td><a href="14-vae.html">14</a> VAE</td><td>ELBO</td><td>Latente continuo con incertidumbre</td><td>Muestras borrosas; colapso posterior</td></tr>
+              <tr><td><a href="15-deep-clustering.html">15</a> DEC/IDEC</td><td>Reconstruir + agrupar</td><td>Representación agrupable</td><td>Solo amplifica lo que ya había</td></tr>
+              <tr><td>16 Contrastivo</td><td>Invariancia + uniformidad</td><td>Lo que las vistas comparten</td><td>No modela $p(x)$; depende de las aumentaciones</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Con esto termina lo puramente no supervisado. Queda una situación muy común en la práctica y que hemos ignorado durante quince capítulos: tener <em>unas pocas</em> etiquetas. Cien, mil, las que un experto pudo revisar en una tarde, frente a un millón de datos sin etiquetar. Aprovechar las dos cosas a la vez es el <a href="17-semisupervisado.html">capítulo 17</a>, y varias de sus ideas —autoentrenamiento, consistencia bajo aumentaciones— ya te van a sonar.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># InfoNCE con gradientes a mano, sonda lineal y temperatura</span>
+<span class="prompt">$</span> python code/16-autosupervisado-contrastivo/infonce_desde_cero.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>El aprendizaje contrastivo fabrica la supervisión: dos vistas del mismo dato son un par positivo, cualquier otro par es negativo.</li>
+            <li>InfoNCE es una entropía cruzada sobre $2n-1$ candidatos con temperatura $\tau$, y cumple $I(v_1;v_2)\ge \log N - \mathcal{L}$: minimizarla sube una cota de la información mutua entre las vistas.</li>
+            <li>Esa cota está limitada por $\log N$, y de ahí la obsesión del campo con los lotes grandes y las colas de negativos.</li>
+            <li>Medido: sonda lineal del 27,0 % en bruto, 44,8 % con PCA y <strong>98,0 %</strong> con la representación contrastiva, con la misma dimensión y sin etiquetas.</li>
+            <li>La causa es la invariancia aprendida: coseno de 0,8604 entre dos vistas del mismo dato, frente a 0,0445 en PCA.</li>
+            <li>La temperatura tiene un rango útil ancho (97,5–98,2 % entre 0,05 y 0,5) y un acantilado: con $\tau=2$ cae al 38,0 %.</li>
+            <li>El colapso se evita con negativos (SimCLR, MoCo), con asimetría (BYOL, SimSiam) o con decorrelación explícita (Barlow Twins, VICReg). Lo esencial es no perder rango, no los negativos.</li>
+            <li>InfoNCE equivale a alineamiento más uniformidad sobre la esfera, y renuncia a modelar $p(x)$ a cambio de representaciones mejores para tareas posteriores.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

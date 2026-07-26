@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>10. SVD, Eckart-Young y PCA probabilístico · No supervisado</title>
+  <meta name="description" content="La descomposición en valores singulares como teorema central, la mejor aproximación de rango bajo y PCA como modelo generativo con EM." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="10">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte III · Capítulo 10</span>
+        <h1>SVD, Eckart-Young y PCA probabilístico</h1>
+        <p class="lead">PCA nos dio un método; aquí llegan el teorema que lo sostiene y el modelo probabilístico que lo explica. La descomposición en valores singulares es probablemente la herramienta más útil del álgebra lineal aplicada —de la compresión de imágenes a los sistemas de recomendación—, y el PCA probabilístico convierte una receta geométrica en un modelo generativo con densidad, incertidumbre y algoritmo EM, cerrando el círculo con el <a href="04-gmm-y-em.html">capítulo 4</a>.</p>
+
+        <h2 id="svd">Toda matriz es una rotación, un estiramiento y otra rotación</h2>
+
+        <p>El resultado central del capítulo se enuncia en una línea y no admite excepciones: <strong>cualquier</strong> matriz real $X$ de tamaño $n\times d$ —cuadrada o no, invertible o no, con el rango que sea— se puede escribir como</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Descomposición en valores singulares</div>
+          <p>$$ X \;=\; U\,\Sigma\,V^\top, \qquad U^\top U = I,\quad V^\top V = I,\quad \Sigma = \operatorname{diag}(\sigma_1 \ge \sigma_2 \ge \cdots \ge 0) $$</p>
+          <p class="math-note">$U$ tiene por columnas los <em>vectores singulares por la izquierda</em>, $V$ los de la derecha, ambos ortonormales, y los $\sigma_j \ge 0$ son los <em>valores singulares</em>. Geométricamente: toda aplicación lineal es una rotación ($V^\top$), un estiramiento de cada eje por su $\sigma_j$ ($\Sigma$) y otra rotación ($U$). No hay más.</p>
+        </div>
+
+        <p>La relación con el <a href="09-pca.html">capítulo anterior</a> es inmediata. Si $\tilde X$ son los datos centrados, la covarianza es</p>
+
+        <p>$$ S = \frac{1}{n-1}\tilde X^\top \tilde X = \frac{1}{n-1}\,V\Sigma U^\top U\Sigma V^\top = V\,\frac{\Sigma^2}{n-1}\,V^\top . $$</p>
+
+        <p>Como $V$ es ortogonal y $\Sigma^2/(n-1)$ diagonal, eso <em>es</em> la diagonalización de $S$. Por tanto:</p>
+
+        <ul>
+          <li>Las <strong>direcciones principales</strong> son las columnas de $V$.</li>
+          <li>Los <strong>autovalores</strong> de la covarianza son $\lambda_j = \sigma_j^2/(n-1)$.</li>
+          <li>Las <strong>coordenadas</strong> (o <em>scores</em>) de los datos son $\tilde X V = U\Sigma$: salen de regalo.</li>
+        </ul>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Por qué esto no es solo elegancia</div>
+          <p>Formar $S = \frac{1}{n-1}\tilde X^\top\tilde X$ <strong>eleva al cuadrado el número de condición</strong> de la matriz. Si $\tilde X$ tiene $\sigma_{\max}/\sigma_{\min} = 10^{8}$ —algo normal—, $S$ tiene $10^{16}$, que es el límite de la doble precisión: las componentes pequeñas se pierden en el ruido de redondeo. La SVD trabaja directamente sobre $\tilde X$ y nunca construye ese producto. Además cuesta $O(nd\min(n,d))$ en lugar de $O(nd^2 + d^3)$, lo que importa cuando $d \gg n$: con 500 imágenes de un millón de píxeles, $S$ sería una matriz de $10^{12}$ entradas y la SVD ni la mira.</p>
+        </div>
+
+        <h2 id="eckart-young">Eckart-Young: truncar la SVD es óptimo</h2>
+
+        <p>Aquí está el teorema que justifica todo el uso práctico de la SVD. Definamos la aproximación truncada al rango $k$ quedándonos con los $k$ mayores valores singulares:</p>
+
+        <p>$$ X_k \;=\; \sum_{j=1}^{k} \sigma_j\, u_j\, v_j^\top \;=\; U_k \Sigma_k V_k^\top . $$</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Teorema de Eckart-Young-Mirsky (1936)</div>
+          <p>$$ X_k \;=\; \arg\min_{\operatorname{rango}(B) \le k} \; \lVert X - B \rVert_F, \qquad\text{y}\qquad \lVert X - X_k\rVert_F^2 = \sum_{j\gt k} \sigma_j^2 $$</p>
+          <p class="math-note">$\lVert\cdot\rVert_F$ es la norma de Frobenius (la raíz de la suma de todos los elementos al cuadrado). El teorema dice que <strong>entre todas las matrices de rango a lo sumo $k$ —infinitas—, ninguna se acerca más a $X$ que la SVD truncada</strong>, y da el error exacto. El resultado vale también para la norma espectral, con error $\sigma_{k+1}$.</p>
+        </div>
+
+        <p>Es un resultado extraordinariamente fuerte: un problema de optimización sobre un conjunto no convexo y de dimensión enorme se resuelve <em>exactamente</em> con una descomposición. De él salen la compresión de imágenes, el análisis semántico latente en texto, y los sistemas de recomendación por factorización de matrices.</p>
+
+        <p>Nótese la coherencia con el capítulo 9: allí el error de reconstrucción era $\sum_{j\gt k}\lambda_j$; aquí es $\sum_{j\gt k}\sigma_j^2$. Son la misma cantidad salvo el factor $n-1$.</p>
+
+        <h2 id="ejemplo-svd">Comprobarlo, y comprimir una imagen</h2>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">svd_eckart_young.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(6)
+
+# ---------------- 1) La descomposición existe y reconstruye ----------------
+n, d = 200, 40
+X = rng.normal(size=(n, 5)) @ rng.normal(size=(5, d)) + 0.4 * rng.normal(size=(n, d))
+Xc = X - X.mean(axis=0)
+
+U, s, Vt = np.linalg.svd(Xc, full_matrices=False)
+print(f"X centrada: {Xc.shape}.  U: {U.shape}, s: {s.shape}, V^T: {Vt.shape}")
+print(f"1) ||X - U S V^T||_F = {np.linalg.norm(Xc - (U * s) @ Vt):.2e}")
+print(f"   ||U^T U - I|| = {np.linalg.norm(U.T @ U - np.eye(len(s))):.2e}, "
+      f"||V^T V - I|| = {np.linalg.norm(Vt @ Vt.T - np.eye(len(s))):.2e}")
+print(f"   valores singulares (5 primeros): {np.round(s[:5], 4)}")
+
+# ---------------- 2) SVD y PCA son lo mismo ----------------
+S_cov = (Xc.T @ Xc) / (n - 1)
+val, vec = np.linalg.eigh(S_cov)
+val = val[::-1]
+print(f"\n2) autovalores de la covarianza (5 primeros): {np.round(val[:5], 6)}")
+print(f"   sigma^2/(n-1)               (5 primeros): {np.round(s[:5] ** 2 / (n - 1), 6)}")
+print(f"   diferencia máxima: {np.abs(val[:5] - s[:5] ** 2 / (n - 1)).max():.2e}")
+print(f"   ¿coinciden las direcciones? |v_1 . u_1| = "
+      f"{abs(Vt[0] @ vec[:, -1]):.10f}  (1 = misma recta)")
+
+# ---------------- 3) Eckart-Young contra el azar ----------------
+print(f"\n3) Error de la mejor aproximación de rango k")
+print(f"{'k':&gt;4} {'||X-X_k||_F^2':&gt;16} {'suma sigma^2':&gt;15} {'dif':&gt;10} "
+      f"{'mejor de 2000 al azar':&gt;22}")
+for k in [1, 2, 3, 5, 10]:
+    Xk = (U[:, :k] * s[:k]) @ Vt[:k]
+    err = ((Xc - Xk) ** 2).sum()
+    teo = (s[k:] ** 2).sum()
+    mejor_azar = np.inf
+    for _ in range(2000):
+        B = rng.normal(size=(d, k))
+        Q, _ = np.linalg.qr(B)                     # subespacio aleatorio de dim k
+        R = (Xc @ Q) @ Q.T
+        mejor_azar = min(mejor_azar, ((Xc - R) ** 2).sum())
+    print(f"{k:4d} {err:16.6f} {teo:15.6f} {abs(err - teo):10.2e} {mejor_azar:21.6f}")
+print("   Ningún subespacio aleatorio consigue bajar del valor de la SVD.")
+
+# ---------------- 4) Compresión de una imagen sintética ----------------
+t = np.linspace(-3, 3, 160)
+gx, gy = np.meshgrid(t, t)
+r = np.sqrt(gx ** 2 + gy ** 2)
+img = (np.sin(3 * r)                                   # ondas radiales
+       + 0.5 * np.sign(np.sin(4 * gx + 2 * gy))        # bordes en diagonal
+       + 0.35 * np.cos(6 * np.arctan2(gy, gx)) * np.exp(-r / 3))   # textura angular
+Ui, si, Vti = np.linalg.svd(img, full_matrices=False)
+print(f"\n4) Imagen {img.shape[0]}x{img.shape[1]} = {img.size} números")
+print(f"{'rango k':&gt;8} {'números guardados':&gt;18} {'compresión':&gt;12} {'energía retenida':&gt;18}")
+for k in [1, 2, 5, 10, 20, 40]:
+    guardados = k * (img.shape[0] + img.shape[1] + 1)
+    energia = (si[:k] ** 2).sum() / (si ** 2).sum()
+    print(f"{k:8d} {guardados:18d} {img.size / guardados:11.1f}x {energia:17.2%}")
+
+fig, ax = plt.subplots(2, 3, figsize=(13, 8))
+ax[0, 0].semilogy(s, "o-", ms=3, color="#5b8def")
+ax[0, 0].set_title("valores singulares de X")
+ax[0, 0].set_xlabel("índice")
+ax[0, 1].semilogy(si, color="#43c59e")
+ax[0, 1].set_title("valores singulares de la imagen")
+ax[0, 1].set_xlabel("índice")
+ax[0, 2].plot(np.cumsum(si ** 2) / (si ** 2).sum(), color="#e2b53d")
+ax[0, 2].set_title("energía acumulada")
+ax[0, 2].set_xlabel("rango k")
+for a, k in zip(ax[1], [2, 10, 40]):
+    rec = (Ui[:, :k] * si[:k]) @ Vti[:k]
+    a.imshow(rec, cmap="magma")
+    a.set_title(f"rango {k} · {(si[:k]**2).sum()/(si**2).sum():.1%} de energía")
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>X centrada: (200, 40).  U: (200, 40), s: (40,), V^T: (40, 40)
+1) ||X - U S V^T||_F = 3.16e-13
+   ||U^T U - I|| = 9.38e-15, ||V^T V - I|| = 1.04e-14
+   valores singulares (5 primeros): [110.2548 101.4897  85.9059  76.0463  73.9876]
+
+2) autovalores de la covarianza (5 primeros): [61.086059 51.759566 37.084555 29.060483 27.508382]
+   sigma^2/(n-1)               (5 primeros): [61.086059 51.759566 37.084555 29.060483 27.508382]
+   diferencia máxima: 1.07e-13
+   ¿coinciden las direcciones? |v_1 . u_1| = 1.0000000000  (1 = misma recta)
+
+3) Error de la mejor aproximación de rango k
+   k    ||X-X_k||_F^2    suma sigma^2        dif  mejor de 2000 al azar
+   1     30041.993937    30041.993937   3.64e-12          37371.077521
+   2     19741.840317    19741.840317   0.00e+00          35912.497881
+   3     12362.013892    12362.013892   5.46e-12          34980.255665
+   5      1104.809815     1104.809815   6.82e-13          31490.834282
+  10       835.541603      835.541603   1.14e-13          25880.082014
+   Ningún subespacio aleatorio consigue bajar del valor de la SVD.
+
+4) Imagen 160x160 = 25600 números
+ rango k  números guardados   compresión   energía retenida
+       1                321        79.8x            39.18%
+       2                642        39.9x            73.52%
+       5               1605        16.0x            93.62%
+      10               3210         8.0x            97.81%
+      20               6420         4.0x            99.14%
+      40              12840         2.0x            99.69%</pre>
+        </div>
+
+        <p>Los tres primeros bloques son verificación pura. La reconstrucción $U\Sigma V^\top$ recupera $X$ con error $3{,}16\times 10^{-13}$; los autovalores de la covarianza y los $\sigma_j^2/(n-1)$ coinciden en los seis decimales impresos; y el primer vector singular por la derecha coincide con el primer autovector con producto escalar <strong>1,0000000000</strong>.</p>
+
+        <p>La columna más elocuente es la última del bloque 3. Para cada $k$, se generan <strong>2000 subespacios ortonormales al azar</strong> y se mide el error de proyectar sobre ellos. Con $k=5$, la SVD consigue 1104,8 y el mejor de dos mil intentos aleatorios se queda en 31 490,8: <em>veintiocho veces peor</em>. Eckart-Young no es una mejora marginal sobre lo razonable; es la diferencia entre resolver el problema y no resolverlo.</p>
+
+        <p>El bloque 4 es la aplicación clásica. Guardar una aproximación de rango $k$ de una imagen $m\times n$ requiere $k(m+n+1)$ números en lugar de $mn$. Con $k=10$ sobre una imagen de $160\times160$, eso es una compresión de <strong>8 veces conservando el 97,81 % de la energía</strong>. El mecanismo es exactamente el del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>: aprender es comprimir, y aquí el diccionario son los vectores singulares.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Quita el término de bordes de la imagen: sustituye <code>+ 0.5 * np.sign(np.sin(4 * gx + 2 * gy))</code> por <code>+ 0.0</code>. El espectro se derrumba: con rango 5 se retiene el <strong>99,80 %</strong> de la energía en vez del 93,62 %, y con rango 10 el 100,00 %, porque sin la discontinuidad la imagen es prácticamente de rango bajo. Los <em>bordes</em> son lo caro de comprimir: son justamente lo que no se deja escribir como suma de pocos productos exteriores.</p>
+        </div>
+
+        <h2 id="ppca">PCA probabilístico: de la geometría al modelo</h2>
+
+        <p>PCA es una receta geométrica y por eso no responde a preguntas que en la práctica surgen siempre: ¿cuál es la probabilidad de este dato?, ¿cómo de seguro estoy de su representación latente?, ¿qué hago si faltan valores?, ¿cómo elijo $k$ con un criterio y no con un codo?</p>
+
+        <p>Tipping y Bishop resolvieron todo eso en 1999 escribiendo el <em>modelo generativo</em> del que PCA es la solución:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El modelo de PPCA</div>
+          <p>$$ z \sim \mathcal{N}(0, I_k), \qquad x \mid z \;\sim\; \mathcal{N}\big(Wz + \mu,\; \sigma^2 I_d\big) $$</p>
+          <p>Marginalizando la variable latente —suma de gaussianas independientes— la distribución de los datos es también gaussiana:</p>
+          <p>$$ x \;\sim\; \mathcal{N}\big(\mu,\; C\big), \qquad C = W W^\top + \sigma^2 I_d $$</p>
+          <p class="math-note">$W \in \mathbb{R}^{d\times k}$ es la matriz de <em>cargas</em>, que lleva del espacio latente al observado; $\mu$ es la media y $\sigma^2$ la varianza del ruido, <strong>igual en todas las direcciones</strong>. La estructura de $C$ es lo esencial: una parte de rango $k$ que modela la señal más un múltiplo de la identidad que absorbe el ruido. Con $kd$ parámetros en lugar de $d(d+1)/2$ para una covarianza completa.</p>
+        </div>
+
+        <p>Lo notable es que la solución de máxima verosimilitud <strong>se conoce en forma cerrada</strong>, y es PCA:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Solución de máxima verosimilitud</div>
+          <p>$$ \sigma^2_{\mathrm{ML}} = \frac{1}{d-k}\sum_{j=k+1}^{d} \lambda_j, \qquad W_{\mathrm{ML}} = U_k\big(\Lambda_k - \sigma^2_{\mathrm{ML}} I_k\big)^{1/2} R $$</p>
+          <p class="math-note">$U_k$ y $\Lambda_k$ son los $k$ primeros autovectores y autovalores de la covarianza muestral, y $R$ es <em>cualquier</em> matriz ortogonal $k\times k$. Léelo despacio: $\sigma^2$ es <strong>la varianza media de lo que tiras</strong>, exactamente el error de reconstrucción por dimensión. Y $W$ recoge las direcciones principales, con cada una escalada por $\sqrt{\lambda_j - \sigma^2}$: la varianza de esa componente <em>descontado el ruido</em>. La $R$ recuerda que $W$ no es único; lo determinado es el subespacio.</p>
+        </div>
+
+        <p>Y la posterior de la variable latente, que es lo que PCA no puede dar, también es gaussiana y explícita:</p>
+
+        <p>$$ p(z\mid x) = \mathcal{N}\big(M^{-1}W^\top(x-\mu),\;\; \sigma^2 M^{-1}\big), \qquad M = W^\top W + \sigma^2 I_k . $$</p>
+
+        <p>Cuando $\sigma^2 \to 0$, la covarianza posterior $\sigma^2M^{-1}$ tiende a cero: la distribución colapsa sobre un punto y ese punto es la proyección de PCA. <strong>PCA es el límite determinista de PPCA</strong>, igual que k-means era el límite duro de la mixtura gaussiana en el <a href="04-gmm-y-em.html">capítulo 4</a>. La estructura del argumento es idéntica.</p>
+
+        <h2 id="ejemplo-ppca">PPCA con EM, y lo que gana al ser un modelo</h2>
+
+        <p>Aunque haya solución cerrada, merece la pena implementar EM: es lo que permite tratar datos ausentes, escalar a $d$ enormes sin diagonalizar nada y —sobre todo— es el mismo esqueleto que reaparecerá convertido en red neuronal en el <a href="14-vae.html">capítulo 14</a>.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">ppca_em.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(9)
+n, d, k = 600, 12, 3
+
+# --- Datos generados EXACTAMENTE por el modelo, para saber la verdad ---
+W_real = rng.normal(size=(d, k))
+mu_real = rng.normal(size=d) * 2
+sigma2_real = 0.7
+Z = rng.normal(size=(n, k))
+X = Z @ W_real.T + mu_real + rng.normal(scale=np.sqrt(sigma2_real), size=(n, d))
+print(f"{n} puntos en dimensión {d}, generados por {k} factores latentes "
+      f"y ruido sigma^2 = {sigma2_real}.")
+
+mu = X.mean(axis=0)
+Xc = X - mu
+S = (Xc.T @ Xc) / n
+val, vec = np.linalg.eigh(S)
+val, vec = val[::-1], vec[:, ::-1]
+
+
+def log_verosimilitud(Xc, W, sigma2):
+    """log N(x | 0, W W^T + sigma^2 I) sumada sobre los datos."""
+    C = W @ W.T + sigma2 * np.eye(W.shape[0])
+    L = np.linalg.cholesky(C)
+    dif = np.linalg.solve(L, Xc.T)
+    return -0.5 * (len(Xc) * (W.shape[0] * np.log(2 * np.pi)
+                              + 2 * np.log(np.diag(L)).sum())
+                   + (dif ** 2).sum())
+
+
+# ---------------- 1) Solución cerrada ----------------
+sigma2_ml = val[k:].mean()
+W_ml = vec[:, :k] @ np.diag(np.sqrt(np.maximum(val[:k] - sigma2_ml, 0)))
+print(f"\n1) Solución en forma cerrada")
+print(f"   sigma^2 estimado = {sigma2_ml:.6f}   (real: {sigma2_real})")
+print(f"   media de los {d - k} autovalores descartados = {val[k:].mean():.6f}")
+print(f"   log-verosimilitud = {log_verosimilitud(Xc, W_ml, sigma2_ml):.4f}")
+
+
+# ---------------- 2) EM ----------------
+def em_ppca(Xc, k, iters=300):
+    n, d = Xc.shape
+    r = np.random.default_rng(0)
+    W = r.normal(size=(d, k)) * 0.1
+    sigma2 = 1.0
+    historia = []
+    for _ in range(iters):
+        # PASO E: posterior de z dado x. M = W^T W + sigma^2 I
+        M = W.T @ W + sigma2 * np.eye(k)
+        Minv = np.linalg.inv(M)
+        Ez = Xc @ W @ Minv                                 # n x k
+        Ezz = n * sigma2 * Minv + Ez.T @ Ez                # k x k, suma de E[z z^T]
+        # PASO M
+        W = (Xc.T @ Ez) @ np.linalg.inv(Ezz)
+        sigma2 = ((Xc ** 2).sum()
+                  - 2 * np.trace(Ez.T @ Xc @ W)
+                  + np.trace(Ezz @ (W.T @ W))) / (n * d)
+        historia.append(log_verosimilitud(Xc, W, sigma2))
+    return W, sigma2, np.array(historia)
+
+
+W_em, sigma2_em, hist = em_ppca(Xc, k)
+print(f"\n2) EM (300 iteraciones)")
+print(f"   sigma^2 por EM = {sigma2_em:.6f}   (cerrada: {sigma2_ml:.6f})")
+print(f"   log-verosimilitud: {hist[0]:.4f} -&gt; {hist[-1]:.4f}")
+print(f"   ¿monótona? {'sí' if (np.diff(hist) &gt;= -1e-6).all() else 'NO'}")
+print(f"   diferencia con la cerrada: "
+      f"{abs(log_verosimilitud(Xc, W_ml, sigma2_ml) - hist[-1]):.2e}")
+
+# ---------------- 3) ¿Es el mismo subespacio que PCA? ----------------
+def dist_subespacios(A, B):
+    """Distancia entre subespacios: 0 si generan el mismo."""
+    QA = np.linalg.qr(A)[0]
+    QB = np.linalg.qr(B)[0]
+    return np.linalg.norm(QA @ QA.T - QB @ QB.T)
+
+
+print(f"\n3) ¿Coincide el subespacio con el de PCA?")
+print(f"   dist(subespacio de W_EM, subespacio de PCA)     = "
+      f"{dist_subespacios(W_em, vec[:, :k]):.2e}")
+print(f"   dist(subespacio cerrado, subespacio de PCA)     = "
+      f"{dist_subespacios(W_ml, vec[:, :k]):.2e}")
+print("   (W no es único: cualquier rotación W R sirve. Lo que se determina")
+print("    es el SUBESPACIO, no la base.)")
+
+# ---------------- 4) Qué aporta sigma^2: la confianza de la posterior ----------------
+# Con W = U_k (Lambda_k - sigma^2 I)^{1/2} resulta M = W^T W + s2 I, de modo que
+#   E[z|x]_j  = (x . u_j) * sqrt(lambda_j - sigma^2_ml) / (lambda_j - sigma^2_ml + s2)
+#   Cov[z|x]  = s2 * M^{-1}      -&gt; la INCERTIDUMBRE, que PCA no tiene
+# Comparamos con la proyección blanqueada de PCA, (x . u_j)/sqrt(lambda_j).
+z_pca_blanco = Xc @ vec[:, :k] / np.sqrt(val[:k])
+print(f"\n4) La posterior p(z|x): escala e incertidumbre")
+print(f"{'s2 usado':&gt;10} {'escala medida':&gt;15} {'escala teórica':&gt;16} {'sd posterior':&gt;14}")
+for s2 in [3.0, 1.0, 0.3, 0.1, 0.01, 1e-4]:
+    M = W_ml.T @ W_ml + s2 * np.eye(k)
+    Ez = Xc @ W_ml @ np.linalg.inv(M)
+    medido = np.std(Ez[:, 0]) / np.std(z_pca_blanco[:, 0])
+    teorico = np.sqrt(val[0] - sigma2_ml) * np.sqrt(val[0]) / (val[0] - sigma2_ml + s2)
+    sd_post = np.sqrt(s2 * np.linalg.inv(M)[0, 0])
+    print(f"{s2:10.4f} {medido:15.6f} {teorico:16.6f} {sd_post:14.6f}")
+print("   La media posterior es siempre la proyección de PCA reescalada: por eso")
+print("   las dos primeras columnas coinciden. Lo NUEVO es la cuarta, la anchura")
+print("   de p(z|x): cuando sigma^2 -&gt; 0 la posterior COLAPSA sobre un punto y")
+print("   PPCA deja de ser probabilístico. PCA es ese límite determinista.")
+
+# ---------------- 5) La ventaja del modelo: una densidad ----------------
+X_dentro = Z[:200] @ W_real.T + mu_real + rng.normal(scale=np.sqrt(sigma2_real),
+                                                     size=(200, d))
+X_fuera = mu_real + rng.normal(scale=3.0, size=(200, d))     # fuera del subespacio
+C = W_ml @ W_ml.T + sigma2_ml * np.eye(d)
+L = np.linalg.cholesky(C)
+
+
+def log_dens(A):
+    dif = np.linalg.solve(L, (A - mu).T)
+    return -0.5 * (d * np.log(2 * np.pi) + 2 * np.log(np.diag(L)).sum()
+                   + (dif ** 2).sum(axis=0))
+
+
+print(f"\n5) Con el modelo se pueden PUNTUAR datos nuevos (esto es el cap. 18)")
+print(f"   log-densidad media de puntos del modelo : {log_dens(X_dentro).mean():9.3f}")
+print(f"   log-densidad media de puntos fuera      : {log_dens(X_fuera).mean():9.3f}")
+umbral = np.percentile(log_dens(X_dentro), 5)
+print(f"   con umbral al percentil 5 de los normales, se detecta el "
+      f"{(log_dens(X_fuera) &lt; umbral).mean():.1%} de los anómalos")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].plot(hist, color="#43c59e")
+ax[0].axhline(log_verosimilitud(Xc, W_ml, sigma2_ml), ls="--", c="#ef476f")
+ax[0].set_xlabel("iteración de EM")
+ax[0].set_ylabel("log-verosimilitud")
+ax[0].set_title("EM converge a la solución cerrada")
+ax[1].plot(val, "o-", color="#5b8def")
+ax[1].axhline(sigma2_ml, ls=":", c="k")
+ax[1].set_xlabel("componente")
+ax[1].set_title(f"espectro; la línea es sigma^2 = {sigma2_ml:.2f}")
+Ez = Xc @ W_ml @ np.linalg.inv(W_ml.T @ W_ml + sigma2_ml * np.eye(k))
+ax[2].scatter(Ez[:, 0], z_pca_blanco[:, 0], s=8, c="#8b93a7")
+ax[2].set_xlabel("E[z|x] (PPCA)")
+ax[2].set_ylabel("PCA blanqueado")
+ax[2].set_title("las dos coordenadas, una contra otra")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>600 puntos en dimensión 12, generados por 3 factores latentes y ruido sigma^2 = 0.7.
+
+1) Solución en forma cerrada
+   sigma^2 estimado = 0.701024   (real: 0.7)
+   media de los 9 autovalores descartados = 0.701024
+   log-verosimilitud = -11492.2808
+
+2) EM (300 iteraciones)
+   sigma^2 por EM = 0.701024   (cerrada: 0.701024)
+   log-verosimilitud: -14291.6684 -&gt; -11492.2808
+   ¿monótona? sí
+   diferencia con la cerrada: 0.00e+00
+
+3) ¿Coincide el subespacio con el de PCA?
+   dist(subespacio de W_EM, subespacio de PCA)     = 3.55e-15
+   dist(subespacio cerrado, subespacio de PCA)     = 9.92e-16
+   (W no es único: cualquier rotación W R sirve. Lo que se determina
+    es el SUBESPACIO, no la base.)
+
+4) La posterior p(z|x): escala e incertidumbre
+  s2 usado   escala medida   escala teórica   sd posterior
+    3.0000        0.904650         0.904650       0.328428
+    1.0000        0.974744         0.974744       0.196827
+    0.3000        1.001914         1.001914       0.109299
+    0.1000        1.009958         1.009958       0.063357
+    0.0100        1.013620         1.013620       0.020071
+    0.0001        1.014024         1.014024       0.002008
+   La media posterior es siempre la proyección de PCA reescalada: por eso
+   las dos primeras columnas coinciden. Lo NUEVO es la cuarta, la anchura
+   de p(z|x): cuando sigma^2 -&gt; 0 la posterior COLAPSA sobre un punto y
+   PPCA deja de ser probabilístico. PCA es ese límite determinista.
+
+5) Con el modelo se pueden PUNTUAR datos nuevos (esto es el cap. 18)
+   log-densidad media de puntos del modelo :   -19.217
+   log-densidad media de puntos fuera      :   -72.382
+   con umbral al percentil 5 de los normales, se detecta el 100.0% de los anómalos</pre>
+        </div>
+
+        <p>La estimación de $\sigma^2$ da <strong>0,701024</strong> frente a un valor real de 0,7: el modelo recupera el nivel de ruido con tres cifras significativas, y coincide exactamente con la media de los nueve autovalores descartados, tal como predice la fórmula.</p>
+
+        <p>EM, arrancando desde una $W$ aleatoria, sube monótonamente de $-14291{,}67$ a $-11492{,}28$ y aterriza en la solución cerrada con diferencia <strong>0,00e+00</strong>. Los subespacios que encuentran EM y la fórmula coinciden con el de PCA hasta $10^{-15}$. Nótese que se compara el <em>subespacio</em>, no la matriz: como advierte la fórmula, $W$ está determinada solo salvo una rotación $R$, y comparar matrices habría dado un resultado falso.</p>
+
+        <p>El bloque 4 aísla lo que PPCA añade. Las dos primeras columnas coinciden porque la media posterior no es más que la proyección de PCA reescalada. Lo nuevo es la cuarta: la anchura de $p(z\mid x)$, que baja de 0,328 a <strong>0,002</strong> cuando $\sigma^2$ va de 3 a $10^{-4}$. PCA te da un punto; PPCA te da un punto <em>y su barra de error</em>, y esa barra se cierra exactamente en el límite determinista.</p>
+
+        <p>El bloque 5 muestra la consecuencia más útil de tener densidad. Puntos generados por el modelo tienen log-densidad media $-19{,}2$; puntos que se salen del subespacio latente, $-72{,}4$. Poniendo el umbral en el percentil 5 de los normales se detecta el <strong>100 %</strong> de los anómalos. PCA a secas no puede hacer esto, porque no asigna probabilidades. Es la idea que desarrollará el <a href="18-deteccion-anomalias.html">capítulo 18</a>.</p>
+
+        <h2 id="factorial">Un pariente cercano: el análisis factorial</h2>
+
+        <p>Si en el modelo de PPCA se sustituye el ruido isótropo $\sigma^2 I$ por una matriz diagonal cualquiera $\Psi = \operatorname{diag}(\psi_1,\dots,\psi_d)$, se obtiene el <strong>análisis factorial</strong>, que es anterior (Spearman, 1904) y viene de la psicometría. La diferencia parece menor y cambia el carácter del método:</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>PPCA</th><th>Análisis factorial</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Ruido</td><td>$\sigma^2 I$, igual en todas las direcciones</td><td>$\Psi$ diagonal, propio de cada variable</td></tr>
+              <tr><td>Invariante a…</td><td>rotaciones del espacio de datos</td><td>reescalado de cada variable</td></tr>
+              <tr><td>Solución</td><td>cerrada (es PCA)</td><td>solo iterativa (EM)</td></tr>
+              <tr><td>Interpretación</td><td>subespacio de máxima varianza</td><td>factores comunes frente a varianza específica</td></tr>
+              <tr><td>Cuándo</td><td>variables homogéneas: píxeles, sensores idénticos</td><td>variables heterogéneas: preguntas de un test, indicadores económicos</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La fila de la invariancia es la que decide en la práctica, y conecta con la trampa 2 del <a href="09-pca.html">capítulo 9</a>: si tus variables tienen unidades distintas, el análisis factorial lo absorbe en $\Psi$ sin que tengas que estandarizar a mano, mientras que PPCA —igual que PCA— cambia de respuesta según las unidades.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># SVD, Eckart-Young y compresión de imagen</span>
+<span class="prompt">$</span> python code/10-svd-y-ppca/svd_eckart_young.py
+
+<span class="comment"># PPCA: solución cerrada, EM, posterior y densidad</span>
+<span class="prompt">$</span> python code/10-svd-y-ppca/ppca_em.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Toda matriz admite $X = U\Sigma V^\top$. Para datos centrados, $V$ son las direcciones principales y $\lambda_j = \sigma_j^2/(n-1)$: SVD y PCA son el mismo cálculo, pero la SVD no eleva al cuadrado el número de condición.</li>
+            <li>Eckart-Young: truncar la SVD da la mejor aproximación de rango $k$ que existe, con error $\sum_{j\gt k}\sigma_j^2$. Medido: con $k=5$, error 1104,8 frente a 31 490,8 del mejor de 2000 subespacios aleatorios.</li>
+            <li>De ahí salen la compresión (8× conservando el 97,81 % de la energía), el análisis semántico latente y la factorización de matrices.</li>
+            <li>PPCA modela $x = Wz+\mu+\varepsilon$ con $\varepsilon\sim\mathcal{N}(0,\sigma^2I)$, de donde $C = WW^\top+\sigma^2I$. Su solución de máxima verosimilitud es PCA, con $\sigma^2 = \frac{1}{d-k}\sum_{j\gt k}\lambda_j$ (medido 0,701024 frente a un valor real de 0,7).</li>
+            <li>EM converge exactamente a esa solución, de forma monótona, y encuentra el mismo subespacio hasta $10^{-15}$. $W$ solo está determinada salvo rotación.</li>
+            <li>Lo que aporta el modelo: la posterior $p(z\mid x)$ con su incertidumbre —que colapsa cuando $\sigma^2\to 0$, y ahí PPCA se vuelve PCA— y una densidad con la que puntuar datos nuevos (100 % de anómalos detectados).</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

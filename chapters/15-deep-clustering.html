@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>15. Deep clustering: DEC, IDEC y el colapso · No supervisado</title>
+  <meta name="description" content="Agrupar en el espacio latente y aprenderlo a la vez: la distribución objetivo autoentrenada, por qué colapsa y cómo se evita." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="15">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte IV · Capítulo 15</span>
+        <h1>Deep clustering: DEC, IDEC y el colapso</h1>
+        <p class="lead">La parte II agrupaba en el espacio original y sufría la maldición de la dimensionalidad. La parte III construía un espacio mejor, pero sin saber para qué. Aquí unimos las dos cosas: <strong>aprender la representación y los grupos a la vez</strong>, de modo que el espacio se moldee para ser agrupable. La idea es potente y tiene una trampa que conviene ver funcionando antes de fiarse de ella.</p>
+
+        <h2 id="idea">Por qué no basta con encadenar</h2>
+
+        <p>La receta obvia después de los capítulos 13 y 14 es: entrena un autoencoder, coge el código y pásale k-means. Funciona razonablemente y es la línea base de todo el campo. Pero tiene una incoherencia de fondo: <strong>el autoencoder no sabe que después va a venir un clústering</strong>. Optimiza reconstruir, y una representación óptima para reconstruir no tiene por qué ser óptima para separar grupos —de hecho suele dedicar capacidad a detalles irrelevantes que ayudan a la reconstrucción y estorban a la partición—.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Si vas a agrupar, díselo al codificador mientras aprende. El objetivo pasa a tener dos partes: «representa los datos» y «hazlo de forma que queden en grupos compactos». La red va empujando los puntos hacia el centroide que le corresponde <em>a la vez</em> que aprende a codificarlos.</p>
+        </div>
+
+        <p>La dificultad es evidente: sin etiquetas, ¿qué es «el centroide que le corresponde»? La respuesta de DEC es tan audaz como peligrosa: <strong>usar sus propias predicciones como objetivo</strong>, después de afilarlas. Se llama autoentrenamiento y lo volveremos a encontrar en el <a href="17-semisupervisado.html">capítulo 17</a>.</p>
+
+        <h2 id="dec">DEC: asignación blanda y distribución objetivo</h2>
+
+        <p>DEC (Xie, Girshick y Farhadi, 2016) mantiene $K$ centroides $\mu_j$ en el espacio latente y define la pertenencia con la misma distribución que usábamos en t-SNE:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Asignación blanda (t de Student)</div>
+          <p>$$ q_{ij} \;=\; \frac{\big(1 + \lVert z_i - \mu_j\rVert^2/\alpha\big)^{-(\alpha+1)/2}}{\sum_{j'}\big(1 + \lVert z_i - \mu_{j'}\rVert^2/\alpha\big)^{-(\alpha+1)/2}} $$</p>
+          <p class="math-note">$z_i = f_\theta(x_i)$ es el código del dato $i$ y $\alpha$ los grados de libertad, que se fijan a 1 (una Cauchy). Se usa t de Student y no una gaussiana por lo mismo que en el <a href="12-manifold-tsne-umap.html">capítulo 12</a>: sus colas pesadas evitan que los puntos alejados reciban gradiente nulo, y hacen el método más estable.</p>
+        </div>
+
+        <p>Ahora falta un objetivo. Si usáramos $q$ como su propio objetivo, la pérdida sería cero y no se aprendería nada. DEC construye una versión <em>afilada</em> de $q$:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La distribución objetivo</div>
+          <p>$$ p_{ij} \;=\; \frac{q_{ij}^2 \,/\, f_j}{\sum_{j'} q_{ij'}^2 \,/\, f_{j'}}, \qquad f_j = \sum_{i} q_{ij} $$</p>
+          <p class="math-note">Dos ingredientes. El <strong>cuadrado</strong> exagera las diferencias: si $q_i = (0{,}6,\, 0{,}4)$, elevar al cuadrado y renormalizar da $(0{,}69,\, 0{,}31)$ — la asignación se vuelve más segura. La división por $f_j$, la «frecuencia» del grupo $j$, <strong>equilibra los tamaños</strong>: un grupo que se está tragando a todo el mundo ve reducida su influencia. Sin ese denominador, la solución trivial de meter todos los puntos en un grupo sería un mínimo perfecto.</p>
+        </div>
+
+        <p>Y la pérdida es la divergencia de siempre, con $P$ tratada como constante (se recalcula solo cada cierto número de iteraciones, no en cada paso):</p>
+
+        <p>$$ \mathcal{L}_{\mathrm{clu}} = D_{\mathrm{KL}}(P \,\Vert\, Q) = \sum_i\sum_j p_{ij}\log\frac{p_{ij}}{q_{ij}} . $$</p>
+
+        <p>Los gradientes salen de derivar directamente y tienen la misma forma de muelles que en t-SNE. Con $\alpha=1$:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Gradientes de DEC</div>
+          <p>$$ \frac{\partial \mathcal{L}_{\mathrm{clu}}}{\partial z_i} = 2\sum_j \frac{p_{ij}-q_{ij}}{1+\lVert z_i-\mu_j\rVert^2}\,(z_i - \mu_j), \qquad \frac{\partial \mathcal{L}_{\mathrm{clu}}}{\partial \mu_j} = -2\sum_i \frac{p_{ij}-q_{ij}}{1+\lVert z_i-\mu_j\rVert^2}\,(z_i - \mu_j) $$</p>
+          <p class="math-note">El primero se retropropaga por el codificador hasta los pesos; el segundo actualiza los centroides. Nótese que son opuestos: cuando $p_{ij} \gt q_{ij}$ —el objetivo dice que el punto pertenece más de lo que el modelo cree— el punto se mueve hacia el centroide <em>y</em> el centroide hacia el punto.</p>
+        </div>
+
+        <p>El procedimiento completo tiene tres fases: <strong>(1)</strong> preentrenar un autoencoder, <strong>(2)</strong> inicializar los centroides con k-means sobre el código, <strong>(3)</strong> afinar codificador y centroides minimizando $\mathcal{L}_{\mathrm{clu}}$. La fase 1 no es opcional, y lo mediremos.</p>
+
+        <h2 id="idec">IDEC: no soltar la reconstrucción</h2>
+
+        <p>Aquí está el problema. En la fase 3, DEC solo optimiza $\mathcal{L}_{\mathrm{clu}}$: nada obliga al codificador a seguir <em>representando</em> los datos. Y hay una forma trivialmente eficaz de reducir $D_{\mathrm{KL}}(P\Vert Q)$: deformar el latente hasta que los puntos se apelotonen alrededor de los centroides, aunque para ello haya que destruir toda la información que no sirva para separarlos.</p>
+
+        <p>IDEC (Guo et al., 2017) lo arregla con un cambio de una línea: no soltar nunca el término de reconstrucción.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El objetivo de IDEC</div>
+          <p>$$ \mathcal{L} \;=\; \underbrace{\big\lVert x - g_\phi(f_\theta(x))\big\rVert^2}_{\text{reconstrucción}} \;+\; \gamma\, \underbrace{D_{\mathrm{KL}}(P\,\Vert\,Q)}_{\text{clústering}} $$</p>
+          <p class="math-note">El primer término ancla la representación a los datos: por muy conveniente que fuera colapsarla, el decodificador tiene que seguir siendo capaz de reconstruir. $\gamma$ regula el equilibrio. Es la misma estructura de siempre —un objetivo que quiere algo y un regularizador que impide la degeneración—, como el $\beta$ del VAE en el <a href="14-vae.html">capítulo 14</a>.</p>
+        </div>
+
+        <h2 id="ejemplo">Medir la diferencia</h2>
+
+        <p>El programa implementa las tres fases con retropropagación escrita a mano. Los datos son cuatro grupos gaussianos en un espacio latente de dimensión 2, deformados por una red aleatoria fija hasta 50 dimensiones: la estructura sigue ahí pero retorcida, así que k-means en el espacio original sufre.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">dec_idec.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+K, D_LAT, D_OBS, N = 4, 2, 50, 1200
+
+# --- Datos: 4 grupos en 2D deformados no linealmente hasta 50D ---
+centros = np.array([[0.0, 0.0], [3.2, 0.0], [1.6, 2.8], [1.6, -2.8]])
+Z_real = np.vstack([c + rng.normal(scale=0.62, size=(N // K, D_LAT)) for c in centros])
+y = np.repeat(np.arange(K), N // K)
+A1 = rng.normal(size=(D_LAT, 32))
+A2 = rng.normal(size=(32, D_OBS))
+X = np.tanh(np.tanh(Z_real @ A1) @ A2) + 0.06 * rng.normal(size=(N, D_OBS))
+X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
+print(f"{N} puntos: 4 grupos en 2D deformados hasta {D_OBS} dimensiones.")
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1), C
+
+
+# ---------------- El autoencoder (mismo esqueleto que el capítulo 13) ----------------
+CAPAS = [D_OBS, 64, 32, D_LAT, 32, 64, D_OBS]
+MEDIO = len(CAPAS) // 2 - 1          # índice de la capa que produce el código
+
+
+def init(semilla=0):
+    r = np.random.default_rng(semilla)
+    return [[r.normal(scale=np.sqrt(2.0 / (a + b)), size=(a, b)), np.zeros(b)]
+            for a, b in zip(CAPAS[:-1], CAPAS[1:])]
+
+
+def adelante(par, X):
+    acts, A = [X], X
+    for i, (W, b) in enumerate(par):
+        Zl = A @ W + b
+        A = Zl if (i == len(par) - 1 or i == MEDIO) else np.tanh(Zl)
+        acts.append(A)
+    return acts
+
+
+def atras(par, acts, dA_final, desde=None):
+    """Retropropaga dA_final desde la capa 'desde' (por defecto, la última)."""
+    desde = len(par) - 1 if desde is None else desde
+    grads = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+    dA = dA_final
+    for i in range(desde, -1, -1):
+        if i != len(par) - 1 and i != MEDIO:
+            dA = dA * (1.0 - acts[i + 1] ** 2)
+        grads[i] = [acts[i].T @ dA, dA.sum(axis=0)]
+        dA = dA @ par[i][0].T
+    return grads
+
+
+def adam(par, grads, estado, lr, paso):
+    m, v = estado
+    for i in range(len(par)):
+        for j in range(2):
+            m[i][j] = 0.9 * m[i][j] + 0.1 * grads[i][j]
+            v[i][j] = 0.999 * v[i][j] + 0.001 * grads[i][j] ** 2
+            par[i][j] -= lr * (m[i][j] / (1 - 0.9 ** paso)) / (
+                np.sqrt(v[i][j] / (1 - 0.999 ** paso)) + 1e-8)
+
+
+def nuevo_estado(par):
+    return ([[np.zeros_like(W), np.zeros_like(b)] for W, b in par],
+            [[np.zeros_like(W), np.zeros_like(b)] for W, b in par])
+
+
+# ---------------- Fase 1: preentrenar el autoencoder ----------------
+par = init(0)
+est = nuevo_estado(par)
+paso = 0
+r = np.random.default_rng(1)
+for ep in range(300):
+    orden = r.permutation(N)
+    for i in range(0, N, 128):
+        xb = X[orden[i:i + 128]]
+        acts = adelante(par, xb)
+        g = atras(par, acts, 2.0 * (acts[-1] - xb) / xb.size)
+        paso += 1
+        adam(par, g, est, 1e-3, paso)
+rec_pre = ((adelante(par, X)[-1] - X) ** 2).mean()
+Z = adelante(par, X)[MEDIO + 1]
+z_km_lat, C0 = kmeans(Z, K, semilla=0)
+
+print(f"\nFase 1 · autoencoder preentrenado: error {rec_pre:.5f}")
+print(f"{'k-means en las 50 dimensiones originales':45} "
+      f"{acuerdo(kmeans(X, K, 0)[0], y):.1%}")
+print(f"{'k-means sobre el código del autoencoder':45} {acuerdo(z_km_lat, y):.1%}")
+
+
+# ---------------- Fases 2 y 3: DEC e IDEC ----------------
+def q_suave(Z, C):
+    """t de Student con 1 grado de libertad, igual que en t-SNE."""
+    d2 = ((Z[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+    num = 1.0 / (1.0 + d2)
+    return num / num.sum(axis=1, keepdims=True), num
+
+
+def objetivo(q):
+    """p_ij propto q_ij^2 / f_j : refuerza lo seguro y equilibra los tamaños."""
+    f = q.sum(axis=0)
+    w = q ** 2 / f
+    return w / w.sum(axis=1, keepdims=True)
+
+
+def entrena_dec(par0, C0, gamma_rec, iters=3000, lr=1e-3, cada=140):
+    par = [[W.copy(), b.copy()] for W, b in par0]
+    C = C0.copy()
+    est = nuevo_estado(par)
+    mC, vC, paso = np.zeros_like(C), np.zeros_like(C), 0
+    hist = []
+    P = None
+    r = np.random.default_rng(2)
+    for it in range(iters):
+        if it % cada == 0:                       # se recalcula la distribución objetivo
+            Zt = adelante(par, X)[MEDIO + 1]
+            P = objetivo(q_suave(Zt, C)[0])
+            zt = q_suave(Zt, C)[0].argmax(axis=1)
+            hist.append((it, acuerdo(zt, y),
+                         ((adelante(par, X)[-1] - X) ** 2).mean()))
+        idx = r.choice(N, 128, replace=False)
+        xb, Pb = X[idx], P[idx]
+        acts = adelante(par, xb)
+        Zb = acts[MEDIO + 1]
+        q, num = q_suave(Zb, C)
+        # gradiente de KL(P||Q) respecto a z y a los centros (alpha = 1)
+        coef = 2.0 * num * (Pb - q) / len(xb)     # (n, K)
+        dif = Zb[:, None, :] - C[None, :, :]      # (n, K, d)
+        dZ = (coef[:, :, None] * dif).sum(axis=1)
+        gC = -(coef[:, :, None] * dif).sum(axis=0)
+        # el término de reconstrucción (IDEC) entra por la última capa
+        g = atras(par, acts, gamma_rec * 2.0 * (acts[-1] - xb) / xb.size)
+        g_clu = atras(par, acts, dZ, desde=MEDIO)
+        for i in range(len(par)):
+            for j in range(2):
+                g[i][j] = g[i][j] + g_clu[i][j]
+        paso += 1
+        adam(par, g, est, lr, paso)
+        mC = 0.9 * mC + 0.1 * gC
+        vC = 0.999 * vC + 0.001 * gC ** 2
+        C -= lr * (mC / (1 - 0.9 ** paso)) / (np.sqrt(vC / (1 - 0.999 ** paso)) + 1e-8)
+    Zt = adelante(par, X)[MEDIO + 1]
+    qf = q_suave(Zt, C)[0]
+    zt = qf.argmax(axis=1)
+    return zt, Zt, ((adelante(par, X)[-1] - X) ** 2).mean(), hist, qf
+
+
+print("\nFases 2 y 3 · afinado conjunto de representación y clústeres")
+resultados = {}
+q_ini = q_suave(Z, C0)[0]
+for nombre, gamma in [("DEC (solo KL)", 0.0), ("IDEC (KL + reconstrucción)", 1.0)]:
+    z_f, Z_f, rec_f, hist, q_f = entrena_dec(par, C0, gamma)
+    resultados[nombre] = (z_f, Z_f, rec_f, hist, q_f)
+    print(f"\n{nombre}")
+    print(f"{'iteración':&gt;10} {'acuerdo':&gt;9} {'error de reconstrucción':&gt;25}")
+    for it, ac, rc in hist[::4] + [hist[-1]]:
+        print(f"{it:10d} {ac:8.1%} {rc:25.5f}")
+    print(f"  final: acuerdo {acuerdo(z_f, y):.1%}, reconstrucción {rec_f:.5f} "
+          f"(al empezar: {rec_pre:.5f})")
+
+def confianza(q):
+    return q.max(axis=1).mean(), (q.max(axis=1) &gt; 0.9).mean()
+
+
+print("\nResumen")
+print(f"{'método':38} {'acuerdo':&gt;9} {'reconstr.':&gt;11} {'confianza':&gt;11} {'q&gt;0,9':&gt;9}")
+print(f"{'k-means en el espacio original':38} {acuerdo(kmeans(X, K, 0)[0], y):8.1%} "
+      f"{'-':&gt;11} {'-':&gt;11} {'-':&gt;9}")
+c, f = confianza(q_ini)
+print(f"{'autoencoder + k-means':38} {acuerdo(z_km_lat, y):8.1%} {rec_pre:11.5f} "
+      f"{c:11.4f} {f:8.1%}")
+for nombre, (z_f, _, rec_f, _, q_f) in resultados.items():
+    c, f = confianza(q_f)
+    print(f"{nombre:38} {acuerdo(z_f, y):8.1%} {rec_f:11.5f} {c:11.4f} {f:8.1%}")
+# ---------------- El colapso: DEC SIN preentrenar ----------------
+print("\n¿Y si nos saltamos el preentrenamiento? (DEC desde pesos al azar)")
+par_azar = init(7)
+Z_azar = adelante(par_azar, X)[MEDIO + 1]
+C_azar = kmeans(Z_azar, K, semilla=0)[1]
+z_c, Z_c, rec_c, _, q_c = entrena_dec(par_azar, C_azar, 0.0)
+ocupados = int((np.bincount(z_c, minlength=K) &gt; 0).sum())
+print(f"  acuerdo con la verdad     : {acuerdo(z_c, y):.1%}")
+print(f"  grupos no vacíos          : {ocupados} de {K}")
+print(f"  tamaños                   : {np.bincount(z_c, minlength=K).tolist()}")
+print(f"  dispersión del latente    : {Z_c.std():.4f}  "
+      f"(con preentrenamiento: {resultados['DEC (solo KL)'][1].std():.4f})")
+print("  No colapsa a un solo grupo, pero se queda al nivel de k-means en el")
+print("  espacio original: el objetivo KL(P||Q) solo REFUERZA la partición con la")
+print("  que arranca, no la descubre. Autoentrenarse sobre las propias creencias")
+print("  amplifica lo que ya había, aciertos y errores. Por eso DEC se preentrena.")
+
+print("\nLo que DEC cambia de verdad no es el ACUERDO (sube poco) sino la")
+print("CONFIANZA: la asignación blanda pasa de dudosa a casi binaria. Es lo que")
+print("busca la distribución objetivo p, que eleva q al cuadrado.")
+print("\nDEC agrupa muy bien PERO destroza la reconstrucción: ha deformado el")
+print("latente hasta hacerlo agrupable, sin ninguna obligación de seguir")
+print("representando los datos. IDEC consigue lo mismo sin romper nada.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(Z[:, 0], Z[:, 1], c=y, cmap="viridis", s=8, edgecolors="none")
+ax[0].set_title(f"tras preentrenar · {acuerdo(z_km_lat, y):.0%}")
+for a, nombre in zip(ax[1:], resultados):
+    z_f, Z_f = resultados[nombre][0], resultados[nombre][1]
+    a.scatter(Z_f[:, 0], Z_f[:, 1], c=y, cmap="viridis", s=8, edgecolors="none")
+    a.set_title(f"{nombre.split(' ')[0]} · {acuerdo(z_f, y):.0%}")
+for a in ax:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1200 puntos: 4 grupos en 2D deformados hasta 50 dimensiones.
+
+Fase 1 · autoencoder preentrenado: error 0.01380
+k-means en las 50 dimensiones originales      74.4%
+k-means sobre el código del autoencoder       97.9%
+
+Fases 2 y 3 · afinado conjunto de representación y clústeres
+
+DEC (solo KL)
+ iteración   acuerdo   error de reconstrucción
+         0    97.9%                   0.01380
+       560    98.4%                   0.54494
+      1120    98.6%                   0.62767
+      1680    98.6%                   0.68494
+      2240    98.6%                   0.71793
+      2800    98.6%                   0.74995
+      2940    98.6%                   0.75596
+  final: acuerdo 98.6%, reconstrucción 0.76129 (al empezar: 0.01380)
+
+IDEC (KL + reconstrucción)
+ iteración   acuerdo   error de reconstrucción
+         0    97.9%                   0.01380
+       560    98.4%                   0.02674
+      1120    98.4%                   0.02147
+      1680    98.4%                   0.01893
+      2240    98.4%                   0.01812
+      2800    98.4%                   0.01784
+      2940    98.4%                   0.01638
+  final: acuerdo 98.4%, reconstrucción 0.01609 (al empezar: 0.01380)
+
+Resumen
+método                                   acuerdo   reconstr.   confianza     q&gt;0,9
+k-means en el espacio original            74.4%           -           -         -
+autoencoder + k-means                     97.9%     0.01380      0.7961    31.2%
+DEC (solo KL)                             98.6%     0.76129      0.9778   100.0%
+IDEC (KL + reconstrucción)                98.4%     0.01609      0.9652    98.4%
+
+¿Y si nos saltamos el preentrenamiento? (DEC desde pesos al azar)
+  acuerdo con la verdad     : 76.5%
+  grupos no vacíos          : 4 de 4
+  tamaños                   : [321, 430, 196, 253]
+  dispersión del latente    : 2.6482  (con preentrenamiento: 5.4424)
+  No colapsa a un solo grupo, pero se queda al nivel de k-means en el
+  espacio original: el objetivo KL(P||Q) solo REFUERZA la partición con la
+  que arranca, no la descubre. Autoentrenarse sobre las propias creencias
+  amplifica lo que ya había, aciertos y errores. Por eso DEC se preentrena.
+
+Lo que DEC cambia de verdad no es el ACUERDO (sube poco) sino la
+CONFIANZA: la asignación blanda pasa de dudosa a casi binaria. Es lo que
+busca la distribución objetivo p, que eleva q al cuadrado.
+
+DEC agrupa muy bien PERO destroza la reconstrucción: ha deformado el
+latente hasta hacerlo agrupable, sin ninguna obligación de seguir
+representando los datos. IDEC consigue lo mismo sin romper nada.</pre>
+        </div>
+
+        <h3>Lo primero: representar sí sirve</h3>
+
+        <p>k-means en las 50 dimensiones originales consigue un <strong>74,4 %</strong>; sobre el código de 2 dimensiones del autoencoder, un <strong>97,9 %</strong>. Es la tesis entera de la parte IV en dos líneas: la deformación no lineal que sufrían los datos la deshace el autoencoder, y a partir de ahí el problema es fácil. Ni siquiera hace falta deep clustering para esa parte.</p>
+
+        <h3>Lo segundo: DEC afila, no descubre</h3>
+
+        <p>Y aquí está el resultado honesto, que conviene decir claro porque no es el que suele contarse. Pasar de «autoencoder + k-means» a DEC sube el acuerdo del 97,9 % al <strong>98,6 %</strong>: siete décimas. No es la revolución que sugiere la literatura sobre estos datos.</p>
+
+        <p>Lo que sí cambia radicalmente es la <em>confianza</em>. La responsabilidad máxima media pasa de <strong>0,796 a 0,978</strong>, y la fracción de puntos con una asignación por encima de 0,9 salta del <strong>31,2 % al 100 %</strong>. Eso es exactamente lo que hace la distribución objetivo: elevar al cuadrado y renormalizar convierte una asignación dudosa en una casi binaria. DEC no descubre estructura nueva; <strong>toma partido</strong> sobre la que ya había.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Confianza no es acierto</div>
+          <p>Un modelo autoentrenado sobre sus propias predicciones se vuelve más seguro <em>tanto en lo que acierta como en lo que falla</em>. Si el 2 % mal clasificado inicial se refuerza, ese 2 % queda cimentado con una confianza de 0,98. Es la patología característica de todos los métodos de esta familia, y también la del autoentrenamiento semisupervisado del <a href="17-semisupervisado.html">capítulo 17</a>.</p>
+        </div>
+
+        <h3>Lo tercero: DEC destroza la representación</h3>
+
+        <p>Mira la columna de reconstrucción. DEC pasa de <strong>0,0138 a 0,7613</strong>: un factor <strong>55</strong>. El latente ha dejado de representar los datos; ahora solo sirve para dar la respuesta que el propio modelo se ha inventado. Si querías el código para cualquier otra cosa —visualizar, detectar anomalías, alimentar otro modelo—, ya no vale.</p>
+
+        <p>IDEC obtiene prácticamente el mismo acuerdo (98,4 % frente a 98,6 %) y la misma confianza (0,965 frente a 0,978), pero con una reconstrucción de <strong>0,0161</strong>: apenas peor que la de partida. Por dos décimas de acuerdo, conserva una representación utilizable. En la práctica se usa IDEC.</p>
+
+        <h3>Lo cuarto: sin preentrenar no hay nada</h3>
+
+        <p>El último bloque quita la fase 1 y arranca DEC desde pesos aleatorios. El acuerdo se queda en el <strong>76,5 %</strong>, es decir, al nivel del k-means original (74,4 %). No colapsa a un solo grupo —el denominador $f_j$ de la distribución objetivo lo impide, y de hecho los cuatro grupos quedan poblados con tamaños 321/430/196/253— pero tampoco descubre nada.</p>
+
+        <p>La razón es estructural: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ <strong>solo puede reforzar la partición de la que se parte</strong>. Es un amplificador, no una fuente. Si arrancas del ruido, amplificas ruido. Por eso todas las variantes de deep clustering llevan una fase de inicialización no trivial: un autoencoder, un modelo contrastivo o —en los métodos más recientes— ambos.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>scale=0.62</code> por <code>scale=1.0</code> en la generación de los datos, haciendo que los cuatro grupos se solapen más. Los resultados se invierten en lo interesante: «autoencoder + k-means» da un 88,4 %, DEC se queda igual en <strong>88,4 %</strong> e IDEC baja al <strong>87,6 %</strong>. Con grupos ambiguos, afilar las asignaciones ya no ayuda: el modelo se vuelve seguro de decisiones que no tenía cómo tomar bien.</p>
+        </div>
+
+        <h2 id="familia">El resto de la familia</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Método</th><th>Idea</th><th>Cómo evita la degeneración</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>DEC</strong> (2016)</td><td>KL contra una distribución objetivo afilada</td><td>El denominador $f_j$ equilibra tamaños; preentrenamiento con autoencoder</td></tr>
+              <tr><td><strong>IDEC</strong> (2017)</td><td>DEC + reconstrucción</td><td>El decodificador ancla la representación</td></tr>
+              <tr><td><strong>VaDE</strong> (2017)</td><td>VAE con prior de mixtura gaussiana en lugar de $\mathcal{N}(0,I)$</td><td>Es un modelo generativo completo: la verosimilitud impide el colapso</td></tr>
+              <tr><td><strong>DeepCluster</strong> (2018)</td><td>k-means sobre las representaciones y usar las etiquetas como supervisión</td><td>Reasignación aleatoria de grupos vacíos; aumentaciones de datos</td></tr>
+              <tr><td><strong>SwAV</strong> (2020)</td><td>Asignación a prototipos con equilibrio forzado (Sinkhorn-Knopp)</td><td>La restricción de equipartición es explícita y exacta</td></tr>
+              <tr><td><strong>SCAN</strong> (2020)</td><td>Preentrenamiento contrastivo y luego agrupar vecinos</td><td>La representación viene del <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>, no de reconstruir</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La evolución de esa tabla cuenta una historia. Los primeros métodos se apoyaban en la reconstrucción para no degenerar; los actuales han descubierto que hay una fuente de señal mejor: <strong>la invariancia frente a transformaciones</strong>. Si dos vistas distorsionadas de la misma imagen deben tener la misma representación, ya no hace falta reconstruir píxeles para tener un objetivo con sentido.</p>
+
+        <p>Ese cambio es la última pieza de la parte IV, y es el que ha producido las representaciones no supervisadas que de verdad compiten con las supervisadas. Es el <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># las tres fases, DEC frente a IDEC y el papel del preentrenamiento</span>
+<span class="prompt">$</span> python code/15-deep-clustering/dec_idec.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Representar antes de agrupar ya vale mucho: 74,4 % en el espacio original frente a 97,9 % sobre el código del autoencoder.</li>
+            <li>DEC usa asignación blanda con t de Student y una distribución objetivo $p_{ij}\propto q_{ij}^2/f_j$: el cuadrado afila, el denominador equilibra tamaños e impide la solución trivial.</li>
+            <li>Su efecto real no es descubrir sino afilar: el acuerdo sube del 97,9 % al 98,6 %, pero la confianza pasa de 0,796 a 0,978 y los puntos decididos del 31,2 % al 100 %.</li>
+            <li>Sin el término de reconstrucción, la representación se destruye: el error pasa de 0,0138 a 0,7613, un factor 55. IDEC lo conserva en 0,0161 renunciando a dos décimas de acuerdo.</li>
+            <li>Sin preentrenamiento, DEC se queda en el 76,5 %, el nivel del k-means original: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ solo amplifica lo que ya había.</li>
+            <li>Autoentrenarse aumenta la confianza también en los errores. Es la patología común a esta familia y al autoentrenamiento semisupervisado.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

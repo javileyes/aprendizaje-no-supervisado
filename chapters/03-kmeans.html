@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3. k-means: cuantización vectorial · No supervisado</title>
+  <meta name="description" content="La inercia como objetivo, Lloyd como descenso por bloques de coordenadas, la demostración de convergencia monótona y k-means++." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="3">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 3</span>
+        <h1>k-means: cuantización vectorial</h1>
+        <p class="lead">Es el algoritmo de clústering más usado del mundo, tiene sesenta años y se explica en dos frases. Merece la pena entenderlo del todo, porque casi todo lo que viene después nace de sus limitaciones: EM lo generaliza, DBSCAN lo contradice, el clústering espectral lo aplica en otro espacio y el deep clustering lo mete dentro de una red neuronal.</p>
+
+        <h2 id="idea">Resumir cada punto por su representante</h2>
+
+        <p>Imagina que tienes que transmitir por radio las coordenadas de diez mil ciudades y solo puedes permitirte enviar cuatro. La estrategia sensata: eliges cuatro ciudades <em>representativas</em>, las envías, y luego cada una de las diez mil se codifica como «soy la número 3». El error que cometes es la distancia entre cada ciudad y su representante, y tu trabajo consiste en elegir los cuatro representantes que hagan ese error total lo más pequeño posible.</p>
+
+        <p>Eso es exactamente k-means. En la literatura de señales se llama <strong>cuantización vectorial</strong> y el conjunto de representantes es el <em>diccionario</em>. Enlaza directamente con la lectura del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>: k-means es un códec que gasta $\log_2 k$ bits por dato y paga en distorsión lo que ahorra en bits.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>k-means busca $k$ puntos —los <strong>centroides</strong>— tales que, si sustituyeras cada dato por el centroide más próximo, perderías lo mínimo posible. Los grupos son un subproducto: son el conjunto de puntos que comparten representante.</p>
+        </div>
+
+        <h2 id="objetivo">El objetivo: la inercia</h2>
+
+        <p>Hagamos preciso «perder lo mínimo posible». Tenemos $n$ datos $x_1,\dots,x_n \in \mathbb{R}^d$, queremos $k$ centroides $\mu_1,\dots,\mu_k \in \mathbb{R}^d$ y una asignación $z_i \in \{1,\dots,k\}$ que diga a qué centroide pertenece cada dato.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Inercia (suma de cuadrados intra-grupo)</div>
+          <p>$$ J(\mu, z) \;=\; \sum_{i=1}^{n} \big\lVert x_i - \mu_{z_i} \big\rVert^2 \;=\; \sum_{j=1}^{k} \sum_{i\,:\,z_i = j} \big\lVert x_i - \mu_j \big\rVert^2 $$</p>
+          <p class="math-note">$\mu_{z_i}$ es el centroide asignado al dato $i$. Las dos formas son la misma suma reordenada: primero por dato, después agrupando por clúster. $J$ mide el error cuadrático total de reemplazar cada punto por su representante; también se le llama <em>inercia</em>, por analogía con el momento de inercia de la mecánica.</p>
+        </div>
+
+        <p>Fíjate en que hay dos tipos de incógnitas muy distintas: los centroides son continuos, la asignación es discreta. Minimizar $J$ sobre ambas a la vez es, de hecho, <strong>NP-difícil</strong> incluso en el plano con $k=2$. No existe un algoritmo eficiente que garantice el óptimo. Lo que sí existe es un procedimiento que baja siempre y para pronto.</p>
+
+        <h2 id="lloyd">El algoritmo de Lloyd, y por qué funciona</h2>
+
+        <p>La idea es la más vieja de la optimización: si no sabes minimizar en todas las variables a la vez, <strong>fija unas y minimiza en las otras</strong>, alternando. Se llama descenso por bloques de coordenadas, y aquí los dos bloques son «asignaciones» y «centroides». Lo bonito de k-means es que <em>los dos subproblemas tienen solución exacta y en forma cerrada</em>.</p>
+
+        <figure class="figure">
+          <svg viewBox="0 0 640 190" width="100%" role="img" aria-label="Ciclo de dos pasos del algoritmo de Lloyd">
+            <rect x="40" y="45" width="220" height="76" rx="10" fill="none" stroke="#5b8def" stroke-width="2"/>
+            <text x="150" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#5b8def">PASO 1 · asignar</text>
+            <text x="150" y="94" text-anchor="middle" font-size="12" fill="currentColor">centroides fijos</text>
+            <text x="150" y="111" text-anchor="middle" font-size="12" fill="currentColor">cada punto al más próximo</text>
+
+            <rect x="380" y="45" width="220" height="76" rx="10" fill="none" stroke="#43c59e" stroke-width="2"/>
+            <text x="490" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#43c59e">PASO 2 · recolocar</text>
+            <text x="490" y="94" text-anchor="middle" font-size="12" fill="currentColor">asignación fija</text>
+            <text x="490" y="111" text-anchor="middle" font-size="12" fill="currentColor">cada centroide a la media</text>
+
+            <path d="M 265 70 L 375 70" stroke="currentColor" stroke-width="2" fill="none" marker-end="url(#fl3)"/>
+            <path d="M 375 100 L 265 100" stroke="currentColor" stroke-width="2" fill="none" marker-end="url(#fl3)"/>
+            <defs>
+              <marker id="fl3" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L9,3 z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <text x="320" y="150" text-anchor="middle" font-size="12" fill="#8b93a7">J baja o se queda igual en cada flecha</text>
+            <text x="320" y="30" text-anchor="middle" font-size="12" fill="#8b93a7">nunca sube</text>
+          </svg>
+          <figcaption>El bucle de Lloyd. Cada paso resuelve exactamente un subproblema, de modo que la inercia solo puede bajar.</figcaption>
+        </figure>
+
+        <h3>Paso 1: con los centroides fijos, ¿cuál es la mejor asignación?</h3>
+
+        <p>La suma $J = \sum_i \lVert x_i - \mu_{z_i}\rVert^2$ se separa por completo entre datos: la elección de $z_i$ no afecta a ningún otro término. Así que se minimiza cada sumando por separado, y el mínimo de $\lVert x_i - \mu_j\rVert^2$ sobre $j$ es, trivialmente, el centroide más próximo:</p>
+
+        <p>$$ z_i \;=\; \arg\min_{j \in \{1,\dots,k\}} \big\lVert x_i - \mu_j \big\rVert^2 . $$</p>
+
+        <p>Geométricamente, esto parte el espacio en un <strong>diagrama de Voronoi</strong>: las fronteras entre grupos son los hiperplanos que bisecan perpendicularmente los segmentos entre centroides. De aquí sale una consecuencia con la que hay que contar siempre: <em>las regiones de k-means son convexas y sus fronteras son rectas</em>. Cualquier grupo con forma de luna o de anillo es, por construcción, inalcanzable.</p>
+
+        <h3>Paso 2: con la asignación fija, ¿cuál es el mejor centroide?</h3>
+
+        <p>Ahora $J$ se separa por grupos. Para el grupo $j$, con $C_j = \{i : z_i = j\}$ y $n_j = |C_j|$, hay que minimizar $\sum_{i \in C_j}\lVert x_i - \mu_j\rVert^2$, una función convexa y diferenciable de $\mu_j$. Derivamos e igualamos a cero:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El centroide óptimo es la media</div>
+          <p>$$ \nabla_{\mu_j} \sum_{i \in C_j} \lVert x_i - \mu_j\rVert^2 \;=\; -2 \sum_{i \in C_j} (x_i - \mu_j) \;=\; 0 \quad\Longrightarrow\quad \mu_j \;=\; \frac{1}{n_j}\sum_{i \in C_j} x_i $$</p>
+          <p class="math-note">$\nabla_{\mu_j}$ es el gradiente respecto al vector $\mu_j$. Como la función es estrictamente convexa (su hessiano es $2n_j I$, definido positivo), ese punto crítico es el mínimo global, no solo un punto estacionario. Nótese que la media aparece <em>porque</em> el error es cuadrático: con error absoluto saldría la mediana, y el algoritmo se llamaría $k$-medianas.</p>
+        </div>
+
+        <h3>Por qué el algoritmo siempre termina</h3>
+
+        <p>La demostración es corta y vale la pena entenderla, porque es el patrón de todos los algoritmos tipo EM que vendrán después.</p>
+
+        <ol>
+          <li>El paso 1 minimiza $J$ exactamente en $z$ con $\mu$ fijo. Por tanto $J$ no sube.</li>
+          <li>El paso 2 minimiza $J$ exactamente en $\mu$ con $z$ fijo. Por tanto $J$ no sube.</li>
+          <li>Luego la sucesión $J^{(0)} \ge J^{(1)} \ge J^{(2)} \ge \cdots$ es monótona no creciente, y está acotada inferiormente por $0$: converge.</li>
+          <li>Además, dada una asignación $z$, los centroides óptimos quedan determinados; así que $J$ solo puede tomar tantos valores como particiones de $n$ puntos en $k$ grupos, un número finito. Como $J$ decrece estrictamente cada vez que la asignación cambia, ninguna partición puede repetirse, y el algoritmo se detiene <strong>en un número finito de pasos</strong>.</li>
+        </ol>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Converge, pero ¿a dónde?</div>
+          <p>La demostración garantiza que se para, no que se pare en el óptimo global. Lloyd encuentra un mínimo local, y cuál dependerá enteramente de dónde arranque. Es el motivo por el que la inicialización tiene su propia sección, y por el que ejecutar k-means una sola vez es una imprudencia.</p>
+        </div>
+
+        <h2 id="anova">Una identidad que conviene tener en la cabeza</h2>
+
+        <p>Sea $\bar x = \frac1n \sum_i x_i$ la media global. Escribiendo $x_i - \bar x = (x_i - \mu_j) + (\mu_j - \bar x)$ dentro de la suma de cuadrados y desarrollando el cuadrado:</p>
+
+        <p>$$ \sum_{j}\sum_{i \in C_j} \lVert x_i - \bar x\rVert^2 = \sum_{j}\sum_{i \in C_j}\Big[ \lVert x_i - \mu_j\rVert^2 + 2(x_i-\mu_j)^\top(\mu_j - \bar x) + \lVert \mu_j - \bar x\rVert^2 \Big]. $$</p>
+
+        <p>El término cruzado desaparece: dentro de cada grupo, $\sum_{i\in C_j}(x_i - \mu_j) = 0$ por la propia definición de la media, y $(\mu_j - \bar x)$ es constante dentro del grupo. Queda:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Descomposición de la dispersión (ANOVA)</div>
+          <p>$$ \underbrace{\sum_{i} \lVert x_i - \bar x\rVert^2}_{T,\ \text{total (fijo)}} \;=\; \underbrace{\sum_{j}\sum_{i\in C_j} \lVert x_i - \mu_j\rVert^2}_{W,\ \text{intra} \,=\, J} \;+\; \underbrace{\sum_{j} n_j \lVert \mu_j - \bar x\rVert^2}_{B,\ \text{entre}} $$</p>
+          <p class="math-note">$T$ no depende de la partición: es una propiedad de los datos. Por tanto <strong>minimizar la dispersión intra-grupo es exactamente lo mismo que maximizar la dispersión entre grupos</strong>. Las dos formulaciones que verás en la literatura son la misma. De aquí saldrá también el índice de Calinski-Harabasz del <a href="08-validacion-clusteres.html">capítulo 8</a>, que no es más que un cociente $B/W$ reescalado.</p>
+        </div>
+
+        <h2 id="ejemplo">k-means desde cero, y la inercia bajando</h2>
+
+        <p>Vamos a implementarlo entero —incluida la inicialización inteligente que veremos en la sección siguiente— y a imprimir la inercia después de cada paso. Los datos son cuatro grupos esféricos bien separados: el caso favorable, para poder observar el mecanismo sin ruido.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">kmeans_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(42)
+
+# --- Datos: cuatro grupos esféricos, el caso favorable para k-means ---
+centros_reales = np.array([[0.0, 0.0], [5.0, 5.0], [0.0, 5.5], [5.5, 0.5]])
+X = np.vstack([c + rng.normal(scale=1.0, size=(90, 2)) for c in centros_reales])
+X = X[rng.permutation(len(X))]
+k = 4
+
+
+def dist2(X, C):
+    """Distancias al cuadrado de cada punto a cada centro, sin bucles."""
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+
+
+def inercia(X, C, z):
+    return ((X - C[z]) ** 2).sum()
+
+
+def init_pp(X, k, rng):
+    """k-means++: el primer centro al azar; cada siguiente, con probabilidad
+    proporcional a la distancia al cuadrado al centro más próximo ya elegido."""
+    C = [X[rng.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = dist2(X, np.array(C)).min(axis=1)
+        p = d2 / d2.sum()
+        C.append(X[rng.choice(len(X), p=p)])
+    return np.array(C)
+
+
+def lloyd(X, C, iters=20):
+    """Descenso por bloques de coordenadas: asignar, recolocar, repetir."""
+    historia = []
+    z = dist2(X, C).argmin(axis=1)
+    historia.append(("inicial", inercia(X, C, z), C.copy(), z.copy()))
+    for t in range(iters):
+        # PASO 1 (asignación): con C fijo, la z óptima es el centro más próximo
+        z = dist2(X, C).argmin(axis=1)
+        J_asig = inercia(X, C, z)
+        # PASO 2 (actualización): con z fijo, la C óptima es la media del grupo
+        C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                            for j in range(k)])
+        J_act = inercia(X, C_nuevo, z)
+        historia.append((f"iter {t+1}", J_asig, C.copy(), z.copy()))
+        if np.allclose(C_nuevo, C):
+            print(f"Convergió en la iteración {t+1}: los centros ya no se mueven.")
+            C = C_nuevo
+            break
+        C = C_nuevo
+    return C, z, historia
+
+
+C0 = init_pp(X, k, rng)
+C, z, historia = lloyd(X, C0)
+
+print(f"\n{'paso':&gt;10} {'inercia':&gt;12}   (asignación) -&gt; (recolocación)")
+J_prev = np.inf
+for nombre, J, _, _ in historia:
+    flecha = "  ↓" if J &lt; J_prev else ""
+    print(f"{nombre:&gt;10} {J:12.3f}{flecha}")
+    J_prev = J
+print(f"\nInercia final: {inercia(X, C, z):.3f}")
+print(f"Tamaños de los grupos: {np.bincount(z, minlength=k)}")
+
+# --- Identidad de la varianza: total = intra + inter ---
+mu = X.mean(axis=0)
+total = ((X - mu) ** 2).sum()
+intra = inercia(X, C, z)
+inter = sum(np.sum(z == j) * ((C[j] - mu) ** 2).sum() for j in range(k))
+print(f"\nDispersión total  : {total:10.3f}")
+print(f"  intra (inercia) : {intra:10.3f}")
+print(f"  inter (entre)   : {inter:10.3f}")
+print(f"  intra + inter   : {intra + inter:10.3f}  &lt;- coincide con el total")
+
+# --- Dibujo: tres instantáneas y la curva de la inercia ---
+fig, ax = plt.subplots(1, 4, figsize=(15, 3.7))
+for a, idx in zip(ax[:3], [0, 1, len(historia) - 1]):
+    nombre, J, Ct, zt = historia[idx]
+    a.scatter(X[:, 0], X[:, 1], c=zt, cmap="viridis", s=14, edgecolors="none")
+    a.scatter(Ct[:, 0], Ct[:, 1], marker="X", s=180, c="red", edgecolors="k")
+    a.set_title(f"{nombre} · J = {J:.0f}")
+    a.set_xticks([])
+    a.set_yticks([])
+ax[3].plot([h[1] for h in historia], "o-", color="#ef476f")
+ax[3].set_xlabel("iteración")
+ax[3].set_ylabel("inercia J")
+ax[3].set_title("J nunca sube")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Convergió en la iteración 3: los centros ya no se mueven.
+
+      paso      inercia   (asignación) -&gt; (recolocación)
+   inicial     1783.482  ↓
+    iter 1     1783.482
+    iter 2      695.431  ↓
+    iter 3      677.730  ↓
+
+Inercia final: 677.730
+Tamaños de los grupos: [91 89 90 90]
+
+Dispersión total  :   5630.212
+  intra (inercia) :    677.730
+  inter (entre)   :   4952.482
+  intra + inter   :   5630.212  &lt;- coincide con el total</pre>
+        </div>
+
+        <p>Tres cosas que leer en esa salida. Primera: la inercia cae de 1783 a 678 y <strong>en ningún momento sube</strong>, tal como demuestra la sección anterior. La flecha ↓ no aparece en «iter 1» porque ese valor es el mismo que el inicial: el paso de asignación con los centroides originales ya se había hecho al construir la fila «inicial», así que ahí no había nada que ganar.</p>
+
+        <p>Segunda: convergió en tres iteraciones. Con grupos separados, Lloyd es rapidísimo; el número de iteraciones depende de la geometría, no del tamaño de la muestra. Tercera: la identidad ANOVA se cumple hasta el último decimal, $677{,}730 + 4952{,}482 = 5630{,}212$. Con 4952 de 5630 —el 88 %— de la dispersión explicada entre grupos, la partición es muy buena.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>k = 4</code> por <code>k = 8</code> y vuelve a pulsar ▶. La inercia final baja de 677,730 a <strong>447,062</strong>, <em>pero eso no significa que 8 sea mejor que 4</em>: la inercia siempre decrece al aumentar $k$, hasta llegar a 0 cuando $k = n$ y cada punto es su propio centroide. Por eso no se puede elegir $k$ minimizando $J$, y por eso existe el <a href="08-validacion-clusteres.html">capítulo 8</a>.</p>
+        </div>
+
+        <h2 id="inicializacion">k-means++: sembrar bien es media victoria</h2>
+
+        <p>Si eliges los $k$ centros iniciales al azar entre los datos, es fácil que dos caigan en el mismo grupo natural y ninguno en otro. Lloyd no sabe arreglar eso: el grupo huérfano queda partido entre dos representantes y el par sobrante se reparte un grupo que no lo necesitaba. Es un mínimo local, y el algoritmo se queda ahí para siempre.</p>
+
+        <p>La solución de Arthur y Vassilvitskii (2007) es una siembra codiciosa y aleatoria a la vez: <strong>elegir cada nuevo centro con probabilidad proporcional al cuadrado de su distancia al centro más próximo ya elegido</strong>. Los puntos lejos de todo lo elegido tienen muchísima más probabilidad de salir; los que ya están bien cubiertos, casi ninguna.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Siembra $D^2$ de k-means++</div>
+          <p>$$ \Pr\big[\text{elegir } x\big] \;=\; \frac{D(x)^2}{\sum_{x'} D(x')^2}, \qquad D(x) = \min_{\mu \in \mathcal{C}} \lVert x - \mu\rVert $$</p>
+          <p class="math-note">$\mathcal{C}$ es el conjunto de centros ya elegidos y $D(x)$ la distancia de $x$ al más próximo de ellos. El resultado clave es una <strong>garantía de aproximación</strong>: la inercia esperada tras la siembra —antes incluso de ejecutar Lloyd— cumple $\mathbb{E}[J] \le 8(\ln k + 2)\, J_{\mathrm{OPT}}$. Ninguna otra inicialización barata ofrece una cota así.</p>
+        </div>
+
+        <p>El factor $8(\ln k + 2)$ no es pequeño, pero es una cota <em>en el peor caso</em> y sin ejecutar Lloyd todavía. En la práctica el efecto es mucho mejor de lo que promete. Medámoslo con 30 semillas, porque una sola no demuestra nada:</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">kmeans_inicializacion.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng_datos = np.random.default_rng(1)
+
+# Datos deliberadamente traicioneros: grupos muy separados, de forma que un
+# arranque malo (dos centros en el mismo grupo) se queda atrapado para siempre.
+centros = np.array([[0, 0], [12, 0], [24, 0], [0, 12], [12, 12], [24, 12]])
+X = np.vstack([c + rng_datos.normal(scale=1.2, size=(60, 2)) for c in centros])
+k = 6
+
+
+def dist2(X, C):
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+
+
+def lloyd(X, C, iters=100):
+    for _ in range(iters):
+        z = dist2(X, C).argmin(axis=1)
+        C_nuevo = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                            for j in range(len(C))])
+        if np.allclose(C_nuevo, C):
+            break
+        C = C_nuevo
+    z = dist2(X, C).argmin(axis=1)
+    return ((X - C[z]) ** 2).sum()
+
+
+def init_azar(X, k, rng):
+    return X[rng.choice(len(X), k, replace=False)]
+
+
+def init_pp(X, k, rng):
+    C = [X[rng.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = dist2(X, np.array(C)).min(axis=1)
+        C.append(X[rng.choice(len(X), p=d2 / d2.sum())])
+    return np.array(C)
+
+
+resultados = {}
+for nombre, init in [("azar", init_azar), ("k-means++", init_pp)]:
+    Js = np.array([lloyd(X, init(X, k, np.random.default_rng(s))) for s in range(30)])
+    resultados[nombre] = Js
+    print(f"{nombre:10s} -&gt; mediana {np.median(Js):8.1f} | mejor {Js.min():8.1f} "
+          f"| peor {Js.max():8.1f} | desviación {Js.std():7.1f}")
+
+mejor_global = min(J.min() for J in resultados.values())
+print(f"\nMejor inercia encontrada por cualquiera: {mejor_global:.1f}")
+for nombre, J in resultados.items():
+    print(f"  {nombre:10s}: {np.mean(J &lt;= 1.02 * mejor_global):.0%} de las 30 semillas "
+          f"llegan a menos del 2% del óptimo")
+
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.boxplot([resultados["azar"], resultados["k-means++"]])
+ax.set_xticks([1, 2])
+ax.set_xticklabels(["azar", "k-means++"])
+ax.set_ylabel("inercia final (30 semillas)")
+ax.set_title("La inicialización decide si te quedas en un mínimo local")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>azar       -&gt; mediana   5056.7 | mejor    983.4 | peor   9792.0 | desviación  2249.7
+k-means++  -&gt; mediana    983.4 | mejor    983.4 | peor   5275.4 | desviación  1425.3
+
+Mejor inercia encontrada por cualquiera: 983.4
+  azar      : 33% de las 30 semillas llegan a menos del 2% del óptimo
+  k-means++ : 87% de las 30 semillas llegan a menos del 2% del óptimo
+</pre>
+        </div>
+
+        <p>La diferencia es brutal y no es cuestión de suerte: son 30 semillas. Con inicialización al azar, la <strong>mediana</strong> de la inercia es 5056,7, cinco veces peor que el óptimo, y solo un tercio de las ejecuciones llega cerca del mejor valor. Con k-means++, la mediana <em>es</em> el óptimo —983,4— y el 87 % de las semillas lo alcanza. Ambos métodos encuentran alguna vez la misma mejor solución; lo que cambia es cuántas veces.</p>
+
+        <p>De ahí las dos reglas prácticas: usa siempre k-means++ (es el valor por defecto de scikit-learn desde hace años) y <strong>ejecuta varias veces quedándote con la de menor inercia</strong>. Incluso con k-means++ hay un 13 % de arranques malos.</p>
+
+        <h2 id="limites">Los tres fracasos característicos</h2>
+
+        <p>k-means asume, sin decirlo, tres cosas: que los grupos son <em>esféricos</em> (porque usa la distancia euclídea sin más), que tienen <em>tamaños comparables</em> (porque el error es una suma, y un grupo grande aporta más) y que son <em>convexos</em> (porque las fronteras de Voronoi son rectas). Cuando alguna falla, falla de forma predecible. Y cada fracaso motiva un capítulo posterior.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">kmeans_limites.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(5)
+
+
+def dist2(X, C):
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+
+
+def kmeans(X, k, semilla=0, iters=100):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):                       # k-means++
+        d2 = dist2(X, np.array(C)).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / d2.sum())])
+    C = np.array(C)
+    for _ in range(iters):
+        z = dist2(X, C).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return dist2(X, C).argmin(axis=1), C
+
+
+def acuerdo(a, b):
+    """Acuerdo por parejas: inmune a la permutación de las etiquetas."""
+    ia = a[:, None] == a[None, :]
+    ib = b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+# --- Caso 1: dos cigarros paralelos, estirados 5:1 y girados 25 grados ---
+estira = np.array([[3.0, 0.0], [0.0, 0.6]])
+th = np.deg2rad(25)
+giro = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+M = giro @ estira
+X1 = np.vstack([rng.normal(size=(150, 2)) @ M.T,
+                rng.normal(size=(150, 2)) @ M.T + [-1.0, 3.2]])
+y1 = np.repeat([0, 1], 150)
+
+# --- Caso 2: un grupo enorme y disperso, otro pequeño y compacto ---
+X2 = np.vstack([rng.normal(scale=2.6, size=(280, 2)),
+                rng.normal(scale=0.35, size=(40, 2)) + [5.5, 0.0]])
+y2 = np.concatenate([np.zeros(280, int), np.ones(40, int)])
+
+# --- Caso 3: dos lunas entrelazadas (no convexas) ---
+t = rng.uniform(0, np.pi, 200)
+luna_a = np.column_stack([np.cos(t), np.sin(t)]) + rng.normal(scale=0.09, size=(200, 2))
+luna_b = np.column_stack([1 - np.cos(t), 0.5 - np.sin(t)]) + rng.normal(scale=0.09, size=(200, 2))
+X3 = np.vstack([luna_a, luna_b])
+y3 = np.repeat([0, 1], 200)
+
+casos = [("1. alargados", X1, y1, "-&gt; mixturas gaussianas, cap. 4"),
+         ("2. tamaños dispares", X2, y2, "-&gt; densidad, cap. 6"),
+         ("3. no convexos", X3, y3, "-&gt; espectral, cap. 7")]
+
+fig, ax = plt.subplots(2, 3, figsize=(13, 7))
+for col, (nombre, X, y, salida) in enumerate(casos):
+    z, C = kmeans(X, 2, semilla=0)
+    a = acuerdo(z, y)
+    print(f"{nombre:22s} acuerdo con la verdad: {a:6.1%}   {salida}")
+    ax[0, col].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=10, edgecolors="none")
+    ax[0, col].set_title(f"{nombre}: verdad")
+    ax[1, col].scatter(X[:, 0], X[:, 1], c=z, cmap="coolwarm", s=10, edgecolors="none")
+    ax[1, col].scatter(C[:, 0], C[:, 1], marker="X", s=160, c="k")
+    ax[1, col].set_title(f"k-means: {a:.0%} de acuerdo")
+    for fila in range(2):
+        ax[fila, col].set_xticks([])
+        ax[fila, col].set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1. alargados           acuerdo con la verdad:  52.3%   -&gt; mixturas gaussianas, cap. 4
+2. tamaños dispares    acuerdo con la verdad:  57.9%   -&gt; densidad, cap. 6
+3. no convexos         acuerdo con la verdad:  70.1%   -&gt; espectral, cap. 7</pre>
+        </div>
+
+        <p>Un acuerdo del 50 % por parejas es lo que daría una partición aleatoria en dos grupos del mismo tamaño. Así que 57,9 % en el caso de los tamaños dispares es casi nada: k-means parte el grupo grande en dos mitades e ignora por completo el pequeño y compacto, porque partir 280 puntos dispersos reduce más la inercia que aislar 40 puntos que ya están juntos. Es un fallo de <em>diseño del objetivo</em>, no de optimización: la solución «correcta» tiene peor inercia que la que encuentra.</p>
+
+        <p>Los otros dos casos son fallos de <em>expresividad</em>. El de los cigarros es el más espectacular: con un 52,3 % de acuerdo, k-means está literalmente al nivel de tirar una moneda. Los dos grupos están estirados 5:1 y girados 25°, y la frontera recta y perpendicular que k-means sabe dibujar los corta <em>a lo largo</em> en vez de separarlos. La reparación consiste en dejar que cada grupo tenga su propia matriz de covarianza, y eso son las mixturas gaussianas del <a href="04-gmm-y-em.html">capítulo 4</a> —que en estos mismos datos llegan al 99,3 %—. Con las lunas (70,1 %), ninguna pareja de centroides puede separarlas hagas lo que hagas: hay que abandonar la geometría euclídea y pasar a la conectividad, es decir, DBSCAN (<a href="06-densidad-dbscan.html">capítulo 6</a>) o el clústering espectral (<a href="07-clustering-espectral.html">capítulo 7</a>).</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En el caso 2, sustituye <code>scale=2.6</code> por <code>scale=0.9</code>: el grupo grande deja de estar disperso y el acuerdo sube del 57,9 % al <strong>100,0 %</strong> —partición perfecta— sin tocar nada más. El obstáculo nunca fue el desequilibrio de tamaños en sí (280 contra 40), sino la <strong>diferencia de dispersión</strong>: la inercia premia partir lo disperso mucho más que aislar lo compacto.</p>
+        </div>
+
+        <h2 id="variantes">Variantes que conviene conocer</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Variante</th><th>Qué cambia</th><th>Cuándo usarla</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>k-medoides</strong> (PAM)</td><td>El representante debe ser un dato real, no una media. Sirve con cualquier matriz de distancias.</td><td>Cuando la media no tiene sentido (datos categóricos, distancias de edición) o hay valores atípicos.</td></tr>
+              <tr><td><strong>k-medianas</strong></td><td>Minimiza $\ell_1$ en vez de $\ell_2$; el óptimo por grupo es la mediana coordenada a coordenada.</td><td>Cuando hay ruido de cola pesada y la media se descoloca.</td></tr>
+              <tr><td><strong>mini-batch k-means</strong></td><td>Actualiza los centroides con muestras pequeñas en vez del conjunto entero.</td><td>Millones de puntos. Pierde algo de calidad a cambio de mucha velocidad.</td></tr>
+              <tr><td><strong>k-means esférico</strong></td><td>Normaliza las filas y usa similitud coseno.</td><td>Texto y datos de recuentos, por lo visto en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</td></tr>
+              <tr><td><strong>k-means difuso</strong> (c-means)</td><td>Asignación blanda con exponente $m$: cada punto pertenece un poco a cada grupo.</td><td>Cuando las fronteras son genuinamente ambiguas. Es el paso previo natural al <a href="04-gmm-y-em.html">capítulo 4</a>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># el algoritmo completo con la traza de la inercia</span>
+<span class="prompt">$</span> python code/03-kmeans/kmeans_desde_cero.py
+
+<span class="comment"># azar frente a k-means++, 30 semillas</span>
+<span class="prompt">$</span> python code/03-kmeans/kmeans_inicializacion.py
+
+<span class="comment"># los tres fracasos característicos</span>
+<span class="prompt">$</span> python code/03-kmeans/kmeans_limites.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>k-means minimiza la inercia $J = \sum_i \lVert x_i - \mu_{z_i}\rVert^2$. Minimizarla de forma exacta es NP-difícil; Lloyd es una heurística de descenso por bloques.</li>
+            <li>Los dos pasos tienen solución cerrada: el punto va al centroide más próximo, y el centroide óptimo es la media del grupo (porque el error es cuadrático).</li>
+            <li>La inercia nunca sube y solo hay un número finito de particiones, así que el algoritmo termina; pero termina en un mínimo <em>local</em>.</li>
+            <li>Identidad ANOVA: $T = W + B$ con $T$ fijo. Minimizar la dispersión intra equivale a maximizar la dispersión entre grupos.</li>
+            <li>k-means++ siembra con probabilidad $\propto D(x)^2$ y garantiza $\mathbb{E}[J] \le 8(\ln k+2)J_{\mathrm{OPT}}$. Medido con 30 semillas: mediana 983,4 frente a 5056,7 del arranque al azar.</li>
+            <li>Falla con grupos alargados (52,3 %, el nivel del azar), con dispersiones muy distintas (57,9 %) y con formas no convexas (70,1 %). Cada fallo abre uno de los tres capítulos siguientes.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

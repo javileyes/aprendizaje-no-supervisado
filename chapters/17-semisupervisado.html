@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>17. Semisupervisado: pocas etiquetas, muchos datos · No supervisado</title>
+  <meta name="description" content="La hipótesis del clúster, propagación de etiquetas en grafos con solución cerrada, autoentrenamiento, regularización de consistencia y FixMatch." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="17">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte V · Capítulo 17</span>
+        <h1>Semisupervisado: pocas etiquetas, muchos datos</h1>
+        <p class="lead">Dieciséis capítulos sin usar ni una etiqueta. Pero la situación real más frecuente no es «ninguna» ni «todas»: es <em>unas pocas</em>. Cien radiografías que un médico pudo revisar frente a cien mil sin revisar. Este capítulo trata de aprovechar las dos cosas a la vez, de las hipótesis que lo hacen posible y —lo que casi nunca se cuenta— de qué pasa cuando esas hipótesis no se cumplen.</p>
+
+        <h2 id="cuando">Cuándo ayudan los datos sin etiquetar</h2>
+
+        <p>La pregunta no es retórica. Los datos sin etiquetar informan sobre $p(x)$, y lo que queremos es $p(y\mid x)$. Sin un puente entre ambas cosas, $p(x)$ no dice absolutamente nada sobre las etiquetas. Ese puente hay que ponerlo como <strong>hipótesis</strong>, y hay tres formulaciones equivalentes:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Las hipótesis del aprendizaje semisupervisado</div>
+          <p><strong>Suavidad:</strong> si $x_1$ y $x_2$ están próximos <em>en una región densa</em>, sus etiquetas coinciden.</p>
+          <p><strong>Clúster:</strong> los puntos de un mismo clúster comparten etiqueta. Equivalentemente, la <em>frontera de decisión pasa por zonas de baja densidad</em>.</p>
+          <p><strong>Variedad:</strong> los datos viven sobre una variedad de dimensión baja y la etiqueta varía suavemente sobre ella.</p>
+          <p class="math-note">Las tres dicen lo mismo desde ángulos distintos, y las tres pueden ser falsas. Cuando lo son, <strong>los datos sin etiquetar no solo no ayudan: hacen daño</strong>. Es un hecho medible y lo vamos a medir.</p>
+        </div>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Con cuatro puntos etiquetados no sabes dónde poner la frontera: hay infinitas rectas que los separan. Con cien mil puntos sin etiquetar sí lo sabes, <em>si crees</em> que la frontera debe pasar por donde no hay nadie. Los datos sin etiquetar no aportan etiquetas: aportan <strong>el mapa del terreno por el que la frontera puede pasar</strong>.</p>
+        </div>
+
+        <h2 id="propagacion">Propagación de etiquetas: la solución armónica</h2>
+
+        <p>El método más limpio del capítulo, y el que tiene solución cerrada. Construimos el grafo de similitud del <a href="07-clustering-espectral.html">capítulo 7</a> sobre <em>todos</em> los puntos, etiquetados o no, y buscamos la función más suave sobre ese grafo que respete las etiquetas conocidas.</p>
+
+        <p>«Suave sobre el grafo» ya sabemos medirlo: es exactamente la forma cuadrática del laplaciano, $f^\top L f = \frac12\sum_{ij}w_{ij}(f_i-f_j)^2$. Así que el problema es</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El problema y su solución</div>
+          <p>$$ \min_{f}\; \tfrac12\, f^\top L f \qquad \text{sujeto a} \qquad f_i = y_i \ \ \forall i \in \mathcal{L} $$</p>
+          <p>Partiendo $L$ en bloques según etiquetados ($\mathcal{L}$) y no etiquetados ($\mathcal{U}$), la derivada respecto a $f_\mathcal{U}$ da $L_{\mathcal{U}\mathcal{U}} f_\mathcal{U} + L_{\mathcal{U}\mathcal{L}} y_\mathcal{L} = 0$, es decir:</p>
+          <p>$$ f_{\mathcal{U}} \;=\; \big(D_{\mathcal{U}\mathcal{U}} - W_{\mathcal{U}\mathcal{U}}\big)^{-1} W_{\mathcal{U}\mathcal{L}}\, y_{\mathcal{L}} $$</p>
+          <p class="math-note">Un único sistema lineal: sin iteraciones, sin semillas, sin mínimos locales. La solución se llama <strong>armónica</strong> porque cumple $f_i = \frac{1}{d_i}\sum_j w_{ij} f_j$ en todo nodo no etiquetado: cada valor es exactamente la media ponderada de sus vecinos. Es la versión discreta de una función armónica, la que resuelve la ecuación de Laplace. También se puede leer como la probabilidad de que un paseo aleatorio que arranque en $i$ llegue antes a una etiqueta positiva que a una negativa.</p>
+        </div>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">propagacion_etiquetas.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(1)
+
+
+def grafo_gaussiano(X, sigma, k_vecinos=12):
+    """Similitud gaussiana, restringida a los k vecinos más próximos."""
+    sq = (X ** 2).sum(axis=1)
+    D2 = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+    W = np.exp(-D2 / (2 * sigma ** 2))
+    np.fill_diagonal(W, 0.0)
+    idx = np.argsort(-W, axis=1)[:, k_vecinos:]
+    filas = np.repeat(np.arange(len(X)), idx.shape[1])
+    W[filas, idx.ravel()] = 0.0
+    return np.maximum(W, W.T)
+
+
+def solucion_armonica(W, etiquetado, y_l):
+    """f_U = (D_UU - W_UU)^{-1} W_UL y_L, con y_L en formato one-hot."""
+    d = W.sum(axis=1)
+    L_idx = np.flatnonzero(etiquetado)
+    U_idx = np.flatnonzero(~etiquetado)
+    Luu = np.diag(d[U_idx]) - W[np.ix_(U_idx, U_idx)]
+    Wul = W[np.ix_(U_idx, L_idx)]
+    F = np.zeros((len(W), y_l.shape[1]))
+    F[L_idx] = y_l
+    F[U_idx] = np.linalg.solve(Luu + 1e-9 * np.eye(len(U_idx)), Wul @ y_l)
+    return F
+
+
+def knn_supervisado(Xtr, ytr, Xte, k=1):
+    sq_tr = (Xtr ** 2).sum(axis=1)
+    sq_te = (Xte ** 2).sum(axis=1)
+    D = np.maximum(sq_te[:, None] + sq_tr[None, :] - 2 * Xte @ Xtr.T, 0.0)
+    idx = np.argsort(D, axis=1)[:, :k]
+    votos = ytr[idx]
+    return np.array([np.bincount(v, minlength=ytr.max() + 1).argmax() for v in votos])
+
+
+# ================= PARTE 1: dos lunas =================
+n_por_luna = 200
+t = rng.uniform(0, np.pi, n_por_luna)
+X = np.vstack([np.column_stack([np.cos(t), np.sin(t)]),
+               np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)])]) \
+    + rng.normal(scale=0.08, size=(2 * n_por_luna, 2))
+y = np.repeat([0, 1], n_por_luna)
+n = len(X)
+W = grafo_gaussiano(X, sigma=0.22)
+
+print("PARTE 1 · dos lunas (la hipótesis del clúster SE CUMPLE)")
+print(f"{'etiquetas':&gt;10} {'1-NN supervisado':&gt;18} {'propagación':&gt;13} {'mejora':&gt;9} "
+      f"{'rango de la propagación':&gt;25}")
+for n_etq in [2, 4, 10, 20, 50]:
+    accs_sup, accs_prop = [], []
+    for rep in range(20):                      # 20 sorteos de qué puntos se etiquetan
+        r = np.random.default_rng(100 + rep)
+        sel = np.concatenate([r.choice(np.flatnonzero(y == c), n_etq // 2, replace=False)
+                              for c in (0, 1)])
+        etiquetado = np.zeros(n, bool)
+        etiquetado[sel] = True
+        Y = np.eye(2)[y[sel]]
+        F = solucion_armonica(W, etiquetado, Y)
+        pred = F.argmax(axis=1)
+        accs_prop.append((pred[~etiquetado] == y[~etiquetado]).mean())
+        pred_sup = knn_supervisado(X[sel], y[sel], X[~etiquetado])
+        accs_sup.append((pred_sup == y[~etiquetado]).mean())
+    m_sup, m_prop = np.mean(accs_sup), np.mean(accs_prop)
+    print(f"{n_etq:10d} {m_sup:17.1%} {m_prop:12.1%} {m_prop - m_sup:+8.1%} "
+          f"{min(accs_prop):11.1%} a {max(accs_prop):8.1%}")
+
+# --- Comprobación: la solución es ARMÓNICA (media ponderada de los vecinos) ---
+r = np.random.default_rng(100)
+sel = np.concatenate([r.choice(np.flatnonzero(y == c), 2, replace=False) for c in (0, 1)])
+etiquetado = np.zeros(n, bool)
+etiquetado[sel] = True
+F = solucion_armonica(W, etiquetado, np.eye(2)[y[sel]])
+d = W.sum(axis=1)
+media_vecinos = (W @ F) / d[:, None]
+err = np.abs(F[~etiquetado] - media_vecinos[~etiquetado]).max()
+print(f"\nPropiedad armónica: max |f(i) - media ponderada de sus vecinos| = {err:.2e}")
+print("Cada valor no etiquetado ES exactamente la media de sus vecinos. De ahí")
+print("el nombre: es la versión discreta de una función armónica.")
+
+# ================= PARTE 2: cuando la hipótesis es FALSA =================
+# Dos clases separadas por una frontera que atraviesa una zona DENSA.
+n2 = 400
+X2 = rng.normal(scale=1.0, size=(n2, 2))
+y2 = (X2[:, 0] &gt; 0).astype(int)          # la frontera pasa por el centro de la nube
+W2 = grafo_gaussiano(X2, sigma=0.5)
+
+print("\nPARTE 2 · una nube gaussiana partida por la mitad")
+print("(la frontera atraviesa la ZONA MÁS DENSA: la hipótesis del clúster es falsa)")
+print(f"{'etiquetas':&gt;10} {'1-NN supervisado':&gt;18} {'propagación':&gt;13} {'mejora':&gt;9} "
+      f"{'rango de la propagación':&gt;25}")
+for n_etq in [4, 10, 20, 50]:
+    accs_sup, accs_prop = [], []
+    for rep in range(20):
+        r = np.random.default_rng(200 + rep)
+        sel = np.concatenate([r.choice(np.flatnonzero(y2 == c), n_etq // 2, replace=False)
+                              for c in (0, 1)])
+        etq = np.zeros(n2, bool)
+        etq[sel] = True
+        F2 = solucion_armonica(W2, etq, np.eye(2)[y2[sel]])
+        accs_prop.append((F2.argmax(axis=1)[~etq] == y2[~etq]).mean())
+        accs_sup.append((knn_supervisado(X2[sel], y2[sel], X2[~etq]) == y2[~etq]).mean())
+    m_sup, m_prop = np.mean(accs_sup), np.mean(accs_prop)
+    print(f"{n_etq:10d} {m_sup:17.1%} {m_prop:12.1%} {m_prop - m_sup:+8.1%} "
+          f"{min(accs_prop):11.1%} a {max(accs_prop):8.1%}")
+# ¿Qué está pasando? Comparamos la ESTABILIDAD entre repeticiones.
+def dispersion(X, y, W, n_etq, semilla_base, reps=20):
+    out = []
+    for rep in range(reps):
+        r = np.random.default_rng(semilla_base + rep)
+        sel = np.concatenate([r.choice(np.flatnonzero(y == c), n_etq // 2, replace=False)
+                              for c in (0, 1)])
+        etq = np.zeros(len(X), bool)
+        etq[sel] = True
+        F = solucion_armonica(W, etq, np.eye(2)[y[sel]])
+        out.append((F.argmax(axis=1)[~etq] == y[~etq]).mean())
+    return np.array(out)
+
+
+a1 = dispersion(X, y, W, 50, 100)
+a2 = dispersion(X2, y2, W2, 50, 200)
+print(f"\nCon 50 etiquetas y 20 sorteos distintos de CUÁLES etiquetar:")
+print(f"  dos lunas          : media {a1.mean():.1%}, desviación {a1.std():.1%}, "
+      f"rango [{a1.min():.1%}, {a1.max():.1%}]")
+print(f"  nube partida       : media {a2.mean():.1%}, desviación {a2.std():.1%}, "
+      f"rango [{a2.min():.1%}, {a2.max():.1%}]")
+print("Ahí está el diagnóstico. En las lunas, el resultado no depende de qué")
+print("puntos se etiqueten: siempre 100 %. En la nube partida oscila decenas de")
+print("puntos porcentuales según el sorteo. Sin una zona de baja densidad donde")
+print("apoyar la frontera, la propagación no tiene nada a lo que agarrarse y")
+print("acaba determinada por el azar del muestreo: no es que estorbe siempre,")
+print("es que su respuesta deja de tener que ver con los datos.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=8, alpha=0.35, edgecolors="none")
+ax[0].scatter(X[sel, 0], X[sel, 1], c="k", s=90, marker="*")
+ax[0].set_title("2 etiquetas por clase (estrellas)")
+ax[1].scatter(X[:, 0], X[:, 1], c=F[:, 1], cmap="coolwarm", s=10, edgecolors="none")
+ax[1].set_title("f propagada por el grafo")
+ax[2].scatter(X2[:, 0], X2[:, 1], c=y2, cmap="coolwarm", s=8, edgecolors="none")
+ax[2].set_title("parte 2: la frontera cruza lo denso")
+for a in ax:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>PARTE 1 · dos lunas (la hipótesis del clúster SE CUMPLE)
+ etiquetas   1-NN supervisado   propagación    mejora   rango de la propagación
+         2             77.8%       100.0%   +22.2%      100.0% a   100.0%
+         4             85.1%       100.0%   +14.9%      100.0% a   100.0%
+        10             96.9%       100.0%    +3.1%      100.0% a   100.0%
+        20             97.4%       100.0%    +2.6%      100.0% a   100.0%
+        50            100.0%       100.0%    +0.0%      100.0% a   100.0%
+
+Propiedad armónica: max |f(i) - media ponderada de sus vecinos| = 2.23e-10
+Cada valor no etiquetado ES exactamente la media de sus vecinos. De ahí
+el nombre: es la versión discreta de una función armónica.
+
+PARTE 2 · una nube gaussiana partida por la mitad
+(la frontera atraviesa la ZONA MÁS DENSA: la hipótesis del clúster es falsa)
+ etiquetas   1-NN supervisado   propagación    mejora   rango de la propagación
+         4             78.4%        44.9%   -33.5%       12.1% a    91.9%
+        10             88.1%        49.2%   -38.9%       13.3% a    85.9%
+        20             88.7%        47.2%   -41.5%       17.1% a    84.5%
+        50             92.9%        40.6%   -52.3%       25.1% a    72.9%
+
+Con 50 etiquetas y 20 sorteos distintos de CUÁLES etiquetar:
+  dos lunas          : media 100.0%, desviación 0.0%, rango [100.0%, 100.0%]
+  nube partida       : media 40.6%, desviación 11.5%, rango [25.1%, 72.9%]
+Ahí está el diagnóstico. En las lunas, el resultado no depende de qué
+puntos se etiqueten: siempre 100 %. En la nube partida oscila decenas de
+puntos porcentuales según el sorteo. Sin una zona de baja densidad donde
+apoyar la frontera, la propagación no tiene nada a lo que agarrarse y
+acaba determinada por el azar del muestreo: no es que estorbe siempre,
+es que su respuesta deja de tener que ver con los datos.</pre>
+        </div>
+
+        <p><strong>Con dos etiquetas —una por clase— la propagación clasifica correctamente el 100 % de los 398 puntos restantes.</strong> Un clasificador supervisado con esos mismos dos puntos se queda en el 77,8 %. Ese es el poder del método cuando la hipótesis se cumple: las etiquetas fluyen por el grafo siguiendo la forma de las lunas, y las lunas están conectadas consigo mismas y no entre sí.</p>
+
+        <p>Fíjate también en cómo la ventaja se estrecha: +22,2 % con 2 etiquetas, +2,6 % con 20, +0,0 % con 50. <strong>El aprendizaje semisupervisado vale exactamente lo que escasean las etiquetas.</strong> Con suficientes, el supervisado ya resuelve el problema y toda esta maquinaria sobra.</p>
+
+        <p>La comprobación intermedia confirma la teoría: el máximo de $|f_i - \frac{1}{d_i}\sum_j w_{ij}f_j|$ vale $2{,}23\times10^{-10}$, es decir, la solución es armónica hasta la precisión del solucionador lineal.</p>
+
+        <h3>Y ahora, el reverso</h3>
+
+        <p>La parte 2 usa datos donde la hipótesis es <em>falsa</em> por construcción: una única nube gaussiana partida en dos por el plano $x=0$, que es precisamente su zona más densa. Nada en $p(x)$ señala esa frontera.</p>
+
+        <p>El resultado es demoledor y merece mirarse con cuidado. La media de la propagación con 50 etiquetas es del <strong>40,6 %</strong> frente al 92,9 % del supervisado. Pero el dato importante es el rango: entre <strong>25,1 % y 72,9 %</strong> según qué puntos toque etiquetar, con una desviación típica del 11,5 %. En las lunas la desviación era exactamente <strong>0,0 %</strong>.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Los datos sin etiquetar pueden hacer daño</div>
+          <p>Esto no sale en la mayoría de los tutoriales y es lo más importante del capítulo. Cuando la hipótesis del clúster no se cumple, el resultado del método no es «un poco peor»: es <em>arbitrario</em>. La propagación empuja la frontera hacia donde hay menos densidad, y si ahí no está la frontera verdadera, la empuja a un sitio equivocado que depende del azar del muestreo. Antes de aplicar cualquier técnica semisupervisada, la pregunta obligatoria es si tus clases se corresponden con regiones separadas del espacio.</p>
+        </div>
+
+        <h2 id="autoentrenamiento">Autoentrenamiento y consistencia</h2>
+
+        <p>La propagación necesita construir un grafo con todos los puntos, lo que cuesta $O(n^2)$ y no escala. La familia dominante hoy es otra, basada en dos ideas que se combinan.</p>
+
+        <p><strong>Autoentrenamiento (pseudo-etiquetas).</strong> Entrena con lo poco etiquetado, predice sobre lo no etiquetado, quédate con las predicciones más seguras como si fueran etiquetas verdaderas y reentrena. Es exactamente el mecanismo de DEC del <a href="15-deep-clustering.html">capítulo 15</a>, y comparte su patología: <em>sesgo de confirmación</em>. Los errores que el modelo comete con confianza se convierten en etiquetas y se cimentan.</p>
+
+        <p><strong>Regularización de consistencia.</strong> Aquí no hace falta ninguna etiqueta: si $x'$ es una versión perturbada de $x$ que no cambia su clase, el modelo debe predecir lo mismo para ambas.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Pérdida de consistencia</div>
+          <p>$$ \mathcal{L}_{\text{cons}} = \mathbb{E}_{x\sim \mathcal{U}}\; \big\lVert f_\theta(x) - f_\theta\big(\mathrm{aug}(x)\big) \big\rVert^2 $$</p>
+          <p class="math-note">Es la misma declaración de invariancia del <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>, aplicada ahora a la salida del clasificador en vez de a una representación. Y tiene una lectura geométrica: obliga a que la función sea plana alrededor de cada dato, lo que empuja la frontera de decisión <em>lejos</em> de las zonas densas. Es decir, implementa la hipótesis del clúster por la vía del gradiente en lugar de por la vía del grafo.</p>
+        </div>
+
+        <p><strong>FixMatch</strong> (Sohn et al., 2020) combina las dos con una simplicidad casi insultante, y funciona mejor que métodos mucho más elaborados:</p>
+
+        <ol>
+          <li>Sobre un dato sin etiquetar, aplica una aumentación <em>débil</em> y predice.</li>
+          <li>Si la confianza supera un umbral $\tau$, toma el <code>argmax</code> como pseudo-etiqueta.</li>
+          <li>Aplica una aumentación <em>fuerte</em> al mismo dato y entrena para que prediga esa pseudo-etiqueta.</li>
+        </ol>
+
+        <p>La asimetría entre las dos aumentaciones es lo que lo hace funcionar: la pseudo-etiqueta se genera en condiciones fáciles y se exige en condiciones difíciles.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">consistencia_fixmatch.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+T, C, N_U = 64, 6, 1500
+FRECS = np.array([2.0, 2.6, 3.2, 4.0, 5.0, 6.2])
+grid = np.linspace(0, 2 * np.pi, T)
+
+
+def genera(n, r):
+    y = r.integers(0, C, n)
+    X = (r.uniform(0.5, 2.0, (n, 1))
+         * np.sin(FRECS[y][:, None] * grid[None, :] + r.uniform(0, 2 * np.pi, (n, 1))))
+    return X + 0.45 * r.normal(size=(n, T)), y
+
+
+X_u, y_u = genera(N_U, rng)
+X_te, y_te = genera(600, np.random.default_rng(5))
+
+
+def aumenta(X, r, fuerte):
+    n = len(X)
+    d = r.integers(0, T, n)
+    idx = (np.arange(T)[None, :] + d[:, None]) % T
+    V = np.take_along_axis(X, idx, axis=1)
+    if fuerte:
+        V = V * r.uniform(0.4, 2.0, (n, 1)) + 0.45 * r.normal(size=V.shape)
+        mascara = r.random(V.shape) &lt; 0.2          # borrado aleatorio de muestras
+        V = np.where(mascara, 0.0, V)
+    else:
+        V = V * r.uniform(0.85, 1.15, (n, 1)) + 0.12 * r.normal(size=V.shape)
+    return V
+
+
+CAPAS = [T, 96, 64, C]
+
+
+def init(s=0):
+    r = np.random.default_rng(s)
+    return [[r.normal(scale=np.sqrt(2.0 / (a + b)), size=(a, b)), np.zeros(b)]
+            for a, b in zip(CAPAS[:-1], CAPAS[1:])]
+
+
+def adelante(par, X):
+    acts, A = [X], X
+    for i, (W, b) in enumerate(par):
+        Z = A @ W + b
+        A = Z if i == len(par) - 1 else np.tanh(Z)
+        acts.append(A)
+    return acts
+
+
+def softmax(S):
+    S = S - S.max(axis=1, keepdims=True)
+    P = np.exp(S)
+    return P / P.sum(axis=1, keepdims=True)
+
+
+def atras(par, acts, dlogits):
+    grads, dA = [], dlogits
+    for i in range(len(par) - 1, -1, -1):
+        if i != len(par) - 1:
+            dA = dA * (1.0 - acts[i + 1] ** 2)
+        grads.append([acts[i].T @ dA, dA.sum(axis=0)])
+        dA = dA @ par[i][0].T
+    return grads[::-1]
+
+
+def suma_grads(a, b, peso=1.0):
+    return [[a[i][j] + peso * b[i][j] for j in range(2)] for i in range(len(a))]
+
+
+def entrena(X_l, y_l, usar_no_etiquetados, umbral, pasos=1500, lote=64,
+            lr=2e-3, lam=1.0, semilla=0):
+    par = init(semilla)
+    r = np.random.default_rng(semilla + 11)
+    m = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+    v = [[np.zeros_like(W), np.zeros_like(b)] for W, b in par]
+    usados, aciertos_pseudo = [], []
+    for paso in range(1, pasos + 1):
+        idx = r.integers(0, len(X_l), min(lote, len(X_l)))
+        xb = aumenta(X_l[idx], r, fuerte=False)
+        acts = adelante(par, xb)
+        P = softmax(acts[-1])
+        dl = (P - np.eye(C)[y_l[idx]]) / len(xb)
+        g = atras(par, acts, dl)
+
+        if usar_no_etiquetados:
+            iu = r.integers(0, N_U, lote)
+            debil = aumenta(X_u[iu], r, fuerte=False)
+            Pw = softmax(adelante(par, debil)[-1])
+            conf = Pw.max(axis=1)
+            pseudo = Pw.argmax(axis=1)
+            sel = conf &gt;= umbral
+            usados.append(sel.mean())
+            if sel.any():
+                aciertos_pseudo.append((pseudo[sel] == y_u[iu][sel]).mean())
+                fuerte = aumenta(X_u[iu][sel], r, fuerte=True)
+                acts_f = adelante(par, fuerte)
+                Pf = softmax(acts_f[-1])
+                dlf = (Pf - np.eye(C)[pseudo[sel]]) / sel.sum()
+                g = suma_grads(g, atras(par, acts_f, dlf), lam)
+
+        for i in range(len(par)):
+            for j in range(2):
+                m[i][j] = 0.9 * m[i][j] + 0.1 * g[i][j]
+                v[i][j] = 0.999 * v[i][j] + 0.001 * g[i][j] ** 2
+                par[i][j] -= lr * (m[i][j] / (1 - 0.9 ** paso)) / (
+                    np.sqrt(v[i][j] / (1 - 0.999 ** paso)) + 1e-8)
+    acc = (adelante(par, X_te)[-1].argmax(axis=1) == y_te).mean()
+    return (acc, np.mean(usados) if usados else 0.0,
+            np.mean(aciertos_pseudo) if aciertos_pseudo else 0.0)
+
+
+print(f"{N_U} señales sin etiquetar, {len(X_te)} de prueba, {C} clases "
+      f"(azar = {1/C:.1%}).\n")
+print(f"{'etiquetas':&gt;10} {'solo supervisado':&gt;18} {'FixMatch (u=0,95)':&gt;19} "
+      f"{'mejora':&gt;9} {'% no etq. usados':&gt;18}")
+resumen = []
+for n_l in [6, 12, 30, 60]:
+    r = np.random.default_rng(3)
+    sel = np.concatenate([r.choice(np.flatnonzero(y_u == c), n_l // C, replace=False)
+                          for c in range(C)])
+    X_l, y_l = X_u[sel], y_u[sel]
+    a_sup = np.mean([entrena(X_l, y_l, False, 0.0, semilla=s)[0] for s in range(2)])
+    res = [entrena(X_l, y_l, True, 0.95, semilla=s) for s in range(2)]
+    a_fix = np.mean([x[0] for x in res])
+    uso = np.mean([x[1] for x in res])
+    resumen.append((n_l, a_sup, a_fix))
+    print(f"{n_l:10d} {a_sup:17.1%} {a_fix:18.1%} {a_fix - a_sup:+8.1%} {uso:17.1%}")
+
+# --- El papel del umbral de confianza ---
+r = np.random.default_rng(3)
+sel = np.concatenate([r.choice(np.flatnonzero(y_u == c), 1, replace=False)
+                      for c in range(C)])
+X_l, y_l = X_u[sel], y_u[sel]
+print(f"\nCon solo {len(X_l)} etiquetas, ¿cuánto importa el umbral de confianza?")
+print(f"{'umbral':&gt;8} {'acierto final':&gt;15} {'% no etq. usados':&gt;18} "
+      f"{'pseudo-etq. correctas':&gt;23}")
+for u in [0.0, 0.5, 0.8, 0.95, 0.99]:
+    res = [entrena(X_l, y_l, True, u, semilla=s) for s in range(2)]
+    print(f"{u:8.2f} {np.mean([x[0] for x in res]):14.1%} "
+          f"{np.mean([x[1] for x in res]):17.1%} {np.mean([x[2] for x in res]):22.1%}")
+print("El umbral cambia la CANTIDAD por la CALIDAD de las pseudo-etiquetas: al")
+print("subirlo se usan muchas menos, pero son más fiables. Cuál gana depende del")
+print("problema, y aquí -con pseudo-etiquetas ya bastante buenas- gana la cantidad.")
+print("No des por hecho que un umbral alto es siempre mejor: mídelo.")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+ns = [x[0] for x in resumen]
+ax[0].plot(ns, [x[1] for x in resumen], "o-", label="solo supervisado")
+ax[0].plot(ns, [x[2] for x in resumen], "s-", label="FixMatch")
+ax[0].axhline(1 / C, ls=":", c="k", label="azar")
+ax[0].set_xlabel("nº de etiquetas")
+ax[0].set_ylabel("acierto en prueba")
+ax[0].legend()
+ax[0].set_title("los datos sin etiquetar valen más cuanto menos etiquetas hay")
+r2 = np.random.default_rng(9)
+ax[1].plot(grid, X_u[0], lw=1, label="original")
+ax[1].plot(grid, aumenta(X_u[:1], r2, False)[0], lw=1, label="aumentación débil")
+ax[1].plot(grid, aumenta(X_u[:1], r2, True)[0], lw=1, label="aumentación fuerte")
+ax[1].legend(fontsize=8)
+ax[1].set_xticks([])
+ax[1].set_title("las dos aumentaciones")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>1500 señales sin etiquetar, 600 de prueba, 6 clases (azar = 16.7%).
+
+ etiquetas   solo supervisado   FixMatch (u=0,95)    mejora   % no etq. usados
+         6             59.6%              82.5%   +22.9%             25.2%
+        12             78.8%              93.2%   +14.4%             38.2%
+        30             87.8%              89.5%    +1.8%             55.6%
+        60             95.9%              96.4%    +0.5%             61.1%
+
+Con solo 6 etiquetas, ¿cuánto importa el umbral de confianza?
+  umbral   acierto final   % no etq. usados   pseudo-etq. correctas
+    0.00          87.6%            100.0%                  70.3%
+    0.50          87.1%             80.7%                  68.5%
+    0.80          85.5%             51.4%                  71.6%
+    0.95          82.5%             25.2%                  74.2%
+    0.99          72.8%              5.6%                  83.9%
+El umbral cambia la CANTIDAD por la CALIDAD de las pseudo-etiquetas: al
+subirlo se usan muchas menos, pero son más fiables. Cuál gana depende del
+problema, y aquí -con pseudo-etiquetas ya bastante buenas- gana la cantidad.
+No des por hecho que un umbral alto es siempre mejor: mídelo.</pre>
+        </div>
+
+        <p>Con <strong>una sola etiqueta por clase</strong> —seis en total— el clasificador supervisado alcanza un 59,6 % y FixMatch un <strong>82,5 %</strong>: casi 23 puntos de ventaja usando 1500 señales que nadie miró. Con 12 etiquetas, 78,8 % contra 93,2 %. Y otra vez la misma curva: con 60 etiquetas la ventaja se ha reducido a medio punto.</p>
+
+        <h3>El umbral: un resultado que contradice la intuición</h3>
+
+        <p>La segunda tabla merece atención porque el resultado no es el esperable. La última columna mide la <em>calidad</em> de las pseudo-etiquetas: cuántas de las que el modelo usa son realmente correctas. Sube monótonamente con el umbral, del <strong>70,3 % al 83,9 %</strong>, exactamente como promete la teoría. Y la columna anterior mide la <em>cantidad</em>: cae del 100 % al 5,6 %.</p>
+
+        <p>Pero el acierto final <strong>empeora</strong> al subir el umbral: 87,6 % con umbral 0 frente a 72,8 % con 0,99. En esta tarea gana la cantidad. Con pseudo-etiquetas correctas el 70 % de las veces y una aumentación fuerte que ya regulariza mucho, filtrar solo sirve para tirar datos.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El umbral no es un valor mágico</div>
+          <p>El $\tau = 0{,}95$ del artículo original está ajustado para imágenes, con clasificadores muy sobreseguros y pseudo-etiquetas muy malas al principio del entrenamiento. En otro problema el óptimo puede ser cualquier otro, incluido cero. Lo que sí es universal es el <em>compromiso</em> —cantidad frente a calidad—; dónde cae el óptimo hay que medirlo.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En <code>aumenta</code>, quita la aumentación fuerte: cambia el bloque <code>if fuerte:</code> para que aplique lo mismo que la débil (por ejemplo, sustituye las tres líneas de dentro por <code>V = V * r.uniform(0.85, 1.15, (n, 1)) + 0.12 * r.normal(size=V.shape)</code>). FixMatch con 6 etiquetas se desploma del 82,5 % al <strong>48,7 %</strong>, es decir, <em>por debajo</em> del 59,6 % que consigue el supervisado solo: los datos sin etiquetar pasan de aportar 23 puntos a restar 11. Y con umbral 0 se queda en el 73,8 % frente al 87,6 % original. Sin la asimetría entre las dos vistas, el método degenera en autoentrenamiento puro: la red se limita a confirmarse a sí misma.</p>
+        </div>
+
+        <h2 id="panorama">El panorama del campo</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Familia</th><th>Idea</th><th>Ventaja</th><th>Riesgo</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Generativa</strong></td><td>Modelar $p(x,y)$; los datos sin etiquetar informan sobre $p(x)$ y con ella sobre las componentes de la mixtura</td><td>Principiada; usa EM del <a href="04-gmm-y-em.html">capítulo 4</a> directamente</td><td>Si el modelo generativo está mal especificado, empeora</td></tr>
+              <tr><td><strong>Basada en grafos</strong></td><td>Propagación armónica sobre el laplaciano</td><td>Solución cerrada, sin hiperparámetros de optimización</td><td>$O(n^2)$; no vale para datos nuevos</td></tr>
+              <tr><td><strong>Baja densidad</strong></td><td>Empujar la frontera fuera de las zonas densas (S3VM, minimización de entropía)</td><td>Implementa la hipótesis directamente</td><td>Optimización no convexa</td></tr>
+              <tr><td><strong>Consistencia</strong></td><td>Invariancia frente a perturbaciones (Π-model, Mean Teacher, VAT, FixMatch)</td><td>Escala, y es el estado del arte</td><td>Depende por completo de las aumentaciones</td></tr>
+              <tr><td><strong>Preentrenar y afinar</strong></td><td>Contrastivo (<a href="16-autosupervisado-contrastivo.html">cap. 16</a>) sin etiquetas y luego afinar con las pocas que haya</td><td>El enfoque dominante hoy; separa los dos problemas</td><td>Necesita mucho cómputo en el preentrenamiento</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>La última fila es hacia donde ha ido todo. En lugar de mezclar etiquetados y no etiquetados en un mismo objetivo, se aprende primero una representación con los millones de datos sin etiquetar y luego se ajusta un clasificador sencillo con las pocas etiquetas. Es lo que hacen los modelos de lenguaje —preentrenar sobre texto sin anotar, afinar con ejemplos— y es la respuesta más rotunda que ha dado el aprendizaje no supervisado a la pregunta de para qué sirve.</p>
+
+        <p>Queda una última tarea, y es la que devuelve el manual a su punto de partida. Si sabemos modelar $p(x)$, sabemos también decir qué puntos son <em>improbables</em>. Eso es detectar anomalías, y es el <a href="18-deteccion-anomalias.html">capítulo 18</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># propagación armónica, y qué pasa cuando la hipótesis es falsa</span>
+<span class="prompt">$</span> python code/17-semisupervisado/propagacion_etiquetas.py
+
+<span class="comment"># consistencia y pseudo-etiquetas al estilo FixMatch</span>
+<span class="prompt">$</span> python code/17-semisupervisado/consistencia_fixmatch.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Los datos sin etiquetar informan sobre $p(x)$; para que digan algo sobre $p(y\mid x)$ hace falta una hipótesis: suavidad, clúster o variedad.</li>
+            <li>La propagación de etiquetas minimiza $f^\top L f$ con las etiquetas fijadas, y tiene solución cerrada $f_\mathcal{U} = (D_{\mathcal{U}\mathcal{U}}-W_{\mathcal{U}\mathcal{U}})^{-1}W_{\mathcal{U}\mathcal{L}}y_\mathcal{L}$, armónica hasta $2\times10^{-10}$.</li>
+            <li>Con la hipótesis cumplida es espectacular: <strong>100 % de acierto con dos etiquetas</strong>, frente al 77,8 % supervisado.</li>
+            <li>Con la hipótesis rota es peor que inútil: media del 40,6 % y, sobre todo, un rango de 25,1 % a 72,9 % según qué puntos se etiqueten, contra una desviación de 0,0 % en el caso favorable.</li>
+            <li>La ventaja se desvanece al crecer las etiquetas: de +22,2 % con dos a +0,0 % con cincuenta. El semisupervisado vale lo que escasean las etiquetas.</li>
+            <li>FixMatch combina pseudo-etiquetas con umbral y consistencia entre una aumentación débil y una fuerte: 59,6 % → 82,5 % con seis etiquetas.</li>
+            <li>El umbral cambia cantidad por calidad —de 70,3 % a 83,9 % de pseudo-etiquetas correctas—, pero aquí el acierto final <em>baja</em> al subirlo. El $0{,}95$ del artículo original no es universal: mídelo.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4. Mixturas gaussianas y el algoritmo EM · No supervisado</title>
+  <meta name="description" content="De la asignación dura a la blanda: el ELBO por la desigualdad de Jensen, los pasos E y M derivados, y k-means como caso límite." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="4">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 4</span>
+        <h1>Mixturas gaussianas y el algoritmo EM</h1>
+        <p class="lead">k-means falló estrepitosamente con dos grupos alargados: un 52,3 % de acuerdo, el nivel de tirar una moneda. El problema no era la optimización sino el modelo, que solo sabe dibujar esferas. Aquí lo arreglamos dándole a cada grupo su propia forma, y al hacerlo tropezamos con EM: el algoritmo más elegante del aprendizaje no supervisado, y el patrón que reaparecerá en el <a href="14-vae.html">capítulo 14</a> convertido en red neuronal.</p>
+
+        <h2 id="idea">De «perteneces al grupo 2» a «perteneces un 70 % al grupo 2»</h2>
+
+        <p>k-means toma una decisión tajante por cada punto. Pero piensa en un dato que cae justo entre dos grupos: obligarle a elegir es tirar información. Lo honesto sería decir «este punto es un 55 % del grupo A y un 45 % del grupo B», y que esa duda participe en el cálculo de los centros —contando poco en cada uno— en lugar de desaparecer.</p>
+
+        <p>Esa idea, llevada hasta el final, deja de ser una heurística y se convierte en un modelo probabilístico completo. Y con él llegan tres regalos que k-means no puede dar: <strong>grupos con forma propia</strong> (cada uno con su matriz de covarianza), <strong>una densidad</strong> con la que evaluar puntos nuevos y detectar anomalías, y <strong>un criterio objetivo</strong> para elegir cuántos grupos hay.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Supongamos que los datos se generaron así: para cada observación, alguien tiró un dado cargado para elegir un grupo, y luego sacó un punto de la gaussiana de ese grupo. Nosotros vemos los puntos pero no vemos los resultados del dado. <strong>El algoritmo EM alterna entre adivinar el dado y, con esa suposición, recalcular las gaussianas.</strong></p>
+        </div>
+
+        <h2 id="modelo">El modelo generativo</h2>
+
+        <p>Formalicemos la historia del dado. Introducimos una variable <strong>latente</strong> $z_i \in \{1,\dots,k\}$ por cada dato: el grupo que lo generó, que no observamos. El proceso es:</p>
+
+        <ol>
+          <li>Sortear el componente: $z_i \sim \mathrm{Categórica}(\pi_1,\dots,\pi_k)$, con $\pi_j \ge 0$ y $\sum_j \pi_j = 1$.</li>
+          <li>Sortear el punto de la gaussiana correspondiente: $x_i \mid z_i = j \;\sim\; \mathcal{N}(\mu_j, \Sigma_j)$.</li>
+        </ol>
+
+        <p>La densidad de un punto observado se obtiene sumando sobre todas las formas en que pudo generarse, es decir, marginalizando la variable latente:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Densidad de la mixtura</div>
+          <p>$$ p(x \mid \theta) \;=\; \sum_{j=1}^{k} \pi_j \, \mathcal{N}(x \mid \mu_j, \Sigma_j), \qquad \mathcal{N}(x\mid\mu,\Sigma) = \frac{\exp\!\big(-\tfrac12 (x-\mu)^\top \Sigma^{-1}(x-\mu)\big)}{(2\pi)^{d/2}\,|\Sigma|^{1/2}} $$</p>
+          <p class="math-note">$\theta = \{\pi_j, \mu_j, \Sigma_j\}_{j=1}^k$ reúne todos los parámetros. $\pi_j$ es el peso (la probabilidad a priori de la componente $j$), $\mu_j \in \mathbb{R}^d$ su centro y $\Sigma_j$ su matriz de covarianza $d\times d$, que codifica su forma y orientación. $|\Sigma|$ es el determinante. Reconocerás en el exponente la distancia de Mahalanobis al cuadrado del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>: una gaussiana no es más que una bola de Mahalanobis difuminada.</p>
+        </div>
+
+        <p>Aquí está la ganancia respecto a k-means, y conviene contarla en parámetros. k-means describe cada grupo con $d$ números (su centroide). Una mixtura gaussiana usa $d$ para el centro más $d(d+1)/2$ para la covarianza. En el plano son 2 frente a 5. Con esos tres números extra por grupo se compran la anchura en cada dirección y la orientación: exactamente lo que faltaba para los cigarros.</p>
+
+        <h2 id="problema">Por qué no se puede derivar e igualar a cero</h2>
+
+        <p>El plan obvio sería escribir la log-verosimilitud y maximizarla directamente:</p>
+
+        <p>$$ \ell(\theta) \;=\; \sum_{i=1}^{n} \log p(x_i\mid\theta) \;=\; \sum_{i=1}^{n} \log\!\left( \sum_{j=1}^{k} \pi_j\, \mathcal{N}(x_i \mid \mu_j, \Sigma_j) \right). $$</p>
+
+        <p>Y ahí se acaba el plan. El problema es el <strong>logaritmo de una suma</strong>. Si el logaritmo estuviera dentro, cada gaussiana quedaría en un término separado, el exponencial se cancelaría con él y todo saldría en forma cerrada, como salía la media en k-means. Pero está fuera: al derivar respecto a $\mu_j$ aparece un cociente donde el denominador depende de <em>todos</em> los parámetros a la vez. El sistema resultante no tiene solución analítica.</p>
+
+        <p>Observa dónde está la dificultad: <em>si supiéramos $z_i$</em>, no habría suma que atravesar. Cada punto pertenecería a una componente concreta, ajustaríamos cada gaussiana con su trocito de datos y habríamos terminado. Toda la dificultad viene de no observar la variable latente. EM es la respuesta sistemática a esa situación.</p>
+
+        <h2 id="elbo">La cota inferior: Jensen entra en escena</h2>
+
+        <p>El truco es antiguo y precioso. Si no puedes maximizar una función, <strong>fabrica una cota inferior que sí sepas maximizar, y que además toque a la función en el punto donde estás</strong>. Sube por la cota, vuelve a construirla en el nuevo punto, repite.</p>
+
+        <p>Para construirla, introducimos una distribución auxiliar $q_i(j)$ sobre las $k$ componentes, una por cada dato, con $q_i(j)\ge 0$ y $\sum_j q_i(j) = 1$. Es libre: aún no hemos dicho cuál. Multiplicamos y dividimos por ella dentro del logaritmo:</p>
+
+        <p>$$ \log p(x_i\mid\theta) \;=\; \log \sum_{j=1}^{k} q_i(j)\, \frac{p(x_i, z_i{=}j \mid \theta)}{q_i(j)} \;=\; \log\; \mathbb{E}_{j \sim q_i}\!\left[\frac{p(x_i, z_i{=}j\mid\theta)}{q_i(j)}\right]. $$</p>
+
+        <p>La suma se ha convertido en una <em>esperanza</em>, y sobre esperanzas dentro de funciones cóncavas tenemos la desigualdad de Jensen: $\log \mathbb{E}[U] \ge \mathbb{E}[\log U]$. Aplicándola:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La cota inferior (ELBO)</div>
+          <p>$$ \log p(x_i\mid\theta) \;\ge\; \sum_{j=1}^{k} q_i(j)\,\log \frac{p(x_i, z_i{=}j\mid\theta)}{q_i(j)} \;=:\; \mathcal{L}_i(q_i, \theta) $$</p>
+          <p class="math-note">$\mathcal{L}_i$ se llama <strong>ELBO</strong> (<em>evidence lower bound</em>, cota inferior de la evidencia). Nótese que ahora el logaritmo está <em>dentro</em> de la suma: es lo que hace que todo se vuelva tratable. $p(x_i, z_i{=}j\mid\theta) = \pi_j\,\mathcal{N}(x_i\mid\mu_j,\Sigma_j)$ es la verosimilitud de los datos completos, la que tendríamos si conociéramos el resultado del dado.</p>
+        </div>
+
+        <p>Una cota inferior solo sirve si sabemos cuánto nos estamos dejando. Calculemos el hueco exacto. Usando $p(x_i, z_i{=}j\mid\theta) = p(z_i{=}j \mid x_i, \theta)\, p(x_i\mid\theta)$:</p>
+
+        <p>$$ \mathcal{L}_i(q_i,\theta) = \sum_j q_i(j)\log\frac{p(z_i{=}j\mid x_i,\theta)\,p(x_i\mid\theta)}{q_i(j)} = \log p(x_i\mid\theta) \;-\; \sum_j q_i(j)\log\frac{q_i(j)}{p(z_i{=}j\mid x_i,\theta)} $$</p>
+
+        <p>—donde el término $\log p(x_i\mid\theta)$ ha salido de la suma porque no depende de $j$ y $\sum_j q_i(j) = 1$—. Reordenando:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El hueco es exactamente una divergencia KL</div>
+          <p>$$ \log p(x_i\mid\theta) \;-\; \mathcal{L}_i(q_i,\theta) \;=\; D_{\mathrm{KL}}\!\big(q_i \,\big\|\, p(z_i \mid x_i,\theta)\big) \;\ge\; 0 $$</p>
+          <p class="math-note">Reaparece la divergencia del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, ahora entre nuestra distribución auxiliar y la verdadera posterior de la variable latente. Como $D_{\mathrm{KL}} \ge 0$ y vale $0$ solo cuando las dos distribuciones coinciden, la receta salta a la vista: <strong>si elegimos $q_i(j) = p(z_i{=}j \mid x_i, \theta)$, la cota deja de ser cota y se convierte en igualdad</strong>.</p>
+        </div>
+
+        <h2 id="pasos">El paso E y el paso M, derivados</h2>
+
+        <p>Ya tenemos el algoritmo entero: maximizar $\mathcal{L}(q,\theta)$ alternando en sus dos argumentos. Igual que Lloyd en el <a href="03-kmeans.html">capítulo 3</a>, pero sobre una función mejor.</p>
+
+        <h3>Paso E (esperanza): ajustar $q$ con $\theta$ fijo</h3>
+
+        <p>Por lo que acabamos de demostrar, el máximo en $q_i$ es la posterior, que se calcula con la regla de Bayes:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Responsabilidades</div>
+          <p>$$ \gamma_{ij} \;:=\; p(z_i = j \mid x_i, \theta) \;=\; \frac{\pi_j\,\mathcal{N}(x_i\mid\mu_j,\Sigma_j)}{\sum_{l=1}^{k} \pi_l\,\mathcal{N}(x_i\mid\mu_l,\Sigma_l)} $$</p>
+          <p class="math-note">$\gamma_{ij}$ es la <em>responsabilidad</em> que la componente $j$ tiene sobre el dato $i$: cuánto de ese punto se atribuye a ese grupo. Cada fila suma 1: $\sum_j \gamma_{ij} = 1$. Es la versión blanda de la asignación $z_i$ de k-means, y es también la razón del nombre «paso E»: con ella se calcula la esperanza de la log-verosimilitud completa.</p>
+        </div>
+
+        <h3>Paso M (maximización): ajustar $\theta$ con $q$ fijo</h3>
+
+        <p>Con $q_i = \gamma_{i\cdot}$ fijas, desarrollamos el ELBO total $\mathcal{L} = \sum_i \mathcal{L}_i$:</p>
+
+        <p>$$ \mathcal{L}(\gamma, \theta) \;=\; \sum_{i=1}^n\sum_{j=1}^k \gamma_{ij}\Big[\log \pi_j + \log \mathcal{N}(x_i\mid\mu_j,\Sigma_j)\Big] \;\underbrace{-\; \sum_{i}\sum_j \gamma_{ij}\log\gamma_{ij}}_{\text{no depende de }\theta} . $$</p>
+
+        <p>El segundo término es la entropía de las responsabilidades: constante respecto a $\theta$, así que se ignora. Queda maximizar el primero, que es una <strong>suma ponderada de log-verosimilitudes gaussianas</strong> — el logaritmo ya está dentro y todo se separa. Definimos la masa efectiva de cada componente, $N_j = \sum_{i=1}^n \gamma_{ij}$ (un número real, no entero: es «cuántos puntos, contando fracciones, pertenecen al grupo $j$»).</p>
+
+        <p><strong>Las medias.</strong> El único término que depende de $\mu_j$ es $-\tfrac12\sum_i \gamma_{ij}(x_i-\mu_j)^\top\Sigma_j^{-1}(x_i-\mu_j)$. Derivando y usando que $\Sigma_j^{-1}$ es invertible:</p>
+
+        <p>$$ \nabla_{\mu_j}\mathcal{L} = \Sigma_j^{-1}\sum_{i} \gamma_{ij}\,(x_i - \mu_j) = 0 \quad\Longrightarrow\quad \mu_j = \frac{1}{N_j}\sum_{i=1}^{n}\gamma_{ij}\,x_i . $$</p>
+
+        <p><strong>Las covarianzas.</strong> Derivando respecto a $\Sigma_j$ (usando $\partial \log|\Sigma| / \partial\Sigma = \Sigma^{-1}$ y $\partial (a^\top\Sigma^{-1}a)/\partial\Sigma = -\Sigma^{-1}aa^\top\Sigma^{-1}$) y anulando:</p>
+
+        <p>$$ \Sigma_j = \frac{1}{N_j}\sum_{i=1}^n \gamma_{ij}\,(x_i-\mu_j)(x_i-\mu_j)^\top . $$</p>
+
+        <p><strong>Los pesos.</strong> Aquí hay una restricción, $\sum_j \pi_j = 1$, así que usamos un multiplicador de Lagrange. Maximizamos $\sum_j N_j \log\pi_j + \lambda\big(\sum_j \pi_j - 1\big)$; derivando respecto a $\pi_j$ sale $N_j/\pi_j + \lambda = 0$, o sea $\pi_j = -N_j/\lambda$. Sumando en $j$ e imponiendo la restricción: $1 = -\sum_j N_j/\lambda = -n/\lambda$, luego $\lambda = -n$ y</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Las tres actualizaciones del paso M</div>
+          <p>$$ N_j = \sum_{i=1}^n \gamma_{ij}, \qquad \pi_j = \frac{N_j}{n}, \qquad \mu_j = \frac{1}{N_j}\sum_i \gamma_{ij} x_i, \qquad \Sigma_j = \frac{1}{N_j}\sum_i \gamma_{ij}(x_i-\mu_j)(x_i-\mu_j)^\top $$</p>
+          <p class="math-note">Son <em>exactamente</em> las fórmulas de la media y la covarianza muestrales, pero ponderadas por la responsabilidad. Si las $\gamma$ fueran 0 o 1, serían la media y la covarianza del subconjunto asignado. La lectura importante: EM no inventa estimadores nuevos, solo <strong>reparte cada dato en fracciones entre los grupos</strong>.</p>
+        </div>
+
+        <h2 id="monotonia">Por qué EM nunca baja</h2>
+
+        <p>La demostración cabe en una línea de tres eslabones. Sea $\theta^t$ el parámetro actual y $q^t$ la posterior calculada con él:</p>
+
+        <p>$$ \ell(\theta^{t+1}) \;\overset{(1)}{\ge}\; \mathcal{L}(q^t, \theta^{t+1}) \;\overset{(2)}{\ge}\; \mathcal{L}(q^t, \theta^{t}) \;\overset{(3)}{=}\; \ell(\theta^{t}) . $$</p>
+
+        <ol>
+          <li>$\mathcal{L}$ es una cota inferior de $\ell$ <em>para cualquier</em> $q$ y cualquier $\theta$ (Jensen).</li>
+          <li>El paso M eligió $\theta^{t+1}$ como el maximizador de $\mathcal{L}(q^t,\cdot)$, así que no puede ser peor que $\theta^t$.</li>
+          <li>El paso E hizo la cota <em>exacta</em> en $\theta^t$, porque anuló la divergencia KL.</li>
+        </ol>
+
+        <p>Luego $\ell(\theta^{t+1}) \ge \ell(\theta^t)$: la log-verosimilitud nunca baja. Es el mismo argumento de Lloyd, pero con una capa más de sofisticación: allí se minimizaba $J$ directamente; aquí se maximiza una cota que se vuelve a tensar en cada vuelta.</p>
+
+        <figure class="figure">
+          <svg viewBox="0 0 660 250" width="100%" role="img" aria-label="EM sube por una sucesión de cotas inferiores tangentes">
+            <path d="M 50 200 Q 200 190 320 120 Q 450 40 610 30" fill="none" stroke="#5b8def" stroke-width="3"/>
+            <text x="560" y="60" font-size="13" fill="#5b8def" font-weight="700">log-verosimilitud</text>
+
+            <path d="M 70 232 Q 150 178 250 205" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+            <path d="M 210 175 Q 300 108 400 145" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+            <path d="M 380 118 Q 470 52 570 88" fill="none" stroke="#43c59e" stroke-width="2" stroke-dasharray="5 3"/>
+
+            <circle cx="150" cy="196" r="5" fill="#ef476f"/>
+            <circle cx="300" cy="128" r="5" fill="#ef476f"/>
+            <circle cx="470" cy="63" r="5" fill="#ef476f"/>
+
+            <line x1="150" y1="196" x2="150" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="300" y1="128" x2="300" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="470" y1="63" x2="470" y2="230" stroke="#8b93a7" stroke-width="1" stroke-dasharray="2 2"/>
+            <text x="150" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ⁰</text>
+            <text x="300" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ¹</text>
+            <text x="470" y="245" text-anchor="middle" font-size="12" fill="currentColor">θ²</text>
+            <text x="330" y="222" font-size="12" fill="#43c59e">cotas ELBO, tangentes en cada θ</text>
+          </svg>
+          <figcaption>El paso E construye una cota que toca la curva en el punto actual; el paso M sube hasta el máximo de esa cota. Como la cota nunca supera a la curva, la curva ha subido al menos otro tanto.</figcaption>
+        </figure>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Monótona no es lo mismo que buena</div>
+          <p>EM garantiza que la verosimilitud sube, no que llegue al máximo global. Con mixturas hay muchísimos óptimos locales —empezando por las $k!$ permutaciones de las etiquetas—, así que la práctica estándar es <strong>inicializar con k-means y repetir con varias semillas</strong>, quedándose con la de mayor verosimilitud.</p>
+        </div>
+
+        <h2 id="ejemplo">EM desde cero, sobre los datos que rompieron k-means</h2>
+
+        <p>Volvemos a los dos cigarros del <a href="03-kmeans.html">capítulo 3</a>, donde k-means se quedaba en el 52,3 %. El código implementa todo lo anterior con dos cuidados numéricos que no son opcionales en la práctica: se trabaja siempre en logaritmos (con <code>logsumexp</code>, para no desbordar al exponenciar) y se calcula la gaussiana por descomposición de Cholesky en vez de invertir $\Sigma$.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">gmm_em.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(5)
+
+# --- Los datos del capítulo 3, caso 1: dos cigarros paralelos ---
+estira = np.array([[3.0, 0.0], [0.0, 0.6]])
+th = np.deg2rad(25)
+giro = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+M = giro @ estira
+X = np.vstack([rng.normal(size=(150, 2)) @ M.T,
+               rng.normal(size=(150, 2)) @ M.T + [-1.0, 3.2]])
+y = np.repeat([0, 1], 150)
+n, d = X.shape
+k = 2
+
+
+def log_normal(X, mu, Sigma):
+    """log N(x | mu, Sigma) para todos los x a la vez, vía Cholesky."""
+    L = np.linalg.cholesky(Sigma)                  # Sigma = L L^T
+    dif = np.linalg.solve(L, (X - mu).T)           # L^{-1} (x - mu)
+    maha = (dif ** 2).sum(axis=0)                  # Mahalanobis al cuadrado
+    log_det = 2.0 * np.log(np.diag(L)).sum()
+    return -0.5 * (d * np.log(2 * np.pi) + log_det + maha)
+
+
+def logsumexp(A, axis):
+    m = A.max(axis=axis, keepdims=True)
+    return (m + np.log(np.exp(A - m).sum(axis=axis, keepdims=True))).squeeze(axis)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def kmeans(X, k, semilla=0, iters=100):
+    """k-means++ + Lloyd, tal cual el capítulo 3. Sirve para inicializar EM."""
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / d2.sum())])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1), C
+
+
+# --- Inicialización: k-means da las medias y la partición inicial ---
+z0, C0 = kmeans(X, k, semilla=0)
+print(f"Punto de partida (k-means): acuerdo {acuerdo(z0, y):.1%}")
+
+mu = C0.copy()
+Sigma = np.array([np.cov(X[z0 == j], rowvar=False) for j in range(k)])
+pi = np.array([(z0 == j).mean() for j in range(k)])
+
+REG = 1e-6 * np.eye(d)          # regularización: evita covarianzas singulares
+historia = []
+
+for it in range(300):
+    # ---------- PASO E: responsabilidades gamma_ij = p(z=j | x_i) ----------
+    log_p = np.column_stack([np.log(pi[j]) + log_normal(X, mu[j], Sigma[j])
+                             for j in range(k)])
+    ll = logsumexp(log_p, axis=1)                  # log p(x_i) de cada dato
+    gamma = np.exp(log_p - ll[:, None])
+    historia.append(ll.sum())
+
+    # ---------- PASO M: los máximos, en forma cerrada ----------
+    N = gamma.sum(axis=0)                          # masa efectiva de cada componente
+    pi = N / n
+    mu = (gamma.T @ X) / N[:, None]
+    for j in range(k):
+        dif = X - mu[j]
+        Sigma[j] = (gamma[:, j, None] * dif).T @ dif / N[j] + REG
+
+    if it &gt; 0 and abs(historia[-1] - historia[-2]) &lt; 1e-8:
+        print(f"Convergió en la iteración {it}.")
+        break
+
+z = gamma.argmax(axis=1)
+subidas = np.diff(historia)
+print(f"\nLog-verosimilitud: {historia[0]:.3f} (inicio) -&gt; {historia[-1]:.3f} (final)")
+print(f"Iteraciones: {len(historia)} | ¿alguna bajada? "
+      f"{'NO, monótona' if (subidas &gt;= -1e-9).all() else 'SÍ (fallo)'}")
+print(f"Pesos de la mixtura: {np.round(pi, 3)}")
+print(f"Acuerdo por parejas con la verdad: {acuerdo(z, y):.1%}")
+
+# La asignación blanda dice además CUÁNTO duda el modelo en cada punto.
+maxima = gamma.max(axis=1)
+print(f"\nPuntos con responsabilidad máxima por debajo de 0,9: {(maxima &lt; 0.9).sum()} de {n}")
+print(f"Entropía media de la asignación: "
+      f"{-(gamma * np.log(gamma + 1e-12)).sum(axis=1).mean():.4f} nats "
+      f"(el máximo posible con k=2 es {np.log(2):.4f})")
+
+# --- Dibujo: elipses de covarianza a 2 sigma y curva de log-verosimilitud ---
+t = np.linspace(0, 2 * np.pi, 200)
+circulo = np.column_stack([np.cos(t), np.sin(t)])
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X[:, 0], X[:, 1], c=z0, cmap="coolwarm", s=10, edgecolors="none")
+ax[0].set_title(f"k-means: {acuerdo(z0, y):.0%}")
+ax[1].scatter(X[:, 0], X[:, 1], c=gamma[:, 0], cmap="coolwarm", s=10, edgecolors="none")
+for j in range(k):
+    val, vec = np.linalg.eigh(Sigma[j])
+    elipse = circulo * 2 * np.sqrt(val) @ vec.T + mu[j]
+    ax[1].plot(elipse[:, 0], elipse[:, 1], "k-", lw=2)
+ax[1].set_title(f"GMM: {acuerdo(z, y):.0%} (color = responsabilidad)")
+for a in ax[:2]:
+    a.set_xticks([])
+    a.set_yticks([])
+    a.set_aspect("equal")
+ax[2].plot(historia, "o-", ms=3, color="#43c59e")
+ax[2].set_xlabel("iteración")
+ax[2].set_ylabel("log-verosimilitud")
+ax[2].set_title("EM nunca baja")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Punto de partida (k-means): acuerdo 52.3%
+Convergió en la iteración 28.
+
+Log-verosimilitud: -1352.927 (inicio) -&gt; -1218.428 (final)
+Iteraciones: 29 | ¿alguna bajada? NO, monótona
+Pesos de la mixtura: [0.497 0.503]
+Acuerdo por parejas con la verdad: 99.3%
+
+Puntos con responsabilidad máxima por debajo de 0,9: 4 de 300
+Entropía media de la asignación: 0.0091 nats (el máximo posible con k=2 es 0.6931)</pre>
+        </div>
+
+        <p><strong>Del 52,3 % al 99,3 %</strong>, con los mismos datos, la misma inicialización y 28 iteraciones. La diferencia no está en optimizar mejor: está en que el modelo ahora <em>puede</em> representar un grupo alargado y girado. Los pesos salen 0,497 y 0,503, casi exactamente la mitad cada uno, que es la verdad (150 y 150).</p>
+
+        <p>Las dos últimas líneas dicen algo que k-means no puede decir: de los 300 puntos, solo 4 tienen alguna duda apreciable, y la entropía media de la asignación es 0,0091 nats sobre un máximo de 0,6931. El modelo no solo clasifica: <strong>informa de su propia confianza</strong>, punto por punto. Esos 4 puntos ambiguos son exactamente los que caen en la zona de solape entre los dos cigarros.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sustituye <code>Sigma[j] = (gamma[:, j, None] * dif).T @ dif / N[j] + REG</code> por una versión que fuerce covarianzas esféricas: <code>Sigma[j] = np.eye(d) * (gamma[:, j] * (dif ** 2).sum(axis=1)).sum() / (N[j] * d) + REG</code>. Con eso el modelo pierde la capacidad de orientarse y el acuerdo se desploma del 99,3 % al <strong>52,0 %</strong>, es decir, al nivel de k-means (52,3 %), pese a seguir usando asignación blanda y necesitar 141 iteraciones en vez de 28. Confirma la tesis del capítulo: la ganancia venía de la matriz de covarianza <em>completa</em>, no de la suavidad de la asignación.</p>
+        </div>
+
+        <h2 id="limite">k-means es EM con las gaussianas apretadas</h2>
+
+        <p>La relación entre los dos algoritmos no es una analogía: es un límite exacto. Supón que fijamos todas las covarianzas a $\Sigma_j = \sigma^2 I$ (esféricas e iguales) y todos los pesos a $\pi_j = 1/k$. Entonces, en el paso E, los factores constantes se cancelan entre numerador y denominador y queda:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Responsabilidades con covarianza esférica</div>
+          <p>$$ \gamma_{ij} \;=\; \frac{\exp\!\big(-\lVert x_i - \mu_j\rVert^2 / 2\sigma^2\big)}{\sum_{l} \exp\!\big(-\lVert x_i - \mu_l\rVert^2 / 2\sigma^2\big)} $$</p>
+          <p class="math-note">Es un <em>softmax</em> de las distancias al cuadrado con temperatura $2\sigma^2$. Cuando $\sigma \to 0$, la temperatura tiende a cero: la exponencial del término más pequeño domina a todas las demás y $\gamma_{ij} \to 1$ para el centroide más próximo y $\to 0$ para el resto. La asignación blanda se congela en una dura.</p>
+        </div>
+
+        <p>Y en el paso M, el objetivo se convierte en $\sum_{i}\sum_j \gamma_{ij}\lVert x_i - \mu_j\rVert^2 / (2\sigma^2)$ más constantes; con $\gamma$ ya binaria, eso es exactamente la inercia $J$ dividida por $2\sigma^2$. <strong>Maximizar la verosimilitud se convierte en minimizar la inercia.</strong> k-means es el caso degenerado en que el modelo ha renunciado a expresar incertidumbre y a expresar forma.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">gmm_limite_kmeans.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(3)
+
+centros = np.array([[0.0, 0.0], [4.0, 1.0], [1.0, 4.0]])
+X = np.vstack([c + rng.normal(scale=1.1, size=(120, 2)) for c in centros])
+n, d = X.shape
+k = 3
+
+
+def kmeans(X, k, semilla=0, iters=100):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / d2.sum())])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return z, C, ((X - C[z]) ** 2).sum()
+
+
+z_km, C, inercia = kmeans(X, k)
+print(f"k-means: inercia {inercia:.3f}, tamaños {np.bincount(z_km)}\n")
+
+# Con Sigma = sigma^2 I y pesos iguales, el paso E se reduce a un softmax de
+# las distancias al cuadrado dividido por 2*sigma^2. Esa es toda la historia.
+d2 = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)
+
+sigmas = [3.0, 1.0, 0.5, 0.25, 0.1, 0.05, 0.02]
+resp_max, entropias, decididos = [], [], []
+print(f"{'sigma':&gt;7} {'resp. máxima':&gt;13} {'entropía':&gt;10} {'ya decididos':&gt;13}")
+for s in sigmas:
+    logits = -d2 / (2 * s ** 2)
+    logits -= logits.max(axis=1, keepdims=True)
+    gamma = np.exp(logits)
+    gamma /= gamma.sum(axis=1, keepdims=True)
+    H = -(gamma * np.log(gamma + 1e-300)).sum(axis=1).mean()
+    seguros = (gamma.max(axis=1) &gt; 0.99).mean()     # puntos sin ninguna duda
+    resp_max.append(gamma.max(axis=1).mean())
+    entropias.append(H)
+    decididos.append(seguros)
+    print(f"{s:7.2f} {gamma.max(axis=1).mean():13.4f} {H:10.4f} {seguros:12.1%}")
+
+print(f"\nCon k=3, la entropía máxima (duda total) es log(3) = {np.log(3):.4f} nats.")
+print("Cuando sigma -&gt; 0 la entropía tiende a 0: la asignación blanda se vuelve dura.")
+print(f"El argmax, en cambio, NO cambia nunca con sigma: coincide con k-means en el "
+      f"{(gamma.argmax(axis=1) == z_km).mean():.0%} de los puntos para todo sigma,")
+print("porque dividir todos los logits por una constante positiva no altera cuál es")
+print("el mayor. Lo que sigma controla es la CONFIANZA, no la decisión.")
+
+# Y el objetivo también converge: E[log-verosimilitud completa] -&gt; -J/(2 sigma^2)
+for s in [1.0, 0.1, 0.02]:
+    logits = -d2 / (2 * s ** 2)
+    logits -= logits.max(axis=1, keepdims=True)
+    gamma = np.exp(logits)
+    gamma /= gamma.sum(axis=1, keepdims=True)
+    esperado = (gamma * d2).sum()
+    print(f"sigma={s:5.2f} -&gt; suma ponderada de distancias^2 = {esperado:9.3f} "
+          f"(inercia de k-means: {inercia:.3f})")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 3.8))
+ax[0].semilogx(sigmas, resp_max, "o-", color="#5b8def")
+ax[0].axhline(1 / k, ls=":", c="k")
+ax[0].set_xlabel("sigma")
+ax[0].set_title("responsabilidad máxima media")
+ax[1].semilogx(sigmas, entropias, "o-", color="#ef476f")
+ax[1].axhline(np.log(k), ls=":", c="k")
+ax[1].set_xlabel("sigma")
+ax[1].set_title("entropía de la asignación (nats)")
+ax[2].semilogx(sigmas, decididos, "o-", color="#43c59e")
+ax[2].set_ylim(-0.05, 1.05)
+ax[2].set_xlabel("sigma")
+ax[2].set_title("puntos con responsabilidad &gt; 0,99")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>k-means: inercia 801.762, tamaños [119 122 119]
+
+  sigma  resp. máxima   entropía  ya decididos
+   3.00        0.5773     0.9390         0.0%
+   1.00        0.9621     0.0973        73.6%
+   0.50        0.9895     0.0240        95.0%
+   0.25        0.9979     0.0064        97.8%
+   0.10        1.0000     0.0000       100.0%
+   0.05        1.0000     0.0000       100.0%
+   0.02        1.0000     0.0000       100.0%
+
+Con k=3, la entropía máxima (duda total) es log(3) = 1.0986 nats.
+Cuando sigma -&gt; 0 la entropía tiende a 0: la asignación blanda se vuelve dura.
+sigma= 1.00 -&gt; suma ponderada de distancias^2 =   838.649 (inercia de k-means: 801.762)
+sigma= 0.10 -&gt; suma ponderada de distancias^2 =   801.762 (inercia de k-means: 801.762)
+sigma= 0.02 -&gt; suma ponderada de distancias^2 =   801.762 (inercia de k-means: 801.762)</pre>
+        </div>
+
+        <p>Con $\sigma = 3$ el modelo está prácticamente indeciso: responsabilidad máxima 0,577 sobre un mínimo posible de $1/3 = 0{,}333$, y entropía 0,939 sobre un máximo de 1,099. Con $\sigma = 0{,}1$ ya no queda ni rastro de duda: entropía exactamente 0 y el 100 % de los puntos decididos. Y la suma ponderada de distancias al cuadrado converge a <strong>801,762</strong>, el mismo número, dígito a dígito, que la inercia de k-means.</p>
+
+        <p>Hay un detalle sutil que el propio programa señala: el <em>argmax</em> nunca cambia con $\sigma$, porque escalar todos los exponentes por la misma constante positiva no altera cuál es el mayor. Lo que $\sigma$ gradúa es la <strong>confianza</strong>, no la decisión. Un k-means «blando» y uno «duro» eligen el mismo grupo; solo difieren en cuánto pesa cada punto al recalcular los centros.</p>
+
+        <h2 id="singularidad">La trampa: la verosimilitud no tiene máximo</h2>
+
+        <p>Hay una patología en las mixturas que no se puede ignorar y que casi nunca se cuenta. Toma una componente, colócala <em>exactamente</em> encima de un dato ($\mu_j = x_i$) y deja que su covarianza se encoja, $\Sigma_j = \sigma^2 I$ con $\sigma \to 0$. La densidad de esa componente en ese punto es $\propto \sigma^{-d}$, que crece sin límite. Así que</p>
+
+        <p>$$ \ell(\theta) \;\ge\; \text{constante} \;-\; d\log\sigma \;\xrightarrow[\sigma\to 0]{}\; +\infty . $$</p>
+
+        <p>La log-verosimilitud <strong>no está acotada superiormente</strong>: no existe el máximo global que creíamos estar buscando. Todo estimador de máxima verosimilitud para mixturas gaussianas con covarianzas libres es, en rigor, un óptimo local elegido con criterio. El programa siguiente lo mide en dos partes: primero verifica la divergencia analítica, luego provoca que EM se lance a ella.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">gmm_singularidad.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+X = np.vstack([rng.normal(size=(60, 2)), rng.normal(size=(60, 2)) + [4.0, 0.0]])
+n, d = X.shape
+k = 2
+
+
+def log_normal(X, mu, Sigma):
+    L = np.linalg.cholesky(Sigma)
+    dif = np.linalg.solve(L, (X - mu).T)
+    return -0.5 * (d * np.log(2 * np.pi) + 2 * np.log(np.diag(L)).sum()
+                   + (dif ** 2).sum(axis=0))
+
+
+def logsumexp(A, axis):
+    m = A.max(axis=axis, keepdims=True)
+    return (m + np.log(np.exp(A - m).sum(axis=axis, keepdims=True))).squeeze(axis)
+
+
+def log_verosimilitud(mu, Sigma, pi):
+    log_p = np.column_stack([np.log(pi[j]) + log_normal(X, mu[j], Sigma[j])
+                             for j in range(k)])
+    return logsumexp(log_p, axis=1).sum()
+
+
+# ---------------- Parte A: la verosimilitud no está acotada ----------------
+mu_fijo = np.array([X[0], X[1:].mean(axis=0)])
+Sigma_resto = np.cov(X[1:], rowvar=False)
+pi_fijo = np.array([0.5, 0.5])
+
+print("Parte A · una componente clavada sobre x_0, con covarianza sigma^2 I")
+print(f"{'sigma':&gt;10} {'log-verosimilitud':&gt;19} {'ll + d*log(sigma)':&gt;19}")
+sigmas = [1.0, 1e-1, 1e-2, 1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14]
+lls = []
+for s in sigmas:
+    Sigma = np.array([s ** 2 * np.eye(d), Sigma_resto])
+    ll = log_verosimilitud(mu_fijo, Sigma, pi_fijo)
+    lls.append(ll)
+    print(f"{s:10.0e} {ll:19.3f} {ll + d * np.log(s):19.3f}")
+print("La tercera columna se estabiliza: eso significa que la log-verosimilitud")
+print("vale una constante MENOS d*log(sigma), y por tanto diverge a +infinito")
+print("cuando sigma -&gt; 0. No hay máximo global que alcanzar.\n")
+
+
+# ---------------- Parte B: EM se lanza a esa singularidad ----------------
+def em(reg, iters=12):
+    """EM con una componente sembrada MALICIOSAMENTE encima de un dato."""
+    mu = np.array([X[0].copy(), X.mean(axis=0)])
+    Sigma = np.array([1e-4 * np.eye(d), np.cov(X, rowvar=False)])
+    pi = np.array([0.5, 0.5])
+    traza = []
+    for _ in range(iters):
+        try:
+            log_p = np.column_stack([np.log(pi[j]) + log_normal(X, mu[j], Sigma[j])
+                                     for j in range(k)])
+        except np.linalg.LinAlgError:
+            traza.append((np.inf, 0.0, traza[-1][2]))
+            break
+        ll = logsumexp(log_p, axis=1)
+        gamma = np.exp(log_p - ll[:, None])
+        traza.append((ll.sum(), np.linalg.det(Sigma[0]), gamma[:, 0].sum()))
+        N = gamma.sum(axis=0)
+        pi = N / n
+        mu = (gamma.T @ X) / N[:, None]
+        for j in range(k):
+            dif = X - mu[j]
+            Sigma[j] = (gamma[:, j, None] * dif).T @ dif / N[j] + reg * np.eye(d)
+        if np.linalg.det(Sigma[0]) &lt;= 0:
+            traza.append((np.inf, 0.0, N[0]))
+            break
+    return traza
+
+
+print("Parte B · EM sin regularización (reg = 0)")
+print(f"{'iter':&gt;5} {'log-verosimilitud':&gt;19} {'det(Sigma_0)':&gt;15} {'puntos en comp. 0':&gt;19}")
+for i, (ll, det, N0) in enumerate(em(reg=0.0)):
+    ll_txt = "  +inf (colapso)" if not np.isfinite(ll) else f"{ll:19.3f}"
+    print(f"{i:5d} {ll_txt:&gt;19} {det:15.3e} {N0:19.4f}")
+
+print("\nParte B · EM con regularización (reg = 1e-3)")
+buena = em(reg=1e-3)
+print(f"{'iter':&gt;5} {'log-verosimilitud':&gt;19} {'det(Sigma_0)':&gt;15} {'puntos en comp. 0':&gt;19}")
+for i, (ll, det, N0) in enumerate(buena):
+    if i &lt; 4 or i == len(buena) - 1:
+        print(f"{i:5d} {ll:19.3f} {det:15.3e} {N0:19.4f}")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+ax[0].semilogx(sigmas, lls, "o-", color="#ef476f")
+ax[0].invert_xaxis()
+ax[0].set_xlabel("sigma de la componente colapsada")
+ax[0].set_ylabel("log-verosimilitud")
+ax[0].set_title("A · crece sin límite")
+ax[1].plot([t[0] for t in buena], "o-", ms=4, color="#43c59e")
+ax[1].set_xlabel("iteración")
+ax[1].set_ylabel("log-verosimilitud")
+ax[1].set_title("B · con reg = 1e-3, EM se comporta")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Parte A · una componente clavada sobre x_0, con covarianza sigma^2 I
+     sigma   log-verosimilitud   ll + d*log(sigma)
+     1e+00            -441.093            -441.093
+     1e-01            -503.359            -507.965
+     1e-02            -505.005            -514.215
+     1e-04            -495.794            -514.215
+     1e-06            -486.584            -514.215
+     1e-08            -477.374            -514.215
+     1e-10            -468.163            -514.215
+     1e-12            -458.953            -514.215
+     1e-14            -449.743            -514.215
+
+Parte B · EM sin regularización (reg = 0)
+ iter   log-verosimilitud    det(Sigma_0)   puntos en comp. 0
+    0            -505.005       1.000e-08              1.0000
+    1            -169.193      3.506e-233              1.0000
+    2      +inf (colapso)       0.000e+00              1.0000
+
+Parte B · EM con regularización (reg = 1e-3)
+ iter   log-verosimilitud    det(Sigma_0)   puntos en comp. 0
+    0            -505.005       1.000e-08              1.0000
+    1            -429.871       1.000e-06              0.9633
+    2            -429.871       1.000e-06              0.9619
+    3            -429.871       1.000e-06              0.9619
+   11            -429.871       1.000e-06              0.9619</pre>
+        </div>
+
+        <p>La tercera columna de la parte A es la demostración numérica: desde $\sigma = 10^{-2}$ hacia abajo, $\ell + d\log\sigma$ vale <strong>exactamente $-514{,}215$</strong> y no se mueve. Eso significa que $\ell(\sigma) = -514{,}215 - d\log\sigma$, y como $-\log\sigma \to +\infty$, la verosimilitud diverge. No es un problema numérico: es la función.</p>
+
+        <p>En la parte B, EM sembrado con una componente de determinante $10^{-8}$ sobre un dato se lanza al abismo: en una sola iteración el determinante cae a $3{,}5\times10^{-233}$ y la log-verosimilitud sube 336 nats; a la siguiente, la matriz deja de ser definida positiva y todo revienta. La componente contiene exactamente <strong>1,0000 puntos</strong>: se ha quedado sola con su dato. Con una regularización ridícula —sumar $10^{-3}$ a la diagonal— el mismo arranque se estabiliza en $-429{,}871$ y la componente recupera un tamaño razonable.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Regulariza siempre</div>
+          <p>En cualquier implementación seria se suma un $\varepsilon I$ a cada covarianza en el paso M (scikit-learn lo llama <code>reg_covar</code> y vale $10^{-6}$ por defecto). Formalmente equivale a poner un <em>prior</em> inverso-Wishart y hacer estimación MAP en vez de máxima verosimilitud, lo que sí tiene máximo. No es un parche: es lo correcto.</p>
+        </div>
+
+        <h2 id="cuantas">¿Cuántas componentes? Ahora sí hay criterio</h2>
+
+        <p>En k-means la inercia siempre baja al subir $k$, así que no sirve para elegirlo. Con un modelo probabilístico el problema cambia de naturaleza: la log-verosimilitud también sube siempre, pero ahora <em>sabemos cuántos parámetros hemos gastado</em> para conseguirlo, y podemos cobrárselo. Una mixtura completa en $\mathbb{R}^d$ con $k$ componentes tiene</p>
+
+        <p>$$ p(k) \;=\; \underbrace{(k-1)}_{\text{pesos}} \;+\; \underbrace{k\,d}_{\text{medias}} \;+\; \underbrace{k\,\frac{d(d+1)}{2}}_{\text{covarianzas}} $$</p>
+
+        <p>parámetros libres (los pesos son $k-1$ porque el último queda fijado por la restricción de sumar 1; las covarianzas son simétricas, de ahí $d(d+1)/2$ en lugar de $d^2$). Con eso:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ BIC y AIC</div>
+          <p>$$ \mathrm{BIC}(k) = -2\,\ell(\hat\theta_k) + p(k)\log n, \qquad \mathrm{AIC}(k) = -2\,\ell(\hat\theta_k) + 2\,p(k) $$</p>
+          <p class="math-note">En ambos, más bajo es mejor. El BIC (Schwarz, 1978) sale de aproximar la verosimilitud marginal bayesiana por Laplace; el AIC (Akaike, 1974) de estimar la divergencia KL esperada a la verdad. La diferencia práctica está en la penalización: $\log n$ frente a $2$. En cuanto $n \gt e^2 \approx 7{,}4$, el BIC castiga más y elige modelos más pequeños.</p>
+        </div>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">gmm_seleccion_bic.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(7)
+
+# Tres componentes de verdad, con covarianzas deliberadamente distintas
+comp = [
+    (np.array([0.0, 0.0]), np.array([[1.6, 0.9], [0.9, 0.8]]), 200),
+    (np.array([6.0, 1.0]), np.array([[0.4, 0.0], [0.0, 2.4]]), 150),
+    (np.array([2.5, 6.0]), np.array([[1.0, -0.6], [-0.6, 1.0]]), 150),
+]
+X = np.vstack([mu + rng.normal(size=(m, 2)) @ np.linalg.cholesky(S).T
+               for mu, S, m in comp])
+n, d = X.shape
+print(f"Datos: {n} puntos generados por 3 componentes gaussianas.\n")
+
+
+def log_normal(X, mu, Sigma):
+    L = np.linalg.cholesky(Sigma)
+    dif = np.linalg.solve(L, (X - mu).T)
+    return -0.5 * (X.shape[1] * np.log(2 * np.pi) + 2 * np.log(np.diag(L)).sum()
+                   + (dif ** 2).sum(axis=0))
+
+
+def logsumexp(A, axis):
+    m = A.max(axis=axis, keepdims=True)
+    return (m + np.log(np.exp(A - m).sum(axis=axis, keepdims=True))).squeeze(axis)
+
+
+def em(X, k, semilla, iters=200):
+    r = np.random.default_rng(semilla)
+    mu = X[r.choice(len(X), k, replace=False)]
+    Sigma = np.array([np.cov(X, rowvar=False) for _ in range(k)])
+    pi = np.full(k, 1.0 / k)
+    ll_ant = -np.inf
+    for _ in range(iters):
+        log_p = np.column_stack([np.log(pi[j]) + log_normal(X, mu[j], Sigma[j])
+                                 for j in range(k)])
+        ll = logsumexp(log_p, axis=1)
+        gamma = np.exp(log_p - ll[:, None])
+        total = ll.sum()
+        N = gamma.sum(axis=0) + 1e-10
+        pi = N / len(X)
+        mu = (gamma.T @ X) / N[:, None]
+        for j in range(k):
+            dif = X - mu[j]
+            Sigma[j] = (gamma[:, j, None] * dif).T @ dif / N[j] + 1e-4 * np.eye(d)
+        if abs(total - ll_ant) &lt; 1e-7:
+            break
+        ll_ant = total
+    return total
+
+
+# Parámetros libres de una mixtura completa: pesos (k-1), medias (k*d)
+# y covarianzas simétricas (k * d(d+1)/2).
+def n_params(k, d):
+    return (k - 1) + k * d + k * d * (d + 1) // 2
+
+
+print(f"{'k':&gt;3} {'nº parámetros':&gt;14} {'log-verosim.':&gt;14} {'BIC':&gt;11} {'AIC':&gt;11}")
+ks = range(1, 8)
+bics, aics, lls = [], [], []
+for k in ks:
+    mejor = max(em(X, k, s) for s in range(8))       # 8 arranques, nos quedamos el mejor
+    p = n_params(k, d)
+    bic = -2 * mejor + p * np.log(n)
+    aic = -2 * mejor + 2 * p
+    lls.append(mejor)
+    bics.append(bic)
+    aics.append(aic)
+    print(f"{k:3d} {p:14d} {mejor:14.2f} {bic:11.2f} {aic:11.2f}")
+
+k_bic = list(ks)[int(np.argmin(bics))]
+k_aic = list(ks)[int(np.argmin(aics))]
+print(f"\nBIC elige k = {k_bic}   |   AIC elige k = {k_aic}   |   verdad: k = 3")
+print("La log-verosimilitud, en cambio, no deja de subir: por sí sola nunca")
+print("elegiría un k finito. La penalización es lo que decide.")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+ax[0].scatter(X[:, 0], X[:, 1], s=10, c="#8b93a7")
+ax[0].set_title("los datos, sin etiquetas")
+ax[0].set_xticks([])
+ax[0].set_yticks([])
+ax[1].plot(list(ks), bics, "o-", label="BIC")
+ax[1].plot(list(ks), aics, "s-", label="AIC")
+ax[1].axvline(3, ls=":", c="k", label="k verdadero")
+ax[1].set_xlabel("número de componentes k")
+ax[1].legend()
+ax[1].set_title("más bajo es mejor")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Datos: 500 puntos generados por 3 componentes gaussianas.
+
+  k  nº parámetros   log-verosim.         BIC         AIC
+  1              5       -2441.50     4914.08     4893.01
+  2             11       -1944.21     3956.78     3910.42
+  3             17       -1781.37     3668.40     3596.75
+  4             23       -1777.96     3698.85     3601.92
+  5             29       -1765.64     3711.50     3589.28
+  6             35       -1765.11     3747.74     3600.23
+  7             41       -1765.08     3784.95     3612.16
+
+BIC elige k = 3   |   AIC elige k = 5   |   verdad: k = 3</pre>
+        </div>
+
+        <p>La columna de la log-verosimilitud confirma el diagnóstico: sube siempre, de $-2441{,}50$ a $-1765{,}08$, y nunca se daría la vuelta. Pero mira el salto: de $k=3$ a $k=4$ solo gana 3,4 nats a cambio de 6 parámetros nuevos. El BIC, que cobra $\log 500 = 6{,}21$ por parámetro, no acepta ese trato y <strong>elige $k=3$, la verdad</strong>. El AIC, que solo cobra 2, sí lo acepta y se va hasta $k=5$.</p>
+
+        <p>Es el comportamiento típico y conviene conocerlo: el AIC sobreestima el número de componentes porque su objetivo es predecir bien, no identificar la estructura correcta; el BIC es consistente —con $n\to\infty$ acierta el modelo verdadero si está en la familia— y por eso es el habitual para elegir $k$ en mixturas. En el <a href="08-validacion-clusteres.html">capítulo 8</a> veremos criterios que no necesitan modelo probabilístico.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># EM completo sobre los datos que rompieron k-means</span>
+<span class="prompt">$</span> python code/04-gmm-y-em/gmm_em.py
+
+<span class="comment"># k-means como límite de EM cuando sigma tiende a 0</span>
+<span class="prompt">$</span> python code/04-gmm-y-em/gmm_limite_kmeans.py
+
+<span class="comment"># la verosimilitud no está acotada: la singularidad</span>
+<span class="prompt">$</span> python code/04-gmm-y-em/gmm_singularidad.py
+
+<span class="comment"># elegir el número de componentes con BIC y AIC</span>
+<span class="prompt">$</span> python code/04-gmm-y-em/gmm_seleccion_bic.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Una mixtura gaussiana modela $p(x) = \sum_j \pi_j \mathcal{N}(x\mid\mu_j,\Sigma_j)$. La covarianza propia de cada componente es lo que le permite representar grupos alargados y girados.</li>
+            <li>La log-verosimilitud tiene un logaritmo de una suma y no se puede maximizar en forma cerrada. EM lo resuelve con una cota inferior de Jensen, el ELBO, cuyo hueco es exactamente $D_{\mathrm{KL}}(q\,\|\,p(z\mid x,\theta))$.</li>
+            <li>Paso E: $q$ óptima es la posterior, las responsabilidades $\gamma_{ij}$. Paso M: media, covarianza y peso muestrales, ponderados por $\gamma$.</li>
+            <li>La cadena $\ell(\theta^{t+1}) \ge \mathcal{L}(q^t,\theta^{t+1}) \ge \mathcal{L}(q^t,\theta^t) = \ell(\theta^t)$ demuestra que la verosimilitud nunca baja. Medido: 52,3 % → 99,3 % de acuerdo en 28 iteraciones.</li>
+            <li>k-means es EM con $\Sigma_j = \sigma^2 I$ y $\sigma\to 0$: las responsabilidades son un softmax de temperatura $2\sigma^2$ que se congela, y el objetivo converge a la inercia (medido: 801,762 en ambos).</li>
+            <li>La verosimilitud no está acotada —diverge como $-d\log\sigma$ al colapsar una componente sobre un dato—, así que hay que regularizar siempre las covarianzas.</li>
+            <li>El BIC penaliza $p(k)\log n$ y acierta $k=3$; el AIC, que solo penaliza $2p(k)$, se pasa a $k=5$.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

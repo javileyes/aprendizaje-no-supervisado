@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2. Geometría, distancias y la maldición de la dimensionalidad · No supervisado</title>
+  <meta name="description" content="Métricas y similitudes, escalado, y la demostración de por qué en dimensión alta todas las distancias se parecen." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="2">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte I · Capítulo 2</span>
+        <h1>Geometría, distancias y la maldición de la dimensionalidad</h1>
+        <p class="lead">Todo algoritmo de este manual descansa sobre una idea que parece inocente: saber cuándo dos datos están «cerca». En el <a href="01-aprender-sin-etiquetas.html">capítulo 1</a> vimos que cambiar de regla cambia la respuesta. Ahora veremos qué reglas hay, cómo se derivan unas de otras y —lo más incómodo— por qué en dimensión alta la palabra «cerca» pierde casi todo su significado.</p>
+
+        <h2 id="regla">La regla que eliges es la teoría que asumes</h2>
+
+        <p>Dos ciudades pueden estar a 300 kilómetros en línea recta, a cuatro horas en coche y a treinta euros en tren. Ninguna de las tres cifras es la distancia «verdadera»: cada una responde a una pregunta distinta, y elegir cuál usar ya es haber decidido qué te importa.</p>
+
+        <p>Con los datos ocurre exactamente lo mismo, pero de forma menos visible, porque la distancia euclídea viene puesta por defecto en todas las librerías y nadie la cuestiona. Al usarla estás afirmando tres cosas concretas: que todas las variables importan igual, que su efecto se suma cuadráticamente y que la correlación entre ellas no cuenta. Casi nunca es verdad.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>La métrica no es un detalle técnico previo al algoritmo: <strong>es la mitad del modelo</strong>. Un clústering es un algoritmo genérico más una definición de parecido, y el algoritmo casi nunca es la parte interesante.</p>
+        </div>
+
+        <h2 id="metricas">El catálogo de métricas, y de dónde sale cada una</h2>
+
+        <p>Formalmente, una función $d : \mathbb{R}^d \times \mathbb{R}^d \to \mathbb{R}_{\ge 0}$ es una <strong>métrica</strong> si cumple cuatro cosas: es no negativa; vale cero exactamente cuando $x = y$ (identidad de los indiscernibles); es simétrica, $d(x,y) = d(y,x)$; y respeta la desigualdad triangular $d(x,z) \le d(x,y) + d(y,z)$. La última es la que le da contenido geométrico: sin ella «acercarse» deja de ser transitivo y buena parte de las estructuras de indexación dejan de funcionar.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La familia de Minkowski</div>
+          <p>$$ d_p(x,y) \;=\; \left(\sum_{j=1}^{d} |x_j - y_j|^{p}\right)^{1/p}, \qquad p \ge 1 $$</p>
+          <p class="math-note">$x_j$ es la componente $j$-ésima del vector $x$ y $d$ el número de variables. Con $p=2$ es la distancia euclídea de toda la vida; con $p=1$, la de Manhattan (suma de diferencias absolutas, como recorrer una cuadrícula de calles); cuando $p \to \infty$ tiende a $\max_j |x_j - y_j|$, la de Chebyshev, que solo mira la variable en la que más difieren.</p>
+        </div>
+
+        <p>El parámetro $p$ regula cómo se castigan las diferencias grandes. Con $p=2$, una diferencia de 10 en una sola variable pesa lo mismo que diferencias de $10/\sqrt{d}$ repartidas entre todas; con $p=1$ pesa lo mismo que diez diferencias de 1. Por eso $\ell_1$ es más robusta frente a una variable individual estropeada, y por eso en dimensión muy alta suele preferirse a $\ell_2$: los valores bajos de $p$ conservan algo más de contraste.</p>
+
+        <h3>Similitud coseno: cuando importa la dirección, no el tamaño</h3>
+
+        <p>En textos, en recomendación o en cualquier dato donde el vector es un recuento, la magnitud suele decir «cuánto» y la dirección «de qué». Un documento largo y uno corto sobre el mismo tema apuntan al mismo sitio con normas distintas. De ahí la similitud coseno y su distancia asociada:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Distancia coseno</div>
+          <p>$$ d_{\cos}(x,y) \;=\; 1 - \frac{x^\top y}{\lVert x\rVert\,\lVert y\rVert} \;=\; 1 - \cos\theta $$</p>
+          <p class="math-note">$x^\top y$ es el producto escalar y $\lVert x \rVert$ la norma euclídea. $\theta$ es el ángulo entre los dos vectores. Vale $0$ si apuntan igual, $1$ si son perpendiculares y $2$ si son opuestos. <em>No es una métrica</em>: incumple la desigualdad triangular.</p>
+        </div>
+
+        <p>Hay una relación exacta que conviene tener siempre presente. Si normalizas los vectores a norma 1, escribiendo $\hat x = x/\lVert x\rVert$, entonces</p>
+
+        <p>$$ \lVert \hat x - \hat y \rVert^2 \;=\; \lVert\hat x\rVert^2 + \lVert\hat y\rVert^2 - 2\,\hat x^\top \hat y \;=\; 2 - 2\cos\theta \;=\; 2\,d_{\cos}(x,y). $$</p>
+
+        <p>Es decir: <strong>la distancia coseno es la distancia euclídea al cuadrado sobre la esfera unidad</strong>, salvo un factor 2. Consecuencia práctica de primer orden: puedes usar k-means con similitud coseno sin más que normalizar las filas antes, porque el orden de los vecinos no cambia. Esta equivalencia reaparecerá literalmente en el <a href="16-autosupervisado-contrastivo.html">capítulo 16</a>, donde los métodos contrastivos trabajan siempre sobre la esfera.</p>
+
+        <h3>Mahalanobis: la distancia que descuenta la correlación</h3>
+
+        <p>Vuelve al problema del capítulo anterior. Si una nube está estirada en diagonal porque dos variables van juntas, la distancia euclídea considera «raro» a un punto que se salga poco en la dirección estrecha y «normal» a uno que se aleje mucho en la ancha. La corrección natural es medir cada dirección en unidades de su propia dispersión:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Distancia de Mahalanobis</div>
+          <p>$$ d_{M}(x,y) \;=\; \sqrt{(x-y)^\top S^{-1} (x-y)} $$</p>
+          <p class="math-note">$S$ es la matriz de covarianza de los datos, de tamaño $d\times d$: en la diagonal están las varianzas de cada variable y fuera de ella las covarianzas entre pares. $S^{-1}$ es su inversa. Si $S = I$ —variables incorreladas y de varianza 1— se reduce exactamente a la euclídea.</p>
+        </div>
+
+        <p>¿Por qué esa fórmula y no otra? Porque es la euclídea después de deshacer la forma de la nube. Como $S$ es simétrica y definida positiva, admite una raíz cuadrada simétrica $S^{1/2}$ con $S^{1/2}S^{1/2} = S$, y por tanto $S^{-1} = S^{-1/2}S^{-1/2}$. Sustituyendo:</p>
+
+        <p>$$ d_M(x,y)^2 \;=\; (x-y)^\top S^{-1/2}S^{-1/2}(x-y) \;=\; \big(S^{-1/2}(x-y)\big)^\top \big(S^{-1/2}(x-y)\big) \;=\; \big\lVert S^{-1/2}(x-y) \big\rVert_2^2 . $$</p>
+
+        <p>La transformación $x \mapsto S^{-1/2}x$ se llama <strong>blanqueo</strong> (<em>whitening</em>): deja los datos con covarianza identidad, es decir, esféricos. Mahalanobis es, literalmente, «euclídea sobre los datos blanqueados». Y la estandarización de toda la vida —restar la media y dividir por la desviación típica— es el caso particular en que ignoras las covarianzas y te quedas solo con la diagonal de $S$.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Blanquear no siempre es buena idea</div>
+          <p>El blanqueo iguala todas las direcciones. Si la dirección que separa tus grupos es también la de mayor varianza —lo habitual—, blanquear la <strong>encoge hasta igualarla con el ruido</strong> y destruye justo lo que buscabas. Además $S^{-1}$ es inestable cuando hay pocas muestras respecto a $d$, o cuando dos variables son casi idénticas. Úsalo cuando la varianza grande sea una molestia conocida (un sensor con demasiada ganancia), no por rutina.</p>
+        </div>
+
+        <p>Para datos binarios o de conjuntos hay otro catálogo entero —Jaccard $1 - |A\cap B|/|A\cup B|$, Hamming, Dice—, y para secuencias, la distancia de edición. La lógica es siempre la misma: escribe qué transformaciones quieres que <em>no</em> cambien la distancia, y esa invariancia te elige la métrica.</p>
+
+        <h2 id="ejemplo-metricas">Cuatro reglas sobre la misma nube</h2>
+
+        <p>Vamos a medirlo. Generamos 400 puntos con dos variables correlacionadas al 0,949 —una nube claramente diagonal— y preguntamos quiénes son los cinco vecinos más próximos de un punto concreto según cada regla. Los contornos del dibujo son las «bolas» de cada métrica: el lugar geométrico de los puntos equidistantes del punto rojo.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">distancias.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(11)
+
+# --- Datos: una nube alargada (altura y peso, muy correlacionados) ---
+n = 400
+A = np.array([[1.0, 0.0], [1.8, 0.55]])       # matriz que estira y rota la nube
+X = rng.normal(size=(n, 2)) @ A.T
+X -= X.mean(axis=0)
+S = np.cov(X, rowvar=False)
+print("Matriz de covarianza:\n", np.round(S, 3))
+print(f"Correlación entre las dos columnas: {S[0,1]/np.sqrt(S[0,0]*S[1,1]):.3f}")
+
+# --- Las cuatro reglas, cada una como función de (punto, conjunto) ---
+S_inv = np.linalg.inv(S)
+
+def d_euclidea(q, X):
+    return np.sqrt(((X - q) ** 2).sum(axis=1))
+
+def d_manhattan(q, X):
+    return np.abs(X - q).sum(axis=1)
+
+def d_coseno(q, X):
+    cos = (X @ q) / (np.linalg.norm(X, axis=1) * np.linalg.norm(q) + 1e-12)
+    return 1.0 - cos
+
+def d_mahalanobis(q, X):
+    D = X - q
+    return np.sqrt(np.einsum("ij,jk,ik-&gt;i", D, S_inv, D))
+
+reglas = [("euclídea", d_euclidea), ("manhattan", d_manhattan),
+          ("coseno", d_coseno), ("mahalanobis", d_mahalanobis)]
+
+# --- ¿Quién es el vecino más próximo del punto 0 según cada regla? ---
+q = X[0]
+print(f"\nPunto de consulta: ({q[0]:+.2f}, {q[1]:+.2f})")
+vecinos = {}
+for nombre, d in reglas:
+    dist = d(q, X)
+    dist[0] = np.inf                                  # él mismo no cuenta
+    orden = np.argsort(dist)[:5]
+    vecinos[nombre] = set(orden)
+    print(f"  {nombre:12s} -&gt; 5 vecinos más próximos: {orden}")
+
+base = vecinos["euclídea"]
+for nombre in ["manhattan", "coseno", "mahalanobis"]:
+    comunes = len(base &amp; vecinos[nombre])
+    print(f"  coincidencias euclídea/{nombre}: {comunes}/5")
+
+# --- Mapa de las bolas unidad de cada regla alrededor del punto de consulta ---
+gx, gy = np.meshgrid(np.linspace(-6, 6, 260), np.linspace(-6, 6, 260))
+G = np.column_stack([gx.ravel(), gy.ravel()])
+
+fig, ax = plt.subplots(1, 4, figsize=(15, 3.8))
+for a, (nombre, d) in zip(ax, reglas):
+    Z = d(q, G).reshape(gx.shape)
+    a.scatter(X[:, 0], X[:, 1], s=6, c="#8b93a7", alpha=0.5)
+    a.contour(gx, gy, Z, levels=8, cmap="viridis", linewidths=1.2)
+    a.plot(q[0], q[1], "r*", ms=15)
+    a.set_title(f"«cerca» según {nombre}")
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Matriz de covarianza:
+ [[0.922 1.621]
+ [1.621 3.163]]
+Correlación entre las dos columnas: 0.949
+
+Punto de consulta: (-0.01, +0.75)
+  euclídea     -&gt; 5 vecinos más próximos: [239  62 165 137 181]
+  manhattan    -&gt; 5 vecinos más próximos: [239 181 137 165  63]
+  coseno       -&gt; 5 vecinos más próximos: [181  63 349 157  90]
+  mahalanobis  -&gt; 5 vecinos más próximos: [286 383 305 116  44]
+  coincidencias euclídea/manhattan: 4/5
+  coincidencias euclídea/coseno: 1/5
+  coincidencias euclídea/mahalanobis: 0/5</pre>
+        </div>
+
+        <p>La lectura es contundente. Euclídea y Manhattan comparten cuatro de cinco vecinos: son primas hermanas, dos miembros de la misma familia de Minkowski. La coseno comparte uno, porque solo mira ángulos y un punto lejano en la misma dirección le parece próximo. Y Mahalanobis <strong>no comparte ninguno</strong>: al descontar una correlación de 0,949, la nube diagonal se convierte en una esfera y el vecindario cambia por completo. Los cuatro resultados son correctos. Responden a cuatro preguntas distintas.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>En la matriz <code>A</code>, sustituye la segunda fila <code>[1.8, 0.55]</code> por <code>[0.0, 1.0]</code> y vuelve a pulsar ▶. Ahora los datos son esféricos —la correlación medida cae a $-0{,}072$— y las bolas de Mahalanobis se vuelven casi círculos: las coincidencias con la euclídea suben de 0/5 a <strong>4/5</strong>. No llegan a 5/5 porque la covarianza <em>muestral</em> de 400 puntos nunca es exactamente la identidad, y esa desviación residual basta para intercambiar el quinto vecino. La diferencia entre métricas procede de la forma de la nube, no de la fórmula.</p>
+        </div>
+
+        <h2 id="maldicion">La maldición de la dimensionalidad</h2>
+
+        <p>Hasta aquí, dos dimensiones y todo intuitivo. El problema es que los datos reales tienen cientos o miles de columnas, y en ese régimen la geometría deja de comportarse como esperamos. No es una dificultad computacional: es que <em>los conceptos mismos se degradan</em>.</p>
+
+        <h3>Primer efecto: las distancias se concentran</h3>
+
+        <p>Tomemos $n$ puntos uniformes en el cubo unidad $[0,1]^d$ y preguntemos por la distancia entre dos de ellos, $x$ e $y$. Definamos $Z_j = x_j - y_j$ para cada coordenada. Como $x_j$ e $y_j$ son uniformes independientes en $[0,1]$, la variable $Z_j$ tiene densidad triangular $f(z) = 1 - |z|$ sobre $[-1,1]$, y podemos calcular sus momentos exactamente:</p>
+
+        <p>$$ \mathbb{E}[Z^2] = 2\!\int_0^1 \! z^2(1-z)\,dz = 2\left(\tfrac13-\tfrac14\right) = \tfrac16, \qquad \mathbb{E}[Z^4] = 2\!\int_0^1 \! z^4(1-z)\,dz = 2\left(\tfrac15-\tfrac16\right) = \tfrac1{15}. $$</p>
+
+        <p>De donde $\operatorname{Var}(Z^2) = \tfrac1{15} - \left(\tfrac16\right)^2 = \tfrac{12-5}{180} = \tfrac{7}{180}$. Ahora bien, la distancia al cuadrado es una suma de $d$ términos independientes, $\lVert x-y\rVert^2 = \sum_{j=1}^d Z_j^2$, así que su media y su varianza son simplemente $d$ veces las de un término:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Concentración de distancias en el cubo unidad</div>
+          <p>$$ \mathbb{E}\big[\lVert x-y\rVert^2\big] = \frac{d}{6}, \qquad \operatorname{Var}\big(\lVert x-y\rVert^2\big) = \frac{7d}{180} $$</p>
+          <p>Aplicando el método delta a la raíz cuadrada —esto es, $\operatorname{sd}(\sqrt{W}) \approx \operatorname{sd}(W) / (2\sqrt{\mathbb{E}W})$ cuando la dispersión relativa es pequeña—:</p>
+          <p>$$ \mathbb{E}\big[\lVert x-y\rVert\big] \approx \sqrt{\frac{d}{6}}\,, \qquad \operatorname{sd}\big(\lVert x-y\rVert\big) \approx \frac{\sqrt{7d/180}}{2\sqrt{d/6}} = \frac12\sqrt{\frac{7}{30}} \approx 0{,}2415 $$</p>
+          <p class="math-note">Mira bien el segundo resultado: <strong>la $d$ se cancela</strong>. La distancia media crece como $\sqrt{d}$, pero su dispersión se queda clavada en una constante. La dispersión <em>relativa</em>, por tanto, decae como $1/\sqrt{d}$.</p>
+        </div>
+
+        <p>Traducido: en dimensión alta todos los pares de puntos están prácticamente a la misma distancia. El punto más cercano y el más lejano se vuelven indistinguibles, y con ellos se derrumban el vecino más próximo, el radio $\varepsilon$ de DBSCAN y la propia noción de agrupamiento. Este es el resultado que Beyer, Goldstein, Ramakrishnan y Shaft formalizaron en 1999: si las coordenadas son independientes e idénticamente distribuidas, el contraste relativo $(d_{\max} - d_{\min})/d_{\min}$ tiende a cero en probabilidad.</p>
+
+        <h3>Segundo efecto: el volumen huye a la cáscara</h3>
+
+        <p>Considera una bola de radio 1 y otra de radio $1-\varepsilon$, concéntricas. Los volúmenes van como la $d$-ésima potencia del radio, así que la fracción del volumen total que queda en la corteza exterior de grosor $\varepsilon$ es</p>
+
+        <p>$$ \frac{V(1) - V(1-\varepsilon)}{V(1)} \;=\; 1 - (1-\varepsilon)^d . $$</p>
+
+        <p>Con $\varepsilon = 0{,}1$: en la recta es el 10 %, en el plano el 19 %, en dimensión 10 ya el 65,1 % y en dimensión 50 el 99,5 %. En dimensión alta, <strong>una bola es esencialmente su superficie</strong>: el «centro» está vacío. Por eso los datos de dimensión alta parecen estar siempre en el borde de todo, y por eso extrapolar resulta casi inevitable.</p>
+
+        <h3>Tercer efecto: hubness</h3>
+
+        <p>Un efecto menos conocido y muy dañino en la práctica: a medida que $d$ crece, unos pocos puntos —los que quedan más cerca del centro de masas— aparecen como vecino más próximo de un número desproporcionado de puntos. Son los <em>hubs</em>. Contaminan los sistemas de recomendación (que acaban recomendando siempre lo mismo), los grafos de $k$ vecinos que alimentan el clústering espectral del <a href="07-clustering-espectral.html">capítulo 7</a> y cualquier búsqueda por similitud.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">maldicion_dimensionalidad.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+n = 500
+dims = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000]
+
+contrastes, medias, desviaciones = [], [], []
+print(f"{'d':&gt;5} {'media dist':&gt;11} {'sd dist':&gt;9} {'sd teórica':&gt;11} {'contraste':&gt;10}")
+for d in dims:
+    X = rng.random((n, d))                       # uniforme en el cubo unidad
+    # matriz de distancias por la identidad ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a.b
+    sq = (X ** 2).sum(axis=1)
+    D2 = np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0)
+    D = np.sqrt(D2)
+    np.fill_diagonal(D, np.inf)
+    dmin = D.min(axis=1)
+    dmax = np.where(np.isinf(D), -np.inf, D).max(axis=1)
+    contraste = ((dmax - dmin) / dmin).mean()    # contraste relativo por punto
+    fuera = D[np.triu_indices(n, k=1)]
+    medias.append(fuera.mean())
+    desviaciones.append(fuera.std())
+    contrastes.append(contraste)
+    print(f"{d:5d} {fuera.mean():11.3f} {fuera.std():9.4f} "
+          f"{0.5*np.sqrt(7/30):11.4f} {contraste:10.3f}")
+
+# --- Efecto 2: ¿qué fracción del volumen de la bola está en el 10% exterior? ---
+print("\nFracción del volumen de una bola que vive en el 10% exterior del radio:")
+for d in [1, 2, 3, 10, 50, 100]:
+    print(f"  d={d:4d} -&gt; {1 - 0.9 ** d:6.1%}")
+
+# --- Efecto 3: hubness. ¿Cuántas veces aparece cada punto como vecino de otro? ---
+print("\nHubness (nº de veces que un punto es 1er vecino de otro; ideal ~1):")
+for d in [2, 20, 200]:
+    X = rng.random((n, d))
+    sq = (X ** 2).sum(axis=1)
+    D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+    np.fill_diagonal(D, np.inf)
+    cuentas = np.bincount(D.argmin(axis=1), minlength=n)
+    print(f"  d={d:4d} -&gt; máximo {cuentas.max():3d}, "
+          f"puntos que no son vecinos de nadie: {(cuentas == 0).mean():.0%}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 3.8))
+ax[0].plot(dims, contrastes, "o-", color="#ef476f")
+ax[0].set_xscale("log")
+ax[0].set_xlabel("dimensión d")
+ax[0].set_title("contraste (dmax-dmin)/dmin")
+
+ax[1].plot(dims, medias, "o-", label="media medida")
+ax[1].plot(dims, [np.sqrt(d / 6) for d in dims], "--", label="sqrt(d/6) teórica")
+ax[1].plot(dims, desviaciones, "s-", label="desviación medida")
+ax[1].axhline(0.5 * np.sqrt(7 / 30), ls=":", color="k", label="0,2415 teórica")
+ax[1].set_xscale("log")
+ax[1].set_xlabel("dimensión d")
+ax[1].legend(fontsize=8)
+ax[1].set_title("distancia media y su dispersión")
+
+dd = np.arange(1, 101)
+ax[2].plot(dd, 1 - 0.9 ** dd, color="#43c59e")
+ax[2].set_xlabel("dimensión d")
+ax[2].set_title("volumen en el 10% exterior")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>    d  media dist   sd dist  sd teórica  contraste
+    1       0.333    0.2359      0.2415   4424.920
+    2       0.522    0.2493      0.2415     66.575
+    5       0.875    0.2463      0.2415      6.400
+   10       1.275    0.2438      0.2415      2.528
+   25       2.010    0.2408      0.2415      1.050
+   50       2.874    0.2406      0.2415      0.623
+  100       4.076    0.2420      0.2415      0.407
+  250       6.445    0.2419      0.2415      0.236
+  500       9.135    0.2437      0.2415      0.162
+ 1000      12.918    0.2380      0.2415      0.110
+
+Fracción del volumen de una bola que vive en el 10% exterior del radio:
+  d=   1 -&gt;  10.0%
+  d=   2 -&gt;  19.0%
+  d=   3 -&gt;  27.1%
+  d=  10 -&gt;  65.1%
+  d=  50 -&gt;  99.5%
+  d= 100 -&gt; 100.0%
+
+Hubness (nº de veces que un punto es 1er vecino de otro; ideal ~1):
+  d=   2 -&gt; máximo   4, puntos que no son vecinos de nadie: 30%
+  d=  20 -&gt; máximo   6, puntos que no son vecinos de nadie: 42%
+  d= 200 -&gt; máximo  10, puntos que no son vecinos de nadie: 54%</pre>
+        </div>
+
+        <p>La teoría acierta con una precisión casi indecente. La media medida en $d=1000$ es 12,918 y la predicción $\sqrt{1000/6} = 12{,}910$. La desviación se queda pegada a 0,2415 desde $d=2$ hasta $d=1000$ —tres órdenes de magnitud— sin moverse. Y el contraste se desploma: de 6,4 en dimensión 5 a 0,110 en dimensión 1000. Con un contraste de 0,110, el vecino más lejano está solo un 11 % más lejos que el más próximo. ¿Qué significa entonces «el más próximo»? Casi nada.</p>
+
+        <p>Dos matices honestos sobre la tabla. El contraste enorme de $d=1$ es un artefacto: en una recta con 500 puntos, $d_{\min}$ es minúsculo y aparece dividiendo. Y la fila del volumen en $d=100$ no es exactamente el 100 %, sino el 99,997 %, redondeado por el formato del <code>print</code>.</p>
+
+        <p>La hubness también se ve, aunque más suave: en $d=200$ hay un punto que es el vecino más próximo de otros diez, y más de la mitad de los puntos no son el vecino de nadie. El grafo de vecindad, que debería ser más o menos homogéneo, se convierte en un sistema de estrellas.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sube <code>n = 500</code> a <code>n = 2000</code> y vuelve a ejecutar. Las medias y desviaciones no se mueven —son propiedades de la distribución, no del tamaño de muestra: en $d=1000$ pasan de 12,918 y 0,2380 a 12,899 y 0,2411— pero el contraste <strong>sube</strong>: de 0,110 a 0,126 en $d=1000$, y de 0,407 a 0,466 en $d=100$.</p>
+          <p>Es un buen recordatorio de que $(d_{\max}-d_{\min})/d_{\min}$ es un estadístico de extremos: con cuatro veces más puntos, el mínimo baja y el cociente crece, aunque la concentración del grueso de las distancias sea idéntica. Más datos no curan la maldición; solo desplazan las colas.</p>
+        </div>
+
+        <h2 id="escape">Por qué, aun así, el aprendizaje funciona</h2>
+
+        <p>Si todo lo anterior fuera la última palabra, este manual acabaría aquí. Una imagen de 28×28 píxeles vive en $\mathbb{R}^{784}$ y una de un megapíxel en $\mathbb{R}^{3\,000\,000}$; con contrastes de ese calibre nada debería funcionar. Y sin embargo funciona. La salida está en la letra pequeña del teorema: <strong>las coordenadas tienen que ser independientes</strong>.</p>
+
+        <p>Los datos reales no lo son ni de lejos. Los píxeles vecinos están correlacionadísimos; las notas de un alumno en diez asignaturas, también. Los datos no llenan el cubo de dimensión $d$: se apiñan sobre un subconjunto de dimensión mucho menor, curvo y delgado. Esa es la <strong>hipótesis de la variedad</strong>: los datos de dimensión $d$ viven, aproximadamente, sobre una variedad de dimensión intrínseca $m \ll d$.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 La dimensión que cuenta es la intrínseca</div>
+          <p>Una hoja de papel arrugada dentro de una habitación es un objeto de dimensión 2 metido en $\mathbb{R}^3$. Puedes describir cada punto con dos coordenadas <em>sobre el papel</em>, aunque hagan falta tres para decir dónde está en la habitación. La maldición se calcula con la dimensión de la habitación; el aprendizaje ocurre con la del papel.</p>
+        </div>
+
+        <p>De ahí sale la estrategia entera de la parte III: antes de agrupar, encuentra las coordenadas del papel. PCA lo hace si la variedad es un plano (<a href="09-pca.html">capítulo 9</a>); Isomap, t-SNE y UMAP, si está curvada (<a href="12-manifold-tsne-umap.html">capítulo 12</a>); y un autoencoder la aprende sin suponer casi nada sobre su forma (<a href="13-autoencoders.html">capítulo 13</a>). Reducir la dimensión no es un truco de eficiencia: es la condición para que «cerca» vuelva a significar algo.</p>
+
+        <p>Con las dos herramientas de esta parte —una densidad que modelar y una métrica con la que medir— ya podemos hacer la pregunta que casi todo el mundo trae consigo cuando llega al aprendizaje no supervisado: ¿en qué grupos se dividen mis datos? Empezamos por el algoritmo más simple que existe, en el <a href="03-kmeans.html">capítulo 3</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># cuatro métricas sobre la misma nube</span>
+<span class="prompt">$</span> python code/02-geometria-y-dimensionalidad/distancias.py
+
+<span class="comment"># los tres efectos de la maldición, medidos</span>
+<span class="prompt">$</span> python code/02-geometria-y-dimensionalidad/maldicion_dimensionalidad.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>La métrica es la mitad del modelo: elegirla equivale a declarar qué transformaciones no deben cambiar el parecido.</li>
+            <li>La distancia coseno es la euclídea al cuadrado sobre la esfera unidad, dividida por dos: $\lVert\hat x - \hat y\rVert^2 = 2\,d_{\cos}$. Normalizar las filas basta para «hacer k-means con coseno».</li>
+            <li>Mahalanobis es la euclídea tras blanquear: $d_M(x,y) = \lVert S^{-1/2}(x-y)\rVert_2$. Potente, pero encoge la dirección de máxima varianza, que suele ser la que separa los grupos.</li>
+            <li>En el cubo unidad, la distancia media crece como $\sqrt{d/6}$ mientras su desviación se queda en $\frac12\sqrt{7/30} \approx 0{,}2415$. El contraste relativo cae como $1/\sqrt d$: medido, de 6,4 en $d=5$ a 0,110 en $d=1000$.</li>
+            <li>El teorema exige coordenadas independientes, y los datos reales no las tienen: viven sobre variedades de dimensión intrínseca baja. Encontrarlas es el objeto de la parte III.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

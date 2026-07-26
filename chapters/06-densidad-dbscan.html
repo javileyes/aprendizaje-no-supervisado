@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>6. Clústering por densidad: DBSCAN y HDBSCAN · No supervisado</title>
+  <meta name="description" content="Clústeres de forma arbitraria y ruido explícito: alcanzabilidad por densidad, distancia mutua de alcance y jerarquía de estabilidad." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="6">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte II · Capítulo 6</span>
+        <h1>Clústering por densidad: DBSCAN y HDBSCAN</h1>
+        <p class="lead">Los tres métodos anteriores comparten dos defectos: todos los puntos acaban en algún grupo —aunque no pertenezcan a ninguno— y todos los grupos son, de un modo u otro, bolas. Aquí cambiamos de definición: un clúster ya no es un conjunto de puntos próximos a un centro, sino <strong>una región conexa donde hay mucha masa</strong>. Con eso llegan las formas arbitrarias y, por fin, el ruido como categoría de primera clase.</p>
+
+        <h2 id="idea">Islas en la niebla</h2>
+
+        <p>Mira un mapa de luces nocturnas desde un satélite. Las ciudades no son círculos: son manchas irregulares, con brazos que siguen los ríos y las autopistas. Nadie las define por su centro; las define su <em>brillo</em>. Y entre ellas hay campo oscuro que no pertenece a ninguna ciudad y al que no tiene sentido asignar una.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Imagina que subes lentamente el nivel de un mar que cubre el paisaje de la densidad. Al principio todo está sumergido; según baja el agua, van emergiendo islas. <strong>Cada isla es un clúster, y su forma es la que le dé la densidad, no la que le imponga el algoritmo.</strong> Los puntos que quedan bajo el agua son ruido.</p>
+        </div>
+
+        <p>Esa imagen tiene nombre formal. Si $p$ es la densidad, los clústeres al nivel $\lambda$ son las <strong>componentes conexas del conjunto de nivel</strong> $\{x : p(x) \gt \lambda\}$. Es la definición de Hartigan (1975), y es la definición matemáticamente más limpia de «clúster» que existe: no depende de $k$, ni de la forma, ni de un centroide. Solo depende de la densidad y de un umbral. DBSCAN es una manera práctica de aproximarla con una muestra finita.</p>
+
+        <h2 id="definiciones">Las definiciones de DBSCAN</h2>
+
+        <p>DBSCAN (Ester, Kriegel, Sander y Xu, 1996) tiene dos parámetros: un radio $\varepsilon$ y un número mínimo de puntos $\mathrm{minPts}$. Con ellos define un vocabulario de cinco términos que hay que leer despacio, porque el algoritmo entero es su consecuencia directa.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El vocabulario</div>
+          <p>$$ N_\varepsilon(x) = \{\, y \in \mathcal{D} : d(x,y) \le \varepsilon \,\} $$</p>
+          <p><strong>Punto núcleo:</strong> $x$ es núcleo si $|N_\varepsilon(x)| \ge \mathrm{minPts}$. Tiene suficiente compañía a su alrededor.</p>
+          <p><strong>Directamente alcanzable:</strong> $y$ lo es desde $x$ si $x$ es núcleo e $y \in N_\varepsilon(x)$.</p>
+          <p><strong>Alcanzable por densidad:</strong> $y$ lo es desde $x$ si existe una cadena $x = p_1, p_2, \dots, p_m = y$ en la que cada eslabón es directamente alcanzable del anterior.</p>
+          <p><strong>Conectados por densidad:</strong> $x$ e $y$ lo están si existe un núcleo $c$ desde el que ambos son alcanzables.</p>
+          <p class="math-note">Un <em>clúster</em> es un conjunto maximal de puntos conectados por densidad. Un punto que pertenece a un clúster sin ser núcleo es <em>frontera</em>. Un punto que no es ni núcleo ni frontera es <strong>ruido</strong>, y se queda fuera de todo.</p>
+        </div>
+
+        <p>Fíjate en la asimetría: solo los puntos núcleo propagan la pertenencia. Un punto frontera entra en el clúster porque un núcleo lo alcanza, pero él no arrastra a nadie más. Esa asimetría es la que impide que las cadenas de puntos aislados encadenen grupos, y es lo que distingue a DBSCAN del enlace simple del <a href="05-clustering-jerarquico.html">capítulo 5</a>, que sí se dejaba engañar por un puente de 16 puntos.</p>
+
+        <figure class="figure">
+          <svg viewBox="0 0 620 220" width="100%" role="img" aria-label="Puntos núcleo, frontera y ruido con radio epsilon">
+            <circle cx="160" cy="110" r="52" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
+            <circle cx="270" cy="130" r="52" fill="#5b8def" opacity="0.10" stroke="#5b8def" stroke-dasharray="4 3"/>
+            <circle cx="160" cy="110" r="7" fill="#5b8def"/>
+            <circle cx="270" cy="130" r="7" fill="#5b8def"/>
+            <circle cx="140" cy="88" r="5" fill="#5b8def"/><circle cx="182" cy="94" r="5" fill="#5b8def"/>
+            <circle cx="146" cy="134" r="5" fill="#5b8def"/><circle cx="190" cy="130" r="5" fill="#5b8def"/>
+            <circle cx="128" cy="112" r="5" fill="#5b8def"/><circle cx="205" cy="112" r="5" fill="#5b8def"/>
+            <circle cx="250" cy="106" r="5" fill="#5b8def"/><circle cx="292" cy="112" r="5" fill="#5b8def"/>
+            <circle cx="258" cy="156" r="5" fill="#5b8def"/><circle cx="298" cy="152" r="5" fill="#5b8def"/>
+            <circle cx="316" cy="130" r="6" fill="#e2b53d"/>
+            <circle cx="500" cy="70" r="6" fill="#ef476f"/>
+            <circle cx="560" cy="160" r="6" fill="#ef476f"/>
+
+            <line x1="160" y1="110" x2="212" y2="110" stroke="#5b8def" stroke-width="1.5"/>
+            <text x="186" y="104" text-anchor="middle" font-size="12" fill="#5b8def">ε</text>
+
+            <text x="160" y="196" text-anchor="middle" font-size="12" fill="#5b8def">núcleo: ≥ minPts vecinos</text>
+            <text x="360" y="196" text-anchor="middle" font-size="12" fill="#e2b53d">frontera</text>
+            <text x="530" y="196" text-anchor="middle" font-size="12" fill="#ef476f">ruido</text>
+          </svg>
+          <figcaption>Con minPts = 6, los puntos azules son núcleo. El amarillo está dentro del radio de un núcleo pero no tiene bastantes vecinos propios: es frontera. Los rojos no son alcanzables desde ningún núcleo: son ruido.</figcaption>
+        </figure>
+
+        <p>El algoritmo se sigue solo: recorre los puntos, y cada vez que encuentra un núcleo sin etiquetar, arranca un clúster nuevo y lo expande en anchura, añadiendo vecinos y encolando solo los que a su vez sean núcleo.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ DBSCAN no es del todo determinista</div>
+          <p>Un punto frontera puede estar en el radio de núcleos de <em>dos</em> clústeres distintos. En ese caso se lo queda el que llegue primero, así que el resultado depende del orden de recorrido. Los puntos núcleo, en cambio, siempre acaban en el mismo sitio. Es una ambigüedad pequeña pero real, y la razón de que algunos autores prefieran DBSCAN* —la variante que trata los puntos frontera como ruido y que es la base de HDBSCAN—.</p>
+        </div>
+
+        <h2 id="ejemplo">DBSCAN sobre las lunas con ruido</h2>
+
+        <p>Volvemos a las dos lunas que ni k-means (70,1 %) ni Ward (60,2 %) supieron separar, pero esta vez añadimos un 12 % de ruido uniforme por encima, que es lo que pasa con los datos reales.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">dbscan_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(2)
+
+# --- Datos: dos lunas + ruido uniforme por encima ---
+t = rng.uniform(0, np.pi, 150)
+luna_a = np.column_stack([np.cos(t), np.sin(t)]) + rng.normal(scale=0.08, size=(150, 2))
+luna_b = np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)]) + rng.normal(scale=0.08, size=(150, 2))
+ruido = rng.uniform([-1.6, -1.2], [2.6, 1.6], size=(40, 2))
+X = np.vstack([luna_a, luna_b, ruido])
+y = np.concatenate([np.zeros(150, int), np.ones(150, int), np.full(40, -1)])
+n = len(X)
+print(f"{n} puntos: 150 + 150 de las lunas y 40 de ruido ({40/n:.0%}).")
+
+# Matriz de distancias (n es pequeño; con n grande se usaría un índice espacial)
+sq = (X ** 2).sum(axis=1)
+D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+
+
+def dbscan(D, eps, min_pts):
+    """Devuelve etiquetas; -1 significa ruido."""
+    n = len(D)
+    vecinos = [np.flatnonzero(D[i] &lt;= eps) for i in range(n)]      # incluye a i
+    nucleo = np.array([len(v) &gt;= min_pts for v in vecinos])
+    etiqueta = np.full(n, -1)
+    c = 0
+    for i in range(n):
+        if etiqueta[i] != -1 or not nucleo[i]:
+            continue
+        # expansión en anchura desde el punto núcleo i
+        etiqueta[i] = c
+        cola = list(vecinos[i])
+        while cola:
+            j = cola.pop()
+            if etiqueta[j] == -1:
+                etiqueta[j] = c                     # punto frontera o núcleo nuevo
+                if nucleo[j]:
+                    cola.extend(vecinos[j])         # solo los núcleo propagan
+        c += 1
+    return etiqueta, nucleo
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+# --- El gráfico de k-distancias: la heurística para elegir epsilon ---
+MIN_PTS = 8
+k_dist = np.sort(np.sort(D, axis=1)[:, MIN_PTS - 1])
+print(f"\nDistancia al {MIN_PTS}º vecino: mediana {np.median(k_dist):.3f}, "
+      f"percentil 90 {np.percentile(k_dist, 90):.3f}")
+
+# --- Barrido de epsilon ---
+print(f"\n{'eps':&gt;6} {'grupos':&gt;7} {'ruido':&gt;7} {'acuerdo lunas':&gt;15} {'ruido acertado':&gt;16}")
+mejor, respaldo = None, None
+for eps in [0.06, 0.08, 0.10, 0.12, 0.15, 0.20, 0.30, 0.50]:
+    z, nucleo = dbscan(D, eps, MIN_PTS)
+    n_grupos = len(set(z[z &gt;= 0]))
+    frac_ruido = (z == -1).mean()
+    lunas = z[:300]
+    acu = acuerdo(lunas, y[:300])
+    ruido_ok = (z[300:] == -1).mean()
+    print(f"{eps:6.2f} {n_grupos:7d} {frac_ruido:7.1%} {acu:14.1%} {ruido_ok:15.1%}")
+    if n_grupos == 2 and (mejor is None or acu &gt; mejor[1]):
+        mejor = (eps, acu, z, nucleo)
+    if respaldo is None or acu &gt; respaldo[1]:
+        respaldo = (eps, acu, z, nucleo)
+
+if mejor is None:            # con otros parámetros puede no haber ningún eps con 2 grupos
+    mejor = respaldo
+    print("\n(ningún epsilon da exactamente 2 grupos; usamos el de mayor acuerdo)")
+eps, acu, z, nucleo = mejor
+print(f"\nEpsilon elegido: {eps:.2f}")
+print(f"  acuerdo en las lunas       : {acu:.1%}")
+print(f"  puntos de ruido detectados : {(z[300:] == -1).sum()}/40")
+print(f"  puntos núcleo              : {nucleo.sum()}/{n}")
+print(f"  puntos frontera            : {((z &gt;= 0) &amp; ~nucleo).sum()}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=12, edgecolors="none")
+ax[0].set_title("verdad (gris = ruido)")
+col = np.where(z &lt; 0, -1, z)
+ax[1].scatter(X[z &lt; 0, 0], X[z &lt; 0, 1], c="#aab", s=14, marker="x")
+ax[1].scatter(X[z &gt;= 0, 0], X[z &gt;= 0, 1], c=col[z &gt;= 0], cmap="coolwarm",
+              s=12, edgecolors="none")
+ax[1].set_title(f"DBSCAN eps={eps}: {acu:.0%}")
+for a in ax[:2]:
+    a.set_xticks([])
+    a.set_yticks([])
+ax[2].plot(k_dist, color="#5b8def")
+ax[2].axhline(eps, ls="--", c="#ef476f")
+ax[2].set_xlabel("puntos ordenados")
+ax[2].set_ylabel(f"distancia al {MIN_PTS}º vecino")
+ax[2].set_title("gráfico de k-distancias")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>340 puntos: 150 + 150 de las lunas y 40 de ruido (12%).
+
+Distancia al 8º vecino: mediana 0.132, percentil 90 0.223
+
+   eps  grupos   ruido   acuerdo lunas   ruido acertado
+  0.06       1   97.6%          50.0%          100.0%
+  0.08       4   87.6%          50.3%           95.0%
+  0.10      10   60.9%          52.0%           90.0%
+  0.12      11   28.5%          56.5%           82.5%
+  0.15       4   13.8%          81.6%           72.5%
+  0.20       2    7.1%         100.0%           60.0%
+  0.30       2    4.1%         100.0%           35.0%
+  0.50       1    1.2%          49.8%           10.0%
+
+Epsilon elegido: 0.20
+  acuerdo en las lunas       : 100.0%
+  puntos de ruido detectados : 24/40
+  puntos núcleo              : 293/340
+  puntos frontera            : 23</pre>
+        </div>
+
+        <p>Con $\varepsilon = 0{,}20$, DBSCAN separa las dos lunas con un <strong>100 % de acuerdo</strong> —un problema en el que k-means se quedaba en el 70,1 %— y además señala 24 de los 40 puntos de ruido sin que nadie le haya dicho que existían. Ningún método anterior podía hacer eso: k-means y las mixturas están obligados a colocar cada punto en algún sitio.</p>
+
+        <p>Pero la tabla completa es más instructiva que la mejor fila, porque enseña la fragilidad. Con $\varepsilon = 0{,}15$ salen 4 grupos y el acuerdo cae al 81,6 %; con 0,12 salen <strong>11</strong> grupos; con 0,50 se fusiona todo en uno y el acuerdo se hunde al 49,8 %. El margen útil es estrecho, y no hay ninguna señal interna que te avise de que te has pasado.</p>
+
+        <p>Fíjate también en el <em>compromiso</em> que hay en la última columna: al subir $\varepsilon$, cada vez se detecta menos ruido (del 100 % al 10 %), porque puntos que estaban solos empiezan a tener vecinos suficientes. Detección de ruido y detección de estructura tiran en direcciones opuestas.</p>
+
+        <h3>Elegir $\varepsilon$: el gráfico de k-distancias</h3>
+
+        <p>La heurística estándar: calcula para cada punto su distancia al $k$-ésimo vecino (con $k = \mathrm{minPts}$), ordena esas distancias de menor a mayor y dibújalas. Los puntos de dentro de un clúster tendrán valores pequeños y parecidos; el ruido, valores mucho mayores. El «codo» de esa curva marca la frontera y sugiere $\varepsilon$. En nuestros datos la mediana es 0,132 y el percentil 90 es 0,223, y el valor que funciona (0,20) cae justo en esa zona de subida.</p>
+
+        <p>Sobre $\mathrm{minPts}$ hay una regla razonable: al menos $d+1$, y en la práctica $2d$ suele ir bien. Cuanto mayor, más robusto al ruido y más puntos declarados ruido.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>MIN_PTS = 8</code> por <code>MIN_PTS = 3</code> y vuelve a ejecutar. Con tan poca exigencia casi todo punto es núcleo: los núcleo pasan de 293 a <strong>315</strong> de 340, los de frontera de 23 a 10, y los puntos de ruido detectados caen de 24 a <strong>15</strong> de 40. Además <em>ningún</em> $\varepsilon$ del barrido produce ya exactamente dos grupos —con 0,20 salen cuatro—, y por eso el programa avisa y se queda con el de mayor acuerdo. Con $\mathrm{minPts}$ bajo, DBSCAN deja de saber distinguir el ruido y se fragmenta.</p>
+        </div>
+
+        <h2 id="varias-densidades">El talón de Aquiles: un solo $\varepsilon$ para todo</h2>
+
+        <p>El defecto estructural de DBSCAN es que $\varepsilon$ es <em>global</em>. Si tus datos tienen un grupo apretado y otro disperso, no existe ningún $\varepsilon$ que funcione para ambos: el que hace falta para conectar el grupo disperso es tan grande que fusiona el apretado con todo lo que tenga cerca.</p>
+
+        <p>La solución es dejar de razonar con un umbral y razonar con <strong>todos los umbrales a la vez</strong>, que es exactamente lo que hace HDBSCAN. La idea, en cinco pasos:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Distancia núcleo y alcance mutuo</div>
+          <p>$$ d_{\text{núcleo}}(x) \;=\; \text{distancia de } x \text{ a su } k\text{-ésimo vecino más próximo} $$</p>
+          <p>$$ d_{\text{alcance}}(a,b) \;=\; \max\big\{\, d_{\text{núcleo}}(a),\; d_{\text{núcleo}}(b),\; d(a,b) \,\big\} $$</p>
+          <p class="math-note">La distancia núcleo es un <strong>estimador inverso de la densidad</strong>: donde hay muchos puntos, el $k$-ésimo vecino está cerca y $d_{\text{núcleo}}$ es pequeña. La distancia de alcance mutuo <em>infla</em> la distancia entre dos puntos hasta al menos la peor de sus densidades locales. Efecto: los puntos en zonas dispersas se separan de todo, mientras que dentro de un grupo denso las distancias no cambian. Es lo que vuelve el análisis <em>relativo</em> a la densidad local en lugar de absoluto.</p>
+        </div>
+
+        <ol>
+          <li><strong>Distancias núcleo</strong> para todos los puntos, con el parámetro $k = \mathrm{minSamples}$.</li>
+          <li><strong>Alcance mutuo</strong> como nueva métrica.</li>
+          <li><strong>Árbol de recubrimiento mínimo</strong> sobre esa métrica. Aquí reaparece el <a href="05-clustering-jerarquico.html">capítulo 5</a>: recorrer el árbol de recubrimiento mínimo por orden de peso es exactamente el enlace simple, y el enlace simple sobre la distancia de alcance mutuo es DBSCAN* para todos los $\varepsilon$ a la vez.</li>
+          <li><strong>Condensación</strong>: al recorrer el árbol de arriba abajo, cada división se juzga por tamaño. Si una rama tiene menos de $\mathrm{minClusterSize}$ puntos, no es un grupo nuevo: son puntos que <em>se caen</em> del grupo padre. Solo cuando las dos ramas son grandes hay una división genuina.</li>
+          <li><strong>Selección por estabilidad</strong>: se elige el conjunto de grupos que maximiza el «exceso de masa».</li>
+        </ol>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Estabilidad de un grupo</div>
+          <p>$$ S(C) \;=\; \sum_{x \in C} \big( \lambda_{\text{caída}}(x) - \lambda_{\text{nac}}(C) \big), \qquad \lambda = \frac{1}{\text{distancia}} $$</p>
+          <p class="math-note">$\lambda_{\text{nac}}(C)$ es el valor de $\lambda$ al que nació el grupo (al dividirse su padre) y $\lambda_{\text{caída}}(x)$ el valor al que el punto $x$ lo abandonó. Como $\lambda$ es el inverso de la distancia, <strong>vivir mucho en la jerarquía significa tener $S$ grande</strong>: un grupo que persiste a lo largo de un rango amplio de umbrales es un grupo real. La selección final recorre el árbol de las hojas a la raíz y se queda con un nodo si su estabilidad supera la suma de las de sus descendientes seleccionados.</p>
+        </div>
+
+        <h2 id="hdbscan">HDBSCAN desde cero</h2>
+
+        <p>El programa implementa los cinco pasos —incluido el árbol de recubrimiento mínimo por el algoritmo de Prim y la selección por exceso de masa— sobre datos diseñados para que ningún $\varepsilon$ único funcione: dos grupos muy densos y casi pegados (dispersión 0,14, separados por 1,1) y uno muy disperso (dispersión 1,50), más un 11 % de ruido uniforme.</p>
+
+        <p>Una nota sobre cómo medimos. Si contáramos el acuerdo tratando «ruido» como un grupo más, un método que declarase ruido todo un clúster saldría premiado, porque esos puntos quedarían juntos. Para evitarlo, la función <code>expandir</code> convierte cada punto marcado como ruido en un grupo unipersonal antes de comparar.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">hdbscan_estabilidad.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(1)
+
+# --- Datos: un grupo apretado, uno flojo y otro intermedio, más ruido ---
+X = np.vstack([
+    rng.normal(scale=0.14, size=(120, 2)) + [0.0, 0.0],      # denso
+    rng.normal(scale=0.14, size=(120, 2)) + [1.1, 0.0],      # denso, pegado al anterior
+    rng.normal(scale=1.50, size=(120, 2)) + [7.0, 1.0],      # muy disperso
+    rng.uniform([-2, -4], [12, 6], size=(45, 2)),            # ruido uniforme
+])
+y = np.concatenate([np.zeros(120, int), np.ones(120, int),
+                    np.full(120, 2), np.full(45, -1)])
+n = len(X)
+sq = (X ** 2).sum(axis=1)
+D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * X @ X.T, 0.0))
+print(f"{n} puntos: tres grupos de 120 con dispersiones 0,14 / 0,14 / 1,50 y 45 de ruido.")
+
+
+def expandir(z):
+    """Cada punto marcado como ruido pasa a ser su propio grupo, para que
+    agrupar todo el ruido junto NO se premie al medir el acuerdo."""
+    z = z.copy()
+    libre = z.max() + 1
+    for i in np.flatnonzero(z &lt; 0):
+        z[i] = libre
+        libre += 1
+    return z
+
+
+def acuerdo(a, b):
+    a, b = expandir(a), expandir(b)
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def dbscan(D, eps, min_pts):
+    n = len(D)
+    vec = [np.flatnonzero(D[i] &lt;= eps) for i in range(n)]
+    nucleo = np.array([len(v) &gt;= min_pts for v in vec])
+    et = np.full(n, -1)
+    c = 0
+    for i in range(n):
+        if et[i] != -1 or not nucleo[i]:
+            continue
+        et[i] = c
+        cola = list(vec[i])
+        while cola:
+            j = cola.pop()
+            if et[j] == -1:
+                et[j] = c
+                if nucleo[j]:
+                    cola.extend(vec[j])
+        c += 1
+    return et
+
+
+# ---------- Paso 1 y 2: distancia núcleo y alcance mutuo ----------
+MIN_SAMPLES = 6
+MIN_CLUSTER = 25
+d_core = np.sort(D, axis=1)[:, MIN_SAMPLES - 1]
+MR = np.maximum(np.maximum(D, d_core[:, None]), d_core[None, :])
+print(f"\nDistancia núcleo (k={MIN_SAMPLES}): del grupo denso {d_core[:120].mean():.3f}, "
+      f"del disperso {d_core[240:360].mean():.3f}, del ruido {d_core[360:].mean():.3f}")
+
+# ---------- Paso 3: árbol de recubrimiento mínimo (algoritmo de Prim) ----------
+dentro = np.zeros(n, bool)
+dentro[0] = True
+mejor_d = MR[0].copy()
+mejor_o = np.zeros(n, int)
+aristas = []
+for _ in range(n - 1):
+    mejor_d_masked = np.where(dentro, np.inf, mejor_d)
+    j = int(np.argmin(mejor_d_masked))
+    aristas.append((mejor_o[j], j, mejor_d[j]))
+    dentro[j] = True
+    menor = MR[j] &lt; mejor_d
+    mejor_d = np.where(menor, MR[j], mejor_d)
+    mejor_o = np.where(menor, j, mejor_o)
+aristas.sort(key=lambda e: e[2])
+
+# ---------- Paso 4: jerarquía de enlace simple mediante union-find ----------
+padre = list(range(2 * n))
+tam = [1] * n + [0] * n
+
+
+def raiz(x):
+    while padre[x] != x:
+        padre[x] = padre[padre[x]]
+        x = padre[x]
+    return x
+
+
+hijos = {}
+alturas = {}
+nodo = n
+for u, v, d in aristas:
+    ru, rv = raiz(u), raiz(v)
+    hijos[nodo] = (ru, rv)
+    alturas[nodo] = d
+    tam[nodo] = tam[ru] + tam[rv]
+    padre[ru] = padre[rv] = padre[nodo] = nodo
+    nodo += 1
+raiz_arbol = nodo - 1
+
+
+def hojas_de(x):
+    pila, out = [x], []
+    while pila:
+        a = pila.pop()
+        if a &lt; n:
+            out.append(a)
+        else:
+            pila.extend(hijos[a])
+    return out
+
+
+# ---------- Paso 4b: condensación ----------
+# Recorremos de la raíz hacia abajo. Un hijo con menos de MIN_CLUSTER puntos
+# "se cae" del grupo actual (pasa a ser ruido a ese nivel); si los dos hijos son
+# suficientemente grandes, hay una división genuina y nacen dos grupos nuevos.
+lam_caida = np.zeros(n)          # lambda a la que cada punto abandona su grupo
+lam_nac, puntos_grupo, hijos_grupo = {}, {}, {}
+sig = 0
+lam_nac[sig] = 0.0               # el grupo 0 es la raíz: contiene todo
+puntos_grupo[sig] = []
+hijos_grupo[sig] = []
+asignado = {raiz_arbol: sig}
+sig += 1
+
+pila = [raiz_arbol]
+while pila:
+    nodo = pila.pop()
+    g = asignado[nodo]
+    if nodo &lt; n:
+        continue
+    lam = 1.0 / max(alturas[nodo], 1e-12)
+    a, b = hijos[nodo]
+    ta = tam[a] if a &gt;= n else 1
+    tb = tam[b] if b &gt;= n else 1
+    grandes = [(c, t) for c, t in ((a, ta), (b, tb)) if t &gt;= MIN_CLUSTER]
+    if len(grandes) == 2:                       # división genuina: dos grupos nuevos
+        for c, _ in grandes:
+            lam_nac[sig] = lam
+            puntos_grupo[sig] = []
+            hijos_grupo[sig] = []
+            hijos_grupo[g].append(sig)
+            asignado[c] = sig
+            sig += 1
+            pila.append(c)
+    else:                                       # los pequeños se caen del grupo g
+        for c, t in ((a, ta), (b, tb)):
+            if t &gt;= MIN_CLUSTER:
+                asignado[c] = g
+                pila.append(c)
+            else:
+                for h in hojas_de(c):
+                    lam_caida[h] = lam
+                    puntos_grupo[g].append(h)
+
+# ---------- Paso 5: estabilidad y selección por exceso de masa ----------
+def estabilidad(g):
+    s = sum(lam_caida[h] - lam_nac[g] for h in puntos_grupo[g])
+    for c in hijos_grupo[g]:
+        s += len(hojas_totales(c)) * (lam_nac[c] - lam_nac[g])
+    return s
+
+
+def hojas_totales(g):
+    out = list(puntos_grupo[g])
+    for c in hijos_grupo[g]:
+        out += hojas_totales(c)
+    return out
+
+
+S = {g: estabilidad(g) for g in lam_nac}
+seleccionado, S_hat = {}, {}
+for g in sorted(lam_nac, reverse=True):          # de las hojas hacia la raíz
+    suma_hijos = sum(S_hat[c] for c in hijos_grupo[g])
+    if hijos_grupo[g] and suma_hijos &gt; S[g]:
+        S_hat[g] = suma_hijos
+        seleccionado[g] = False
+    else:
+        S_hat[g] = S[g]
+        seleccionado[g] = True
+        for c in hijos_grupo[g]:                 # desactiva toda su descendencia
+            pila2 = [c]
+            while pila2:
+                x = pila2.pop()
+                seleccionado[x] = False
+                pila2.extend(hijos_grupo[x])
+
+elegidos = [g for g in lam_nac if seleccionado[g] and g != 0]
+z_h = np.full(n, -1)
+for c, g in enumerate(elegidos):
+    for h in hojas_totales(g):
+        z_h[h] = c
+
+print(f"\nÁrbol condensado: {len(lam_nac)} grupos candidatos; "
+      f"seleccionados {len(elegidos)} por estabilidad.")
+print(f"{'grupo':&gt;6} {'nace en lambda':&gt;15} {'puntos':&gt;8} {'estabilidad':&gt;13} {'elegido':&gt;9}")
+for g in sorted(lam_nac):
+    marca = "sí" if seleccionado[g] and g != 0 else "no"
+    print(f"{g:6d} {lam_nac[g]:15.4f} {len(hojas_totales(g)):8d} {S[g]:13.2f} {marca:&gt;9}")
+
+print(f"\nHDBSCAN -&gt; {len(elegidos)} grupos, {(z_h == -1).mean():.1%} de ruido "
+      f"(la verdad tiene {(y == -1).mean():.1%}), acuerdo {acuerdo(z_h, y):.1%}")
+
+print("\nDBSCAN con un epsilon único, para comparar:")
+print(f"{'eps':&gt;6} {'grupos':&gt;7} {'ruido':&gt;7} {'acuerdo':&gt;9}")
+for eps in [0.15, 0.25, 0.4, 0.6, 0.9, 1.3, 1.8, 2.4]:
+    z = dbscan(D, eps, MIN_SAMPLES)
+    print(f"{eps:6.2f} {len(set(z[z &gt;= 0])):7d} {(z == -1).mean():7.1%} "
+          f"{acuerdo(z, y):8.1%}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X[:, 0], X[:, 1], c=y, cmap="viridis", s=12, edgecolors="none")
+ax[0].set_title("verdad")
+z_db = dbscan(D, 0.4, MIN_SAMPLES)
+for a, z, t in [(ax[1], z_db, f"DBSCAN eps=0.4: {acuerdo(z_db, y):.0%}"),
+                (ax[2], z_h, f"HDBSCAN: {acuerdo(z_h, y):.0%}")]:
+    a.scatter(X[z &lt; 0, 0], X[z &lt; 0, 1], c="#aab", s=14, marker="x")
+    a.scatter(X[z &gt;= 0, 0], X[z &gt;= 0, 1], c=z[z &gt;= 0], cmap="viridis",
+              s=12, edgecolors="none")
+    a.set_title(t)
+for a in ax:
+    a.set_xticks([])
+    a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>405 puntos: tres grupos de 120 con dispersiones 0,14 / 0,14 / 1,50 y 45 de ruido.
+
+Distancia núcleo (k=6): del grupo denso 0.067, del disperso 0.745, del ruido 1.704
+
+Árbol condensado: 5 grupos candidatos; seleccionados 3 por estabilidad.
+ grupo  nace en lambda   puntos   estabilidad   elegido
+     0          0.0000      405        243.45        no
+     1          0.6089      242        376.95        no
+     2          0.6089      138         90.67        sí
+     3          2.1772      120       1930.62        sí
+     4          2.1772      120       1867.56        sí
+
+HDBSCAN -&gt; 3 grupos, 6.7% de ruido (la verdad tiene 11.1%), acuerdo 96.6%
+
+DBSCAN con un epsilon único, para comparar:
+   eps  grupos   ruido   acuerdo
+  0.15       2   42.5%    90.3%
+  0.25       2   41.0%    91.1%
+  0.40       6   32.1%    91.4%
+  0.60       4   24.2%    74.5%
+  0.90       2   13.6%    79.7%
+  1.30       2    6.7%    78.2%
+  1.80       2    1.2%    31.1%
+  2.40       1    0.2%    26.7%</pre>
+        </div>
+
+        <p>La segunda línea es el diagnóstico entero del problema: la distancia núcleo media vale <strong>0,067 en el grupo denso, 0,745 en el disperso y 1,704 en el ruido</strong>. Son tres escalas separadas por un orden de magnitud. Ningún $\varepsilon$ puede servir para las tres, y la tabla de DBSCAN lo confirma: en el mejor caso (0,40) alcanza un 91,4 %, pero con <em>seis</em> grupos y un 32 % de los puntos declarados ruido. Nunca encuentra los tres grupos limpios.</p>
+
+        <p>HDBSCAN sí: <strong>3 grupos, 96,6 % de acuerdo y un 6,7 % de ruido</strong> frente al 11,1 % real. Y la tabla del árbol condensado permite ver <em>por qué</em>. El grupo 1, que nace en $\lambda = 0{,}609$ y contiene 242 puntos, tiene estabilidad 376,95; pero sus dos hijos —los grupos 3 y 4, los dos grupos densos, que nacen mucho más tarde en $\lambda = 2{,}177$— suman $1930{,}62 + 1867{,}56 = 3798{,}18$. Como los hijos son mucho más estables que el padre, la selección descarta al padre y se queda con ellos. El grupo 2, en cambio, no tiene hijos y se selecciona directamente: es el grupo disperso.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Por qué esto resuelve el problema</div>
+          <p>Los dos grupos densos nacen a $\lambda = 2{,}18$, es decir, a una distancia de $1/2{,}18 = 0{,}46$; el disperso vive a partir de $\lambda = 0{,}61$, o sea, distancias de hasta 1,64. Son umbrales <em>distintos</em>, y HDBSCAN puede aceptar los tres porque no compara distancias absolutas, sino <strong>cuánto vive cada grupo en su propia escala</strong>. Eso es lo que un único $\varepsilon$ jamás podrá hacer.</p>
+        </div>
+
+        <h2 id="comparativa">Dónde encaja cada método</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>k-means</th><th>GMM</th><th>Jerárquico</th><th>DBSCAN</th><th>HDBSCAN</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>¿Hay que fijar $k$?</td><td>Sí</td><td>Sí</td><td>No</td><td>No</td><td>No</td></tr>
+              <tr><td>Formas arbitrarias</td><td>No</td><td>Elípticas</td><td>Según el enlace</td><td>Sí</td><td>Sí</td></tr>
+              <tr><td>Ruido explícito</td><td>No</td><td>No</td><td>No</td><td>Sí</td><td>Sí</td></tr>
+              <tr><td>Densidades distintas</td><td>Mal</td><td>Regular</td><td>Regular</td><td><strong>No</strong></td><td>Sí</td></tr>
+              <tr><td>Parámetros clave</td><td>$k$</td><td>$k$</td><td>enlace, corte</td><td>$\varepsilon$, minPts</td><td>minClusterSize</td></tr>
+              <tr><td>Coste típico</td><td>$O(nkd)$</td><td>$O(nkd^2)$</td><td>$O(n^2)$</td><td>$O(n\log n)$</td><td>$O(n\log n)$</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Merece la pena subrayar la fila de los parámetros. DBSCAN tiene dos y uno de ellos, $\varepsilon$, es una <em>distancia</em>: hay que conocer la escala de los datos para fijarlo, y ya vimos que el margen es estrecho. HDBSCAN tiene esencialmente uno, <code>minClusterSize</code>, que se expresa en <em>número de puntos</em>: mucho más fácil de justificar («no me interesa un grupo de menos de 25 clientes») y mucho menos sensible. Esa es, en la práctica, la razón principal por la que HDBSCAN ha desplazado a DBSCAN.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Y la maldición sigue ahí</div>
+          <p>Los métodos de densidad son los que más sufren lo visto en el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>: si todas las distancias se concentran, la densidad estimada se aplana y deja de haber islas que emerjan. Por eso en dimensión alta casi nunca se aplica DBSCAN directamente, sino <strong>después</strong> de una reducción de dimensión. Ese es el motivo del salto a la parte III.</p>
+        </div>
+
+        <p>Antes de irnos del espacio original queda una idea de clústering que no hemos probado: en lugar de mirar la densidad, mirar la <em>conectividad</em> como un grafo y resolverlo con álgebra lineal. Es el <a href="07-clustering-espectral.html">capítulo 7</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># DBSCAN, barrido de epsilon y gráfico de k-distancias</span>
+<span class="prompt">$</span> python code/06-densidad-dbscan/dbscan_desde_cero.py
+
+<span class="comment"># HDBSCAN: alcance mutuo, árbol de recubrimiento y estabilidad</span>
+<span class="prompt">$</span> python code/06-densidad-dbscan/hdbscan_estabilidad.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>Un clúster de densidad es una componente conexa de $\{p(x) \gt \lambda\}$: no necesita $k$, ni centroide, ni forma convexa.</li>
+            <li>DBSCAN formaliza eso con $\varepsilon$ y minPts. Solo los puntos núcleo propagan la pertenencia, y lo que no alcanza ningún núcleo es ruido declarado.</li>
+            <li>Medido: 100 % de acuerdo en las lunas con un 12 % de ruido y 24 de los 40 puntos de ruido detectados. Pero con $\varepsilon = 0{,}12$ salen 11 grupos y con $0{,}50$ solo uno: el margen es estrecho.</li>
+            <li>Un $\varepsilon$ global no puede servir a densidades distintas. Con distancias núcleo de 0,067 / 0,745 / 1,704, DBSCAN no pasa del 91,4 % y nunca da tres grupos limpios.</li>
+            <li>HDBSCAN sustituye la distancia por el alcance mutuo $\max\{d_{\text{núcleo}}(a), d_{\text{núcleo}}(b), d(a,b)\}$, construye el árbol de recubrimiento mínimo, lo condensa por tamaño y selecciona por estabilidad $S(C) = \sum_x (\lambda_{\text{caída}} - \lambda_{\text{nac}})$. Resultado: 3 grupos y 96,6 %.</li>
+            <li>Su único parámetro relevante se mide en puntos, no en distancias, y por eso es mucho más fácil de fijar.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>11. NMF e ICA: más allá de la varianza · No supervisado</title>
+  <meta name="description" content="Factorización no negativa y partes-de-un-todo con las reglas de Lee-Seung; independencia y no-gaussianidad con FastICA." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="11">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte III · Capítulo 11</span>
+        <h1>NMF e ICA: más allá de la varianza</h1>
+        <p class="lead">PCA y la SVD comparten un criterio —máxima varianza, mínimo error— y una consecuencia: sus componentes son ortogonales, tienen signos arbitrarios y casi nunca significan nada. Aquí cambiamos el criterio dos veces. NMF pide que todo sea <em>no negativo</em>, y a cambio obtiene partes reconocibles. ICA pide que las componentes sean <em>independientes</em>, y a cambio recupera las causas físicas que generaron los datos.</p>
+
+        <h2 id="por-que">El problema de PCA que nadie menciona</h2>
+
+        <p>Aplica PCA a un conjunto de caras. La primera componente sale como una especie de cara promedio; las siguientes, como fantasmas grises con zonas claras y oscuras que hay que <em>sumar y restar</em> para reconstruir un rostro. Funcionan —el error es mínimo, lo demostró Eckart-Young—, pero no corresponden a nada: no existe media cara negativa.</p>
+
+        <p>La causa es que PCA solo exige ortogonalidad, y la ortogonalidad permite cancelaciones. Si prohibimos los números negativos, prohibimos cancelar, y la única manera de construir el todo es <strong>sumando partes</strong>.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Cambia la restricción y cambias lo que encuentras. <strong>Ortogonalidad</strong> (PCA) da direcciones eficientes pero abstractas. <strong>No negatividad</strong> (NMF) da partes que se suman. <strong>Independencia estadística</strong> (ICA) da causas separadas. Ninguna es «la correcta»: cada una es una hipótesis distinta sobre cómo se generaron los datos.</p>
+        </div>
+
+        <h2 id="nmf">NMF: la restricción que produce partes</h2>
+
+        <p>Dada una matriz de datos no negativa $X \in \mathbb{R}_{+}^{n\times d}$ —píxeles, recuentos de palabras, espectrogramas, todo eso lo es—, buscamos</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El problema de NMF</div>
+          <p>$$ \min_{W \ge 0,\; H \ge 0} \; \big\lVert X - WH \big\rVert_F^2, \qquad W \in \mathbb{R}_{+}^{n\times k},\quad H \in \mathbb{R}_{+}^{k\times d} $$</p>
+          <p class="math-note">$H$ contiene $k$ <em>bases</em> o partes (una por fila, del mismo tamaño que un dato) y $W$ los <em>coeficientes</em> con los que cada dato las combina. Las desigualdades son elemento a elemento. Como $W\ge0$ y $H\ge0$, cada dato es una <strong>suma ponderada positiva</strong> de partes: no hay cancelación posible.</p>
+        </div>
+
+        <p>El problema no es convexo en $(W,H)$ conjuntamente —hay productos de incógnitas—, pero sí lo es en cada uno por separado con el otro fijo. Eso invita a alternar, igual que Lloyd o EM. Lee y Seung propusieron en 1999 unas reglas de actualización sorprendentemente simples:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Reglas multiplicativas de Lee-Seung</div>
+          <p>$$ H \;\leftarrow\; H \odot \frac{W^\top X}{W^\top W H}, \qquad W \;\leftarrow\; W \odot \frac{X H^\top}{W H H^\top} $$</p>
+          <p class="math-note">$\odot$ y la barra de fracción son producto y división <em>elemento a elemento</em>. La clave del diseño: si $X \ge 0$ y se parte de $W, H \gt 0$, todos los factores son no negativos, así que <strong>el producto nunca puede volverse negativo</strong>. La restricción se satisface sola, sin proyecciones ni penalizaciones. Además se demuestra —construyendo una función auxiliar, como en EM— que el error no aumenta nunca.</p>
+        </div>
+
+        <p>Las reglas son, en el fondo, un descenso de gradiente con un paso elegido con astucia. Para $H$, el gradiente del error es $\nabla_H = 2(W^\top W H - W^\top X)$; con paso $\eta = H \oslash (2W^\top W H)$ —distinto para cada elemento— el descenso $H - \eta\odot\nabla_H$ se reduce exactamente a la regla multiplicativa. Ese paso adaptativo es lo que garantiza que nada cruce el cero.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ NMF no tiene solución única</div>
+          <p>Para cualquier matriz diagonal positiva $D$, el par $(WD,\; D^{-1}H)$ da exactamente el mismo producto: hay una indeterminación de escala. Y con matrices no negativas más generales que las diagonales puede haber ambigüedades peores. Solo bajo condiciones de <em>separabilidad</em> —que cada parte tenga algún píxel exclusivo— la factorización es esencialmente única. En la práctica: normaliza las filas de $H$ y comprueba la estabilidad con varias semillas.</p>
+        </div>
+
+        <h2 id="ejemplo-nmf">NMF frente a PCA sobre las mismas imágenes</h2>
+
+        <p>Fabricamos 300 imágenes de 12×12 sumando cuatro partes elementales —dos barras y dos bloques— con activaciones dispersas y aleatorias. La pregunta es si cada método recupera esas cuatro partes.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">nmf_lee_seung.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+lado, k_real, n = 12, 4, 300
+
+# --- Las cuatro "partes" verdaderas: dos barras y dos bloques ---
+partes = np.zeros((k_real, lado, lado))
+partes[0, 2:4, :] = 1.0            # barra horizontal
+partes[1, :, 8:10] = 1.0           # barra vertical
+partes[2, 7:11, 1:5] = 1.0         # bloque abajo a la izquierda
+partes[3, 0:4, 0:3] = 1.0          # bloque arriba a la izquierda
+partes = partes.reshape(k_real, -1)
+
+pesos = rng.random((n, k_real)) * (rng.random((n, k_real)) &gt; 0.4)   # activaciones dispersas
+X = pesos @ partes + 0.02 * rng.random((n, lado * lado))            # ruido no negativo
+d = X.shape[1]
+print(f"{n} imágenes de {lado}x{lado} = {d} píxeles, generadas por {k_real} partes.")
+print(f"Mínimo de X: {X.min():.4f} (todo no negativo, como debe ser)")
+
+
+def nmf(X, k, iters=400, semilla=0):
+    """Reglas multiplicativas de Lee y Seung para minimizar ||X - WH||_F^2."""
+    r = np.random.default_rng(semilla)
+    n, d = X.shape
+    W = r.random((n, k)) + 0.1
+    H = r.random((k, d)) + 0.1
+    eps = 1e-10
+    errores = []
+    for _ in range(iters):
+        # H &lt;- H * (W^T X) / (W^T W H)
+        H *= (W.T @ X) / (W.T @ W @ H + eps)
+        # W &lt;- W * (X H^T) / (W H H^T)
+        W *= (X @ H.T) / (W @ H @ H.T + eps)
+        errores.append(np.linalg.norm(X - W @ H) ** 2)
+    return W, H, np.array(errores)
+
+
+W, H, err = nmf(X, k_real)
+print(f"\nNMF: error {err[0]:.3f} -&gt; {err[-1]:.3f} en {len(err)} iteraciones")
+print(f"  ¿monótono? {'sí' if (np.diff(err) &lt;= 1e-6).all() else 'NO'}")
+print(f"  mínimos de W y H: {W.min():.3e}, {H.min():.3e}  (nunca negativos)")
+
+# --- ¿Ha recuperado las partes? Emparejamos por correlación ---
+def empareja(A, B):
+    """Para cada fila de A, la fila de B más correlacionada."""
+    corr = np.zeros((len(A), len(B)))
+    for i, a in enumerate(A):
+        for j, b in enumerate(B):
+            corr[i, j] = np.corrcoef(a, b)[0, 1]
+    usados, pares = set(), []
+    for i in np.argsort(-corr.max(axis=1)):
+        j = int(np.argmax(np.where([x in usados for x in range(len(B))],
+                                   -np.inf, corr[i])))
+        usados.add(j)
+        pares.append((i, j, corr[i, j]))
+    return pares
+
+
+print("\nCorrelación entre cada componente aprendida y la parte real que le toca:")
+for i, j, c in sorted(empareja(H, partes)):
+    print(f"  componente NMF {i} &lt;-&gt; parte real {j}: {c:.4f}")
+
+# --- PCA sobre los mismos datos, para comparar ---
+mu = X.mean(axis=0)
+Uc, s, Vt = np.linalg.svd(X - mu, full_matrices=False)
+comp_pca = Vt[:k_real]
+print("\nLo mismo con PCA (sus componentes tienen valores NEGATIVOS):")
+for i, j, c in sorted(empareja(comp_pca, partes)):
+    print(f"  componente PCA {i} &lt;-&gt; parte real {j}: {c:.4f}")
+print(f"  fracción de píxeles negativos en las componentes de PCA: "
+      f"{(comp_pca &lt; 0).mean():.1%}")
+print(f"  fracción de píxeles negativos en las de NMF            : "
+      f"{(H &lt; 0).mean():.1%}")
+
+fig, ax = plt.subplots(3, k_real, figsize=(10, 7.5))
+for j in range(k_real):
+    ax[0, j].imshow(partes[j].reshape(lado, lado), cmap="viridis")
+    ax[0, j].set_title(f"parte real {j}", fontsize=10)
+for i, j, _ in sorted(empareja(H, partes)):
+    ax[1, j].imshow(H[i].reshape(lado, lado), cmap="viridis")
+    ax[1, j].set_title(f"NMF {i}", fontsize=10)
+for i, j, _ in sorted(empareja(comp_pca, partes)):
+    ax[2, j].imshow(comp_pca[i].reshape(lado, lado), cmap="coolwarm")
+    ax[2, j].set_title(f"PCA {i}", fontsize=10)
+for fila in ax:
+    for a in fila:
+        a.set_xticks([])
+        a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>300 imágenes de 12x12 = 144 píxeles, generadas por 4 partes.
+Mínimo de X: 0.0000 (todo no negativo, como debe ser)
+
+NMF: error 1632.494 -&gt; 1.923 en 400 iteraciones
+  ¿monótono? sí
+  mínimos de W y H: 7.015e-81, 6.700e-06  (nunca negativos)
+
+Correlación entre cada componente aprendida y la parte real que le toca:
+  componente NMF 0 &lt;-&gt; parte real 0: 1.0000
+  componente NMF 1 &lt;-&gt; parte real 1: 1.0000
+  componente NMF 2 &lt;-&gt; parte real 2: 1.0000
+  componente NMF 3 &lt;-&gt; parte real 3: 1.0000
+
+Lo mismo con PCA (sus componentes tienen valores NEGATIVOS):
+  componente PCA 0 &lt;-&gt; parte real 0: 0.9440
+  componente PCA 1 &lt;-&gt; parte real 1: 0.9981
+  componente PCA 2 &lt;-&gt; parte real 3: 0.1020
+  componente PCA 3 &lt;-&gt; parte real 2: -0.0229
+  fracción de píxeles negativos en las componentes de PCA: 55.6%
+  fracción de píxeles negativos en las de NMF            : 0.0%</pre>
+        </div>
+
+        <p>El resultado es rotundo. NMF recupera las cuatro partes con correlación <strong>1,0000</strong> las cuatro: no aproximadamente, sino exactamente. PCA acierta dos —0,944 y 0,998— y con las otras dos fracasa: 0,102 y $-0{,}023$, es decir, nada. Sus componentes tercera y cuarta son mezclas con signos de las dos partes restantes, porque el criterio de máxima varianza no tiene ningún motivo para separarlas.</p>
+
+        <p>Las dos últimas líneas cuantifican la diferencia estructural: el <strong>55,6 %</strong> de los píxeles de las componentes de PCA son negativos, frente al <strong>0,0 %</strong> en NMF. Ahí está toda la historia: PCA construye por suma y resta, NMF solo por suma.</p>
+
+        <p>El error baja monótonamente de 1632,5 a 1,9 y los mínimos de $W$ y $H$ son $7\times10^{-81}$ y $6{,}7\times10^{-6}$: positivos, aunque uno de ellos ridículamente pequeño. Ese es el comportamiento típico de las reglas multiplicativas — se acercan a cero pero nunca lo cruzan, lo que produce de paso soluciones bastante <em>dispersas</em>.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>nmf(X, k_real)</code> por <code>nmf(X, 6)</code>, pidiendo seis partes donde solo hay cuatro. El error final baja de 1,923 a <strong>1,899</strong> —siempre baja o iguala al añadir componentes, igual que la inercia en el <a href="03-kmeans.html">capítulo 3</a>—, pero la mejora es de un 1 % y las dos componentes de más no descubren nada: se reparten trozos de las partes verdaderas. Elegir $k$ en NMF tiene exactamente el mismo problema que elegir $k$ en clústering, y las mismas soluciones aproximadas del <a href="08-validacion-clusteres.html">capítulo 8</a>.</p>
+        </div>
+
+        <p>NMF es hoy la herramienta estándar en <strong>modelado de temas</strong> (cada fila de $H$ es un tema, un conjunto de palabras que aparecen juntas; cada fila de $W$, la mezcla de temas de un documento), en <strong>separación de fuentes de audio</strong> sobre espectrogramas y en <strong>bioinformática</strong>. Su pariente probabilístico, con verosimilitud multinomial en lugar de error cuadrático, es la asignación latente de Dirichlet (LDA).</p>
+
+        <h2 id="ica">ICA: de la decorrelación a la independencia</h2>
+
+        <p>Cambiemos de problema. Tres personas hablan a la vez en una habitación y tres micrófonos captan, cada uno, una mezcla distinta de las tres voces. ¿Se pueden recuperar las voces originales conociendo solo las grabaciones? Es el <em>problema del cóctel</em>, y la respuesta —sorprendentemente— es que sí, casi siempre.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El modelo de ICA</div>
+          <p>$$ x = A\,s, \qquad s = (s_1,\dots,s_k)\ \text{con componentes} \ \textbf{independientes} \ \text{y} \ \textbf{no gaussianas} $$</p>
+          <p class="math-note">$x$ es lo que observamos (los micrófonos), $s$ las fuentes y $A$ la matriz de mezcla, ambas desconocidas. Buscamos $W \approx A^{-1}$ tal que $y = Wx$ tenga componentes independientes. Hay dos indeterminaciones inevitables: no se puede recuperar la <em>escala</em> de cada fuente (multiplicar $s_j$ por 2 y dividir la columna $j$ de $A$ por 2 da lo mismo) ni su <em>orden</em>.</p>
+        </div>
+
+        <p>Compara con PCA. PCA busca componentes <em>incorreladas</em>, que es una condición sobre los momentos de segundo orden: $\mathbb{E}[y_iy_j]=0$. La independencia es mucho más fuerte: exige que la densidad conjunta factorice, $p(y) = \prod_j p_j(y_j)$, lo que involucra <em>todos</em> los momentos. Incorrelación no implica independencia, y esa brecha es exactamente el espacio donde vive ICA.</p>
+
+        <h3>Por qué las fuentes no pueden ser gaussianas</h3>
+
+        <p>La condición de no gaussianidad no es un tecnicismo: sin ella el problema es <strong>irresoluble por principio</strong>. Supón $s \sim \mathcal{N}(0, I)$ y sea $R$ cualquier matriz ortogonal. Entonces $Rs$ también es $\mathcal{N}(0,I)$, porque la gaussiana estándar es invariante por rotaciones. Luego $A$ y $AR$ producen <em>exactamente la misma distribución</em> de $x$, y ningún método basado en datos podrá distinguirlas. La gaussiana es la única distribución con esa patología, y por eso es la única prohibida.</p>
+
+        <h3>La estrategia: buscar lo menos gaussiano</h3>
+
+        <p>Aquí entra el teorema central del límite con un giro elegante. Una suma de variables independientes tiende a ser <em>más gaussiana</em> que sus sumandos. Como cada mezcla $x_i = \sum_j a_{ij}s_j$ es una suma de fuentes independientes, las mezclas son más gaussianas que las fuentes. Invirtiendo el razonamiento: <strong>la dirección que maximiza la no gaussianidad de $w^\top x$ es la que aísla una fuente</strong>.</p>
+
+        <p>Falta medir «no gaussianidad». La medida correcta es la <em>negentropía</em>:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Negentropía y su aproximación</div>
+          <p>$$ J(y) \;=\; H(y_{\mathrm{gauss}}) - H(y) \;\ge\; 0 $$</p>
+          <p>donde $y_{\mathrm{gauss}}$ es una gaussiana con la misma varianza. Como <strong>entre todas las distribuciones de varianza dada la gaussiana es la de máxima entropía</strong>, $J \ge 0$ con igualdad solo si $y$ es gaussiana. Calcularla exige conocer la densidad, así que se aproxima:</p>
+          <p>$$ J(y) \;\approx\; \big[\mathbb{E}\{G(y)\} - \mathbb{E}\{G(\nu)\}\big]^2, \qquad G(u) = \log\cosh(u) \ \text{ó}\ -e^{-u^2/2} $$</p>
+          <p class="math-note">$\nu \sim \mathcal{N}(0,1)$. La aproximación clásica usaba la curtosis, $\mathbb{E}[y^4]-3$, pero es muy sensible a valores atípicos porque eleva a la cuarta. Las $G$ de arriba crecen más despacio y son mucho más robustas.</p>
+        </div>
+
+        <h3>El algoritmo: blanquear y luego rotar</h3>
+
+        <p>Antes de buscar nada, se <strong>blanquean</strong> los datos con el $S^{-1/2}$ del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>, de modo que $z = S^{-1/2}(x-\mu)$ tenga covarianza identidad. Eso simplifica enormemente el problema: si $z$ está blanqueado y $y=W z$ debe tener también covarianza identidad, entonces $WW^\top = I$, es decir, <strong>$W$ es ortogonal</strong>. Hemos pasado de buscar $k^2$ incógnitas a buscar una rotación. Blanquear resuelve «la mitad» de ICA; la otra mitad, la rotación correcta, es lo que decide la no gaussianidad.</p>
+
+        <p>FastICA (Hyvärinen, 1999) encuentra esa rotación con una iteración de punto fijo tipo Newton. Maximizando $\mathbb{E}\{G(w^\top z)\}$ con $\lVert w\rVert = 1$, la condición de Lagrange es $\mathbb{E}\{z\,g(w^\top z)\} - \beta w = 0$ con $g = G'$; aproximando el hessiano por $\mathbb{E}\{g'(w^\top z)\}\,I$ —lo que es lícito porque $z$ está blanqueado— el paso de Newton se reduce a:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ La iteración de FastICA</div>
+          <p>$$ w^{+} \;=\; \mathbb{E}\big\{z\,g(w^\top z)\big\} \;-\; \mathbb{E}\big\{g'(w^\top z)\big\}\,w, \qquad w \leftarrow \frac{w^{+}}{\lVert w^{+}\rVert} $$</p>
+          <p class="math-note">Con $G = \log\cosh$ resulta $g = \tanh$ y $g' = 1-\tanh^2$. Las esperanzas se estiman con la media muestral. Para varias fuentes se procede por <em>deflación</em>: tras encontrar cada $w$, se ortogonaliza frente a las anteriores (Gram-Schmidt) y se busca la siguiente. La convergencia es cúbica, de ahí el nombre.</p>
+        </div>
+
+        <h2 id="ejemplo-ica">El cóctel, resuelto</h2>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">fastica_coctel.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(2)
+n = 2000
+t = np.linspace(0, 8, n)
+
+# --- Tres fuentes independientes y no gaussianas ---
+s1 = np.sin(3 * t)                                  # senoide
+s2 = 2 * (t / 1.3 % 1.0) - 1.0                      # diente de sierra
+s3 = np.sign(np.sin(5.5 * t)) + 0.15 * rng.normal(size=n)   # cuadrada con ruido
+S = np.column_stack([s1, s2, s3])
+S -= S.mean(axis=0)
+S /= S.std(axis=0)
+
+A = np.array([[1.0, 0.9, 0.6],                      # matriz de mezcla
+              [0.7, 1.0, 0.8],
+              [0.5, 0.6, 1.0]])
+X = S @ A.T
+print(f"{n} muestras, 3 fuentes, 3 mezclas.")
+
+
+def curtosis(y):
+    """Curtosis en exceso: 0 para una gaussiana, distinto de 0 si no lo es."""
+    y = (y - y.mean()) / y.std()
+    return (y ** 4).mean() - 3.0
+
+
+print("\nCurtosis en exceso (0 = gaussiana):")
+print(f"  fuentes : {np.round([curtosis(S[:, j]) for j in range(3)], 3)}")
+print(f"  mezclas : {np.round([curtosis(X[:, j]) for j in range(3)], 3)}")
+print("  Las mezclas están MÁS cerca de 0: mezclar gaussianiza. ICA deshace eso.")
+
+# ---------------- Paso 1: centrar y blanquear ----------------
+Xc = X - X.mean(axis=0)
+C = np.cov(Xc, rowvar=False)
+val, vec = np.linalg.eigh(C)
+Blanqueo = vec @ np.diag(1.0 / np.sqrt(val)) @ vec.T
+Z = Xc @ Blanqueo.T
+print(f"\nTras blanquear, ||cov(Z) - I|| = "
+      f"{np.linalg.norm(np.cov(Z, rowvar=False) - np.eye(3)):.2e}")
+print("Con los datos blanqueados, la matriz que falta por encontrar es ORTOGONAL:")
+print("el problema pasa de d^2 incógnitas a una rotación.")
+
+
+def fastica(Z, k, iters=200, tol=1e-10, semilla=0):
+    """FastICA con no linealidad g = tanh, por deflación (una fuente cada vez)."""
+    r = np.random.default_rng(semilla)
+    n, d = Z.shape
+    Wm = np.zeros((k, d))
+    for j in range(k):
+        w = r.normal(size=d)
+        w /= np.linalg.norm(w)
+        for _ in range(iters):
+            wx = Z @ w
+            g = np.tanh(wx)                          # g = G'
+            g_prima = 1.0 - g ** 2                   # g' = G''
+            # punto fijo de Newton: w+ = E[x g(w.x)] - E[g'(w.x)] w
+            w_nuevo = (Z * g[:, None]).mean(axis=0) - g_prima.mean() * w
+            # ortogonalizar respecto a las direcciones ya encontradas
+            w_nuevo -= Wm[:j].T @ (Wm[:j] @ w_nuevo)
+            w_nuevo /= np.linalg.norm(w_nuevo)
+            if abs(abs(w_nuevo @ w) - 1) &lt; tol:
+                w = w_nuevo
+                break
+            w = w_nuevo
+        Wm[j] = w
+    return Wm
+
+
+Wm = fastica(Z, 3)
+S_est = Z @ Wm.T
+print(f"\n||W W^T - I|| = {np.linalg.norm(Wm @ Wm.T - np.eye(3)):.2e} (es ortogonal)")
+
+
+def mejor_correlacion(S_est, S):
+    """ICA no fija el orden ni el signo: emparejamos por |correlación|."""
+    k = S.shape[1]
+    C = np.abs(np.corrcoef(S_est.T, S.T)[:k, k:])
+    usados, pares = set(), []
+    for i in np.argsort(-C.max(axis=1)):
+        j = int(np.argmax([C[i, x] if x not in usados else -1 for x in range(k)]))
+        usados.add(j)
+        pares.append((i, j, C[i, j]))
+    return sorted(pares, key=lambda p: p[1])
+
+
+print("\n|correlación| entre cada componente recuperada y su fuente:")
+for i, j, c in mejor_correlacion(S_est, S):
+    print(f"  ICA {i} &lt;-&gt; fuente {j}: {c:.4f}")
+print(f"  media: {np.mean([c for _, _, c in mejor_correlacion(S_est, S)]):.4f}")
+
+# --- PCA, para comparar: decorrelaciona pero no separa ---
+Up, sp, Vtp = np.linalg.svd(Xc, full_matrices=False)
+S_pca = Xc @ Vtp.T
+print("\nLo mismo con PCA:")
+for i, j, c in mejor_correlacion(S_pca, S):
+    print(f"  PCA {i} &lt;-&gt; fuente {j}: {c:.4f}")
+print(f"  media: {np.mean([c for _, _, c in mejor_correlacion(S_pca, S)]):.4f}")
+print("\nCurtosis de lo recuperado por ICA: "
+      f"{np.round([curtosis(S_est[:, j]) for j in range(3)], 3)}")
+
+fig, ax = plt.subplots(4, 3, figsize=(13, 9))
+for j in range(3):
+    ax[0, j].plot(t[:500], S[:500, j], lw=0.8, color="#5b8def")
+    ax[0, j].set_title(f"fuente {j}", fontsize=10)
+    ax[1, j].plot(t[:500], X[:500, j], lw=0.8, color="#8b93a7")
+    ax[1, j].set_title(f"mezcla {j}", fontsize=10)
+for i, j, _ in mejor_correlacion(S_est, S):
+    ax[2, j].plot(t[:500], S_est[:500, i], lw=0.8, color="#43c59e")
+    ax[2, j].set_title(f"ICA -&gt; fuente {j}", fontsize=10)
+for i, j, _ in mejor_correlacion(S_pca, S):
+    ax[3, j].plot(t[:500], S_pca[:500, i], lw=0.8, color="#ef476f")
+    ax[3, j].set_title(f"PCA -&gt; fuente {j}", fontsize=10)
+for fila in ax:
+    for a in fila:
+        a.set_xticks([])
+        a.set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>2000 muestras, 3 fuentes, 3 mezclas.
+
+Curtosis en exceso (0 = gaussiana):
+  fuentes : [-1.505 -1.226 -1.913]
+  mezclas : [-0.539 -0.626 -0.982]
+  Las mezclas están MÁS cerca de 0: mezclar gaussianiza. ICA deshace eso.
+
+Tras blanquear, ||cov(Z) - I|| = 2.20e-14
+Con los datos blanqueados, la matriz que falta por encontrar es ORTOGONAL:
+el problema pasa de d^2 incógnitas a una rotación.
+
+||W W^T - I|| = 1.28e-16 (es ortogonal)
+
+|correlación| entre cada componente recuperada y su fuente:
+  ICA 2 &lt;-&gt; fuente 0: 0.9950
+  ICA 1 &lt;-&gt; fuente 1: 0.9939
+  ICA 0 &lt;-&gt; fuente 2: 1.0000
+  media: 0.9963
+
+Lo mismo con PCA:
+  PCA 0 &lt;-&gt; fuente 0: 0.5285
+  PCA 2 &lt;-&gt; fuente 1: 0.7538
+  PCA 1 &lt;-&gt; fuente 2: 0.7373
+  media: 0.6732
+
+Curtosis de lo recuperado por ICA: [-1.913 -1.165 -1.472]</pre>
+        </div>
+
+        <p>El primer bloque verifica el argumento del teorema central del límite con números concretos. Las tres fuentes tienen curtosis en exceso $-1{,}505$, $-1{,}226$ y $-1{,}913$: muy lejos de cero, es decir, muy poco gaussianas (los valores negativos indican distribuciones <em>subgaussianas</em>, aplanadas, como corresponde a senoides y ondas cuadradas). Al mezclarlas, las curtosis suben a $-0{,}539$, $-0{,}626$ y $-0{,}982$: <strong>las mezclas están más cerca de la gaussiana</strong>. ICA no hace más que deshacer ese acercamiento.</p>
+
+        <p>El resultado final: correlación media de <strong>0,9963</strong> con las fuentes verdaderas, con una de ellas recuperada al 1,0000. PCA sobre los mismos datos se queda en 0,6732 de media: decorrelaciona, sí, pero no separa. Y fíjate en que la última línea confirma el cierre del círculo: las curtosis de lo recuperado ($-1{,}913$, $-1{,}165$, $-1{,}472$) han vuelto a los valores extremos de las fuentes.</p>
+
+        <p>Nótese también el orden en que aparecen: ICA 2 corresponde a la fuente 0, ICA 0 a la fuente 2. El algoritmo no puede saber el orden ni el signo, tal como advertía el modelo. Por eso el programa empareja por correlación absoluta antes de comparar.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sustituye las tres fuentes por gaussianas: cambia <code>s1</code>, <code>s2</code> y <code>s3</code> por <code>rng.normal(size=n)</code> cada una. La correlación media de ICA cae de 0,9963 a valores mucho peores y, sobre todo, <em>deja de ser reproducible</em>: midiéndolo con tres semillas del generador obtengo <strong>0,890, 0,700 y 0,800</strong>, sin ningún patrón. Compáralo con el 0,9963 estable del caso no gaussiano. No es un fallo del algoritmo: es el teorema de identificabilidad en acción. Con fuentes gaussianas, cualquier rotación explica los datos igual de bien, así que lo que devuelve FastICA es esencialmente arbitrario y solo se parece a las fuentes por casualidad.</p>
+        </div>
+
+        <h2 id="comparativa">Tres factorizaciones, tres hipótesis</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>PCA / SVD</th><th>NMF</th><th>ICA</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Restricción</td><td>Ortogonalidad</td><td>No negatividad</td><td>Independencia estadística</td></tr>
+              <tr><td>Criterio</td><td>Máxima varianza</td><td>Mínimo error con $W,H\ge0$</td><td>Máxima no gaussianidad</td></tr>
+              <tr><td>Solución</td><td>Cerrada y única</td><td>Iterativa, mínimos locales</td><td>Iterativa, mínimos locales</td></tr>
+              <tr><td>Componentes</td><td>Ordenadas por importancia</td><td>Sin orden natural</td><td>Sin orden ni escala</td></tr>
+              <tr><td>Interpretación</td><td>Direcciones de dispersión</td><td>Partes que se suman</td><td>Causas físicas separadas</td></tr>
+              <tr><td>Requiere</td><td>Nada</td><td>Datos $\ge 0$</td><td>Fuentes no gaussianas</td></tr>
+              <tr><td>Uso típico</td><td>Compresión, quitar ruido</td><td>Temas, audio, imágenes</td><td>EEG, MEG, separación de señales</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Estas tres, junto con las del capítulo anterior, agotan lo que se puede hacer con factorizaciones <strong>lineales</strong>. Si la estructura de los datos es una superficie curva —la hoja de papel arrugada del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>—, ninguna combinación lineal la capturará, por mucho que cambiemos el criterio. Hace falta salir de la linealidad, y ese es el <a href="12-manifold-tsne-umap.html">capítulo 12</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># NMF con reglas multiplicativas, frente a PCA</span>
+<span class="prompt">$</span> python code/11-nmf-e-ica/nmf_lee_seung.py
+
+<span class="comment"># FastICA y el problema del cóctel</span>
+<span class="prompt">$</span> python code/11-nmf-e-ica/fastica_coctel.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>NMF minimiza $\lVert X - WH\rVert_F^2$ con $W,H\ge0$. Las reglas multiplicativas de Lee-Seung mantienen la no negatividad por construcción y no aumentan el error.</li>
+            <li>Al prohibir cancelaciones, la representación es aditiva y las bases son partes reconocibles: medido, NMF recupera las 4 partes con correlación 1,0000 mientras PCA solo acierta 2, y el 55,6 % de los píxeles de PCA son negativos frente al 0,0 % de NMF.</li>
+            <li>NMF no es única salvo escala, y elegir $k$ tiene los mismos problemas que en clústering.</li>
+            <li>ICA busca componentes independientes, no solo incorreladas. Es imposible si las fuentes son gaussianas, porque la gaussiana estándar es invariante por rotaciones y $A$ y $AR$ dan la misma distribución.</li>
+            <li>Mezclar acerca a la gaussiana: medido, curtosis de $-1{,}9$ a $-1{,}2$ en las fuentes frente a $-1{,}0$ a $-0{,}5$ en las mezclas. Maximizar la no gaussianidad deshace la mezcla.</li>
+            <li>Blanquear reduce el problema a encontrar una rotación; FastICA la encuentra con un punto fijo de Newton usando $g=\tanh$. Medido: correlación 0,9963 con las fuentes, frente a 0,6732 de PCA.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>9. PCA: la dirección de máxima varianza · No supervisado</title>
+  <meta name="description" content="Derivación por multiplicadores de Lagrange, la doble lectura (máxima varianza = mínimo error de reconstrucción) y la varianza explicada." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'svg'] }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body data-chapter="9">
+  <div class="progress-bar"></div>
+  <div class="topbar">
+    <button class="menu-btn" data-menu-btn aria-label="Menú">☰</button>
+    <span class="brand-mini">🧩 No supervisado</span>
+    <button class="theme-btn" data-theme-btn style="margin-left:auto" aria-label="Tema">🌙</button>
+  </div>
+  <div class="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="content-wrap">
+      <main class="content">
+
+        <span class="chapter-eyebrow">Parte III · Capítulo 9</span>
+        <h1>PCA: la dirección de máxima varianza</h1>
+        <p class="lead">El <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> dejó un diagnóstico y una promesa: en dimensión alta las distancias se vacían de significado, pero los datos reales viven en subespacios mucho más pequeños de lo que aparentan. El análisis de componentes principales es la forma más antigua —Pearson, 1901— y todavía la más usada de encontrar ese subespacio. Y tiene una propiedad rara entre los métodos de este manual: se resuelve <em>exactamente</em>, sin iteraciones ni mínimos locales.</p>
+
+        <h2 id="idea">La sombra más informativa</h2>
+
+        <p>Imagina un objeto tridimensional y una linterna. Según desde dónde ilumines, la sombra en la pared dice mucho o casi nada: la sombra de un lápiz visto de punta es un círculo diminuto e inútil; de lado, un segmento que revela su longitud. Buscar la mejor proyección es buscar la dirección de la linterna que <strong>conserve más información sobre las diferencias entre objetos</strong>.</p>
+
+        <p>Falta traducir «información sobre las diferencias» a matemáticas. PCA hace una apuesta concreta: <em>información es varianza</em>. Si al proyectar los puntos quedan muy separados entre sí, la proyección los distingue; si se apelotonan, no. Es una apuesta razonable y casi siempre útil, pero es <strong>una apuesta</strong>, y la última sección del capítulo enseña cuándo pierde.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Busca la dirección en la que la nube de puntos está más estirada, y usa esa coordenada. Luego, entre las direcciones perpendiculares a la primera, la que más estire; y así sucesivamente. Cada dirección nueva es <strong>ortogonal a las anteriores</strong>: no repite información que ya tenías.</p>
+        </div>
+
+        <h2 id="derivacion">La derivación, con multiplicadores de Lagrange</h2>
+
+        <p>Empezamos <strong>centrando</strong> los datos, $\tilde x_i = x_i - \bar x$ con $\bar x = \frac1n\sum_i x_i$. No es cosmético: si no restas la media, la primera componente apunta hacia el centro de masas y no describe la <em>forma</em> de la nube.</p>
+
+        <p>Sea $u \in \mathbb{R}^d$ una dirección con $\lVert u\rVert = 1$. La coordenada del punto $i$ sobre ella es $u^\top \tilde x_i$, y la varianza de todas esas coordenadas es</p>
+
+        <p>$$ \frac{1}{n-1}\sum_{i=1}^n \big(u^\top \tilde x_i\big)^2 = \frac{1}{n-1}\sum_i u^\top \tilde x_i \tilde x_i^\top u = u^\top \underbrace{\left(\frac{1}{n-1}\sum_i \tilde x_i \tilde x_i^\top\right)}_{S,\ \text{matriz de covarianza}} u . $$</p>
+
+        <p>Es la misma $S$ que apareció en la distancia de Mahalanobis del <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>. Ahora hay que maximizar $u^\top S u$ con la restricción $u^\top u = 1$ —sin ella el problema no tiene solución: bastaría alargar $u$—. Es el escenario exacto de los multiplicadores de Lagrange:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ De la maximización al problema de autovalores</div>
+          <p>$$ \mathcal{L}(u,\lambda) = u^\top S u - \lambda\,(u^\top u - 1) \qquad\Longrightarrow\qquad \nabla_u \mathcal{L} = 2Su - 2\lambda u = 0 $$</p>
+          <p>$$ \boxed{\;S\,u = \lambda\, u\;} $$</p>
+          <p class="math-note">La condición de optimalidad <em>es</em> la ecuación de autovectores. Además, multiplicando por $u^\top$ y usando $u^\top u = 1$: $u^\top S u = \lambda$. Es decir, <strong>el valor que queríamos maximizar es exactamente el autovalor</strong>. Luego la dirección óptima es el autovector del mayor autovalor, y la varianza que consigue es ese autovalor. No hay nada que iterar: se diagonaliza $S$ y ya está.</p>
+        </div>
+
+        <p>Para la segunda componente se añade la restricción $u_2 \perp u_1$ y se repite el argumento con dos multiplicadores; el resultado es el autovector del segundo autovalor. Y así hasta $d$. Como $S$ es simétrica y semidefinida positiva, el teorema espectral garantiza que sus autovectores forman una <strong>base ortonormal</strong> y que todos los autovalores son $\ge 0$: exactamente lo que hace falta para que esto tenga sentido geométrico.</p>
+
+        <h2 id="doble-lectura">La otra cara: mínimo error de reconstrucción</h2>
+
+        <p>Hay una segunda forma de plantear el problema que parece distinta y resulta ser la misma. En lugar de «qué proyección conserva más varianza», preguntamos «qué subespacio de dimensión $k$ permite <em>reconstruir</em> los datos con menos error». Formalmente, si $U_k$ tiene por columnas $k$ vectores ortonormales, la reconstrucción de $\tilde x$ es $U_kU_k^\top \tilde x$ y el error medio es</p>
+
+        <p>$$ E_k = \frac{1}{n-1}\sum_{i=1}^n \big\lVert \tilde x_i - U_kU_k^\top \tilde x_i \big\rVert^2 . $$</p>
+
+        <p>Escribamos cada punto en la base de autovectores: $\tilde x_i = \sum_{j=1}^d c_{ij}u_j$ con $c_{ij} = u_j^\top \tilde x_i$. La proyección sobre los $k$ primeros se queda con los $k$ primeros términos, así que el residuo es $\sum_{j\gt k} c_{ij}u_j$ y, por ortonormalidad, su norma al cuadrado es $\sum_{j\gt k} c_{ij}^2$. Promediando sobre $i$ y recordando que $\frac{1}{n-1}\sum_i c_{ij}^2 = \lambda_j$:</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ El error es la suma de lo que tiras</div>
+          <p>$$ E_k \;=\; \sum_{j = k+1}^{d} \lambda_j, \qquad\text{y como}\quad \operatorname{tr}(S) = \sum_{j=1}^d \lambda_j = \text{varianza total}, $$</p>
+          <p>$$ \underbrace{\sum_{j\le k}\lambda_j}_{\text{varianza retenida}} \;+\; \underbrace{\sum_{j\gt k}\lambda_j}_{\text{error}} \;=\; \text{constante}. $$</p>
+          <p class="math-note">Maximizar la varianza retenida y minimizar el error de reconstrucción son <strong>el mismo problema</strong>, porque su suma no depende de la elección. Es la misma estructura de la identidad ANOVA del <a href="03-kmeans.html">capítulo 3</a>, donde $T = W + B$ con $T$ fijo. La <em>varianza explicada</em> por $k$ componentes es el cociente $\sum_{j\le k}\lambda_j / \sum_j \lambda_j$.</p>
+        </div>
+
+        <figure class="figure">
+          <svg viewBox="0 0 660 260" width="100%" role="img" aria-label="Proyección sobre la primera componente principal">
+            <g stroke="#8b93a7" stroke-width="1" stroke-dasharray="3 3">
+              <line x1="120" y1="180" x2="152" y2="148"/>
+              <line x1="180" y1="170" x2="205" y2="145"/>
+              <line x1="250" y1="120" x2="262" y2="108"/>
+              <line x1="330" y1="115" x2="322" y2="107"/>
+              <line x1="400" y1="70" x2="382" y2="88"/>
+              <line x1="450" y1="90" x2="428" y2="112"/>
+            </g>
+            <line x1="90" y1="215" x2="510" y2="35" stroke="#5b8def" stroke-width="3"/>
+            <text x="520" y="35" font-size="13" fill="#5b8def" font-weight="700">1ª componente</text>
+            <line x1="300" y1="125" x2="235" y2="42" stroke="#e2b53d" stroke-width="2.5"/>
+            <text x="180" y="36" font-size="13" fill="#e2b53d" font-weight="700">2ª componente</text>
+
+            <g fill="#ef476f">
+              <circle cx="120" cy="180" r="5"/><circle cx="180" cy="170" r="5"/>
+              <circle cx="250" cy="120" r="5"/><circle cx="330" cy="115" r="5"/>
+              <circle cx="400" cy="70" r="5"/><circle cx="450" cy="90" r="5"/>
+            </g>
+            <g fill="#43c59e">
+              <circle cx="152" cy="148" r="4"/><circle cx="205" cy="145" r="4"/>
+              <circle cx="262" cy="108" r="4"/><circle cx="322" cy="107" r="4"/>
+              <circle cx="382" cy="88" r="4"/><circle cx="428" cy="112" r="4"/>
+            </g>
+            <text x="300" y="245" text-anchor="middle" font-size="12" fill="currentColor">las líneas de puntos son los residuos: su longitud al cuadrado es el error</text>
+          </svg>
+          <figcaption>La primera componente es a la vez la dirección donde las proyecciones (verdes) quedan más dispersas y la recta que minimiza la suma de los residuos perpendiculares al cuadrado. No es una coincidencia: es la identidad anterior.</figcaption>
+        </figure>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ PCA no es la recta de regresión</div>
+          <p>Se parecen y no lo son. La regresión de $y$ sobre $x$ minimiza los residuos <em>verticales</em> —trata a $x$ como exacta y a $y$ como ruidosa—; PCA minimiza los residuos <em>perpendiculares</em>, tratando ambas variables igual. Con datos correlacionados las dos rectas son distintas, y confundirlas es un error clásico. PCA no tiene variable dependiente: no hay «$y$».</p>
+        </div>
+
+        <h2 id="ejemplo">PCA desde cero, con las identidades comprobadas</h2>
+
+        <p>El algoritmo completo son cinco líneas: centrar, calcular $S$, diagonalizar, ordenar y proyectar. El programa las ejecuta sobre 400 puntos en <strong>200 dimensiones</strong> cuya estructura real —tres grupos— vive en un subespacio de dimensión 3, ahogada en ruido isótropo. Y verifica numéricamente las dos identidades que acabamos de demostrar.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">pca_desde_cero.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(4)
+n, d, d_latente = 400, 200, 3
+
+# --- Datos: tres grupos que viven en un subespacio de dimensión 3 ---
+centros = np.array([[0.0, 0.0, 0.0], [7.0, 0.0, 0.0], [3.5, 6.0, 0.0]])
+Z = np.vstack([c + rng.normal(scale=1.0, size=(n // 3 + (i == 0), d_latente))
+               for i, c in enumerate(centros)])[:n]
+y = np.repeat([0, 1, 2], [n // 3 + 1, n // 3, n - 2 * (n // 3) - 1])
+base = np.linalg.qr(rng.normal(size=(d, d_latente)))[0]     # 3 direcciones ortonormales
+X = Z @ base.T + rng.normal(scale=1.8, size=(n, d))         # + ruido en las 200
+print(f"Datos: {n} puntos en {d} dimensiones; la señal vive en {d_latente}.")
+
+
+def pca(X):
+    mu = X.mean(axis=0)
+    Xc = X - mu
+    S = (Xc.T @ Xc) / (len(X) - 1)          # covarianza muestral, d x d
+    val, vec = np.linalg.eigh(S)            # eigh: S es simétrica
+    orden = val.argsort()[::-1]             # de mayor a menor varianza
+    return val[orden], vec[:, orden], mu, S
+
+
+val, vec, mu, S = pca(X)
+Xc = X - mu
+
+# ---------- 1) ¿Son de verdad autovectores? ----------
+residuos = [np.linalg.norm(S @ vec[:, j] - val[j] * vec[:, j]) for j in range(5)]
+print(f"\n1) ||S u_j - lambda_j u_j|| para las 5 primeras: "
+      f"máximo {max(residuos):.2e}")
+print(f"   ortonormalidad: ||U^T U - I|| = "
+      f"{np.linalg.norm(vec.T @ vec - np.eye(d)):.2e}")
+print(f"   varianza de la proyección sobre u_1: {np.var(Xc @ vec[:, 0], ddof=1):.4f} "
+      f"| lambda_1 = {val[0]:.4f}")
+
+# ---------- 2) Error de reconstrucción = suma de autovalores descartados ----------
+print(f"\n2) Error de reconstrucción frente a la suma de autovalores descartados")
+print(f"{'k':&gt;4} {'error medido':&gt;15} {'suma lambdas':&gt;15} {'dif':&gt;10} {'var. explicada':&gt;15}")
+errores, explicada = [], []
+for k in [1, 2, 3, 5, 10, 50, 100, 200]:
+    U = vec[:, :k]
+    rec = (Xc @ U) @ U.T                                 # proyectar y volver
+    err = ((Xc - rec) ** 2).sum() / (len(X) - 1)         # normalizado como la varianza
+    teo = val[k:].sum()
+    errores.append(err)
+    explicada.append(val[:k].sum() / val.sum())
+    print(f"{k:4d} {err:15.6f} {teo:15.6f} {abs(err - teo):10.2e} {explicada[-1]:14.1%}")
+
+# ---------- 3) Agrupar antes y después de proyectar ----------
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+print("\n3) k-means sobre los datos crudos y sobre las primeras componentes")
+print(f"   en las {d} dimensiones originales : "
+      f"{np.mean([acuerdo(kmeans(X, 3, s), y) for s in range(10)]):.1%} "
+      f"(media de 10 semillas)")
+for k in [2, 3, 5, 10]:
+    P = Xc @ vec[:, :k]
+    a = np.mean([acuerdo(kmeans(P, 3, s), y) for s in range(10)])
+    print(f"   sobre las {k:2d} primeras componentes : {a:.1%}")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].plot(val[:20], "o-", color="#5b8def")
+ax[0].set_xlabel("componente")
+ax[0].set_ylabel("autovalor (varianza)")
+ax[0].set_title("espectro: 3 grandes y una meseta")
+ax[1].plot(np.cumsum(val) / val.sum(), color="#43c59e")
+ax[1].axhline(0.9, ls=":", c="k")
+ax[1].set_xlabel("nº de componentes")
+ax[1].set_title("varianza explicada acumulada")
+P2 = Xc @ vec[:, :2]
+ax[2].scatter(P2[:, 0], P2[:, 1], c=y, cmap="viridis", s=12, edgecolors="none")
+ax[2].set_title("proyección sobre las 2 primeras")
+ax[2].set_xticks([])
+ax[2].set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>Datos: 400 puntos en 200 dimensiones; la señal vive en 3.
+
+1) ||S u_j - lambda_j u_j|| para las 5 primeras: máximo 1.56e-14
+   ortonormalidad: ||U^T U - I|| = 3.27e-14
+   varianza de la proyección sobre u_1: 16.1066 | lambda_1 = 16.1066
+
+2) Error de reconstrucción frente a la suma de autovalores descartados
+   k    error medido    suma lambdas        dif  var. explicada
+   1      652.636639      652.636639   1.14e-13           2.4%
+   2      638.028278      638.028278   1.14e-13           4.6%
+   3      628.585974      628.585974   2.27e-13           6.0%
+   5      610.782262      610.782262   1.14e-13           8.7%
+  10      569.432287      569.432287   2.27e-13          14.9%
+  50      322.558783      322.558783   1.14e-13          51.8%
+ 100      137.243082      137.243082   5.68e-14          79.5%
+ 200        0.000000        0.000000   3.72e-27         100.0%
+
+3) k-means sobre los datos crudos y sobre las primeras componentes
+   en las 200 dimensiones originales : 82.9% (media de 10 semillas)
+   sobre las  2 primeras componentes : 87.7%
+   sobre las  3 primeras componentes : 87.5%
+   sobre las  5 primeras componentes : 87.6%
+   sobre las 10 primeras componentes : 87.5%</pre>
+        </div>
+
+        <p>El primer bloque confirma la teoría: los residuos $\lVert Su_j - \lambda_j u_j\rVert$ están en $10^{-14}$ —error de redondeo— y la varianza de la proyección sobre $u_1$ coincide con $\lambda_1$ hasta el último decimal impreso: <strong>16,1066 en ambos casos</strong>.</p>
+
+        <p>El segundo bloque verifica la identidad del error: en las ocho filas, el error medido y la suma de los autovalores descartados coinciden con diferencias del orden de $10^{-13}$. Y con $k = 200$ el error es <em>exactamente</em> cero: con todas las componentes, la reconstrucción es perfecta, porque $U_dU_d^\top = I$.</p>
+
+        <p>El tercer bloque contiene el resultado práctico y una lección incómoda. Agrupar en las 200 dimensiones originales da un 82,9 % de acuerdo; hacerlo sobre las 2 o 3 primeras componentes sube al <strong>87,7 %</strong>. Proyectar ha <em>añadido</em> información útil, en el sentido de que ha quitado ruido. Pero mira la varianza explicada de esas tres componentes: <strong>solo el 6,0 %</strong>.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ «Varianza explicada» no significa «información conservada»</div>
+          <p>Aquí, tres componentes que explican el 6 % de la varianza contienen <em>toda</em> la estructura, y las 197 restantes, que explican el 94 %, son ruido puro. La regla popular de «quédate con las componentes que expliquen el 90 %» habría conservado más de 100 componentes y casi todo el ruido. Ese porcentaje mide qué fracción de la <em>dispersión</em> retienes, no qué fracción de la <em>señal</em>.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Cambia <code>scale=1.8</code> (el ruido) por <code>scale=0.5</code> y vuelve a ejecutar. Con menos ruido, la varianza explicada por 3 componentes sube del 6,0 % al <strong>29,8 %</strong> y el acuerdo del clústering crudo pasa del 82,9 % al <strong>99,3 %</strong>, con lo que proyectar ya no aporta nada: 99,3 % también con 2, 3 y 5 componentes. PCA ayuda cuando el ruido domina; cuando no domina, solo ahorra tiempo de cálculo.</p>
+        </div>
+
+        <h2 id="trampas">Las dos trampas</h2>
+
+        <p>PCA es tan cómodo que se aplica por reflejo, y tiene dos fallos que se dan a menudo y son fáciles de pasar por alto.</p>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">pca_trampas.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(21)
+
+
+def pca(X):
+    Xc = X - X.mean(axis=0)
+    S = (Xc.T @ Xc) / (len(X) - 1)
+    val, vec = np.linalg.eigh(S)
+    o = val.argsort()[::-1]
+    return val[o], vec[:, o], Xc
+
+
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+# ================= TRAMPA 1: varianza no es información =================
+n = 300
+ruido = rng.normal(scale=6.0, size=n)                       # mucha varianza, sin grupos
+senal = np.repeat([-1.5, 1.5], n // 2) + rng.normal(scale=0.35, size=n)
+y = np.repeat([0, 1], n // 2)
+X1 = np.column_stack([ruido, senal])
+
+val, vec, Xc = pca(X1)
+print("TRAMPA 1 · dos columnas: ruido (sd 6) y señal con dos grupos (sd 0,35)")
+print(f"  varianza de cada componente: {np.round(val, 3)}")
+print(f"  varianza explicada por la 1ª: {val[0] / val.sum():.1%}")
+print(f"  la 1ª componente apunta a:   {np.round(np.abs(vec[:, 0]), 3)}  "
+      f"(1,0 = ruido puro)")
+
+for k, nombre in [(1, "solo la 1ª componente"), (2, "las dos componentes")]:
+    P = Xc @ vec[:, :k]
+    print(f"  k-means sobre {nombre:24s}: {acuerdo(kmeans(P, 2), y):.1%}")
+P2 = (Xc @ vec[:, 1:2])
+print(f"  k-means sobre la 2ª componente sola : {acuerdo(kmeans(P2, 2), y):.1%}")
+print("  Quedarse con la componente de más varianza tira justo lo que importaba.\n")
+
+# ================= TRAMPA 2: la escala cambia las componentes =================
+# Dos variables correlacionadas medidas en unidades muy distintas
+lat = rng.normal(size=n)
+altura_cm = 170 + 8 * lat + rng.normal(scale=2.0, size=n)      # decenas
+peso_kg = 70 + 9 * lat + rng.normal(scale=3.0, size=n)         # decenas
+ruido_mm = rng.normal(scale=300.0, size=n)                     # ¡cientos!
+X2 = np.column_stack([altura_cm, peso_kg, ruido_mm])
+nombres = ["altura(cm)", "peso(kg)", "sensor(mm)"]
+
+val_cov, vec_cov, _ = pca(X2)
+Z = (X2 - X2.mean(axis=0)) / X2.std(axis=0, ddof=1)            # estandarizar
+val_cor, vec_cor, _ = pca(Z)
+
+print("TRAMPA 2 · las mismas tres variables, con y sin estandarizar")
+print(f"  {'':22s} {nombres[0]:&gt;12s} {nombres[1]:&gt;12s} {nombres[2]:&gt;12s}")
+print(f"  {'desviación típica':22s} " +
+      " ".join(f"{s:12.2f}" for s in X2.std(axis=0, ddof=1)))
+print(f"  {'1ª comp. (covarianza)':22s} " +
+      " ".join(f"{c:12.3f}" for c in vec_cov[:, 0]))
+print(f"  {'1ª comp. (correlación)':22s} " +
+      " ".join(f"{c:12.3f}" for c in vec_cor[:, 0]))
+print(f"  varianza explicada por la 1ª: covarianza {val_cov[0]/val_cov.sum():.1%}, "
+      f"correlación {val_cor[0]/val_cor.sum():.1%}")
+print("  Sin estandarizar, la 1ª componente ES el sensor con números grandes.")
+print("  Estandarizando, recoge la relación real entre altura y peso.")
+
+fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+ax[0].scatter(X1[:, 0], X1[:, 1], c=y, cmap="coolwarm", s=12, edgecolors="none")
+flecha = vec[:, 0] * 3 * np.sqrt(val[0])
+ax[0].annotate("", xy=flecha, xytext=(-flecha[0], -flecha[1]),
+               arrowprops=dict(arrowstyle="&lt;-&gt;", lw=2, color="k"))
+ax[0].set_title("trampa 1: la 1ª componente es el ruido")
+ax[0].set_aspect("equal")
+ax[1].hist([(Xc @ vec[:, 0])[y == 0], (Xc @ vec[:, 0])[y == 1]], bins=25, stacked=True)
+ax[1].set_title("proyección sobre la 1ª: grupos mezclados")
+ax[2].hist([(Xc @ vec[:, 1])[y == 0], (Xc @ vec[:, 1])[y == 1]], bins=25, stacked=True)
+ax[2].set_title("proyección sobre la 2ª: grupos separados")
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>TRAMPA 1 · dos columnas: ruido (sd 6) y señal con dos grupos (sd 0,35)
+  varianza de cada componente: [29.591  2.318]
+  varianza explicada por la 1ª: 92.7%
+  la 1ª componente apunta a:   [1.    0.018]  (1,0 = ruido puro)
+  k-means sobre solo la 1ª componente   : 49.9%
+  k-means sobre las dos componentes     : 49.9%
+  k-means sobre la 2ª componente sola : 100.0%
+  Quedarse con la componente de más varianza tira justo lo que importaba.
+
+TRAMPA 2 · las mismas tres variables, con y sin estandarizar
+                           altura(cm)     peso(kg)   sensor(mm)
+  desviación típica              8.00         9.15       287.74
+  1ª comp. (covarianza)        -0.001       -0.001        1.000
+  1ª comp. (correlación)       -0.706       -0.706        0.057
+  varianza explicada por la 1ª: covarianza 99.8%, correlación 64.4%
+  Sin estandarizar, la 1ª componente ES el sensor con números grandes.
+  Estandarizando, recoge la relación real entre altura y peso.</pre>
+        </div>
+
+        <h3>Trampa 1: varianza no es información</h3>
+
+        <p>Los datos tienen dos columnas: una de ruido con desviación 6 y sin ninguna estructura, y otra con dos grupos claramente separados pero desviación 0,35. La primera componente explica el <strong>92,7 %</strong> de la varianza y apunta con coeficiente 1,000 a la columna de ruido. Si te quedas con ella —que es lo que dicta el método—, k-means da un <strong>49,9 %</strong>: el nivel del azar. Con la segunda componente sola, <strong>100 %</strong>.</p>
+
+        <p>Fíjate en que usar <em>las dos</em> componentes tampoco arregla nada (49,9 %): al conservar el eje de ruido, este domina la distancia euclídea y k-means vuelve a partir por donde no debe. Es el mismo fenómeno de escala del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, ahora dentro de PCA.</p>
+
+        <p>La raíz del problema es que <strong>PCA no sabe qué buscas</strong>. Es no supervisado: maximiza dispersión, no separabilidad. Cuando sí hay etiquetas, el método análogo que sí maximiza separación es el análisis discriminante lineal (LDA), pero eso ya es supervisado y queda fuera del manual.</p>
+
+        <h3>Trampa 2: PCA no es invariante de escala</h3>
+
+        <p>Tres variables: altura en centímetros (desviación 8,00), peso en kilos (9,15) y un sensor en milímetros (287,74). Altura y peso están fuertemente correlacionados —comparten un factor común— y el sensor es ruido independiente. Sobre la covarianza, la primera componente es $[-0{,}001,\, -0{,}001,\, 1{,}000]$: literalmente el sensor, porque sus números son treinta veces mayores. Explica el 99,8 % de la varianza y no dice absolutamente nada.</p>
+
+        <p>Estandarizando cada columna primero —lo que equivale a diagonalizar la matriz de <em>correlación</em> en vez de la de covarianza— la primera componente pasa a ser $[-0{,}706,\, -0{,}706,\, 0{,}057]$: el factor común de altura y peso, con pesos casi idénticos y el sensor prácticamente ignorado. Esa es la estructura real.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ ¿Covarianza o correlación?</div>
+          <p><strong>Correlación</strong> (estandarizar antes) cuando las variables tengan unidades distintas o escalas arbitrarias, que es casi siempre. <strong>Covarianza</strong> solo cuando todas compartan unidad y las diferencias de magnitud sean reales y significativas: píxeles de una imagen, canales de un mismo sensor, precios en la misma moneda. No es un detalle de implementación: son dos análisis diferentes que responden a preguntas diferentes.</p>
+        </div>
+
+        <h2 id="practica">Detalles prácticos</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Cuestión</th><th>Respuesta</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>¿Cuántas componentes?</strong></td><td>Ninguna regla es fiable. El gráfico de sedimentación (buscar el codo del espectro), un umbral de varianza explicada —con la advertencia de arriba— o, mejor, elegir $k$ por el rendimiento en la tarea posterior.</td></tr>
+              <tr><td><strong>Coste</strong></td><td>$O(nd^2)$ para formar $S$ y $O(d^3)$ para diagonalizarla. Si $d \gt n$ es un desastre: entonces conviene la SVD del <a href="10-svd-y-ppca.html">capítulo 10</a>, que cuesta $O(nd\min(n,d))$ y además es más estable.</td></tr>
+              <tr><td><strong>Blanqueo</strong></td><td>Dividir cada componente por $\sqrt{\lambda_j}$ deja covarianza identidad. Útil antes de ICA (<a href="11-nmf-e-ica.html">capítulo 11</a>), peligroso antes de agrupar: amplifica las direcciones de ruido, como avisaba el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a>.</td></tr>
+              <tr><td><strong>Datos nuevos</strong></td><td>Sin problema, y es una ventaja rara: $\tilde x \mapsto U_k^\top(x - \bar x)$ es una función explícita. Ni el clústering espectral ni t-SNE la tienen.</td></tr>
+              <tr><td><strong>Interpretación</strong></td><td>Cada componente es una combinación lineal de las variables originales, y sus coeficientes (<em>loadings</em>) se pueden leer: «esta componente es altura más peso». Es la gran ventaja sobre los métodos no lineales que vienen después.</td></tr>
+              <tr><td><strong>Límite fundamental</strong></td><td>Es lineal. Si los datos viven en una superficie curva —el papel arrugado del capítulo 2—, el mejor plano no la captura. De eso trata el <a href="12-manifold-tsne-umap.html">capítulo 12</a>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Hay una cosa más que PCA hace y que aún no hemos nombrado: al calcular $S = \frac{1}{n-1}\tilde X^\top\tilde X$ estamos elevando al cuadrado los datos, y con ello el número de condición. Existe una forma de obtener las mismas componentes <em>sin</em> construir nunca esa matriz, y de paso una de las herramientas más generales del álgebra lineal numérica. Es el <a href="10-svd-y-ppca.html">capítulo 10</a>.</p>
+
+        <h2 id="terminal">Ejecutarlo en tu terminal</h2>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre><span class="comment"># PCA completo con las dos identidades verificadas</span>
+<span class="prompt">$</span> python code/09-pca/pca_desde_cero.py
+
+<span class="comment"># las dos trampas: varianza no es información, y la escala manda</span>
+<span class="prompt">$</span> python code/09-pca/pca_trampas.py</pre>
+        </div>
+
+        <div class="callout key">
+          <div class="callout-title">🔑 Resumen del capítulo</div>
+          <ul>
+            <li>La varianza a lo largo de una dirección unitaria $u$ es $u^\top S u$. Maximizarla con $\lVert u\rVert=1$ conduce, vía Lagrange, a $Su = \lambda u$: la solución son los autovectores de la covarianza y la varianza conseguida es el autovalor.</li>
+            <li>Máxima varianza retenida y mínimo error de reconstrucción son el mismo problema, porque $E_k = \sum_{j\gt k}\lambda_j$ y la suma total es constante. Verificado con diferencias de $10^{-13}$.</li>
+            <li>PCA se resuelve en forma cerrada: sin semillas, sin mínimos locales, sin iteraciones.</li>
+            <li>Proyectar antes de agrupar ayuda cuando el ruido domina: 82,9 % → 87,7 % de acuerdo con solo 2 componentes de 200.</li>
+            <li>La varianza explicada engaña: esas componentes útiles explicaban solo el 6,0 % de la varianza total.</li>
+            <li>Trampa 1: si el ruido tiene más varianza que la señal, la primera componente es ruido (92,7 % de varianza, 49,9 % de acuerdo) y la segunda lo resuelve entera (100 %).</li>
+            <li>Trampa 2: PCA no es invariante de escala. Sobre la covarianza, la primera componente fue el sensor de números grandes; sobre la correlación, la relación real entre altura y peso.</li>
+          </ul>
+        </div>
+
+        <div class="chapter-nav" id="chapter-nav"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../assets/js/nav.js"></script>
+  <script src="../assets/js/main.js"></script>
+  <script src="../assets/js/pyodide-runner.js"></script>
+</body>
+</html>
