@@ -54,7 +54,7 @@
           <p class="math-note">$\mu_{z_i}$ es el centroide asignado al dato $i$. Las dos formas son la misma suma reordenada: primero por dato, después agrupando por clúster. $J$ mide el error cuadrático total de reemplazar cada punto por su representante; también se le llama <em>inercia</em>, por analogía con el momento de inercia de la mecánica.</p>
         </div>
 
-        <p>Fíjate en que hay dos tipos de incógnitas muy distintas: los centroides son continuos, la asignación es discreta. Minimizar $J$ sobre ambas a la vez es, de hecho, <strong>NP-difícil</strong> incluso en el plano con $k=2$. No existe un algoritmo eficiente que garantice el óptimo. Lo que sí existe es un procedimiento que baja siempre y para pronto.</p>
+        <p>Fíjate en que hay dos tipos de incógnitas muy distintas: los centroides son continuos, la asignación es discreta. Minimizar $J$ sobre ambas a la vez es, de hecho, <strong>NP-difícil</strong> en cuanto se deja libre una de las dos cosas: con $k=2$ y dimensión arbitraria (Aloise et al., 2009), o en el plano con $k$ arbitrario (Mahajan et al., 2009). Fijando <em>ambos</em> sí existe un algoritmo exacto, pero su coste $O(n^{dk+1})$ lo hace inservible. Lo que se usa en la práctica es un procedimiento que baja siempre y para pronto.</p>
 
         <h2 id="lloyd">El algoritmo de Lloyd, y por qué funciona</h2>
 
@@ -418,6 +418,20 @@ def acuerdo(a, b):
     return (ia[t] == ib[t]).mean()
 
 
+def inercia_de(X, z, k=2):
+    """Inercia de una partición cualquiera, con sus propios centroides óptimos."""
+    C = np.array([X[z == j].mean(axis=0) for j in range(k)])
+    return ((X - C[z]) ** 2).sum(), C
+
+
+def expresable(X, y, k=2):
+    """¿Podría k-means REPRESENTAR la partición verdadera? Colocamos los
+    centroides en las medias verdaderas y asignamos por cercanía."""
+    _, C = inercia_de(X, y, k)
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return max((z == y).mean(), (z != y).mean())
+
+
 # --- Caso 1: dos cigarros paralelos, estirados 5:1 y girados 25 grados ---
 estira = np.array([[3.0, 0.0], [0.0, 0.6]])
 th = np.deg2rad(25)
@@ -443,11 +457,15 @@ casos = [("1. alargados", X1, y1, "-&gt; mixturas gaussianas, cap. 4"),
          ("2. tamaños dispares", X2, y2, "-&gt; densidad, cap. 6"),
          ("3. no convexos", X3, y3, "-&gt; espectral, cap. 7")]
 
+print(f"{'caso':22s} {'acuerdo':&gt;8} {'J de k-means':&gt;13} {'J de la verdad':&gt;15} "
+      f"{'¿expresable?':&gt;13}")
 fig, ax = plt.subplots(2, 3, figsize=(13, 7))
 for col, (nombre, X, y, salida) in enumerate(casos):
     z, C = kmeans(X, 2, semilla=0)
     a = acuerdo(z, y)
-    print(f"{nombre:22s} acuerdo con la verdad: {a:6.1%}   {salida}")
+    J_km = inercia_de(X, z)[0]
+    J_ver = inercia_de(X, y)[0]
+    print(f"{nombre:22s} {a:7.1%} {J_km:13.1f} {J_ver:15.1f} {expresable(X, y):12.1%}")
     ax[0, col].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=10, edgecolors="none")
     ax[0, col].set_title(f"{nombre}: verdad")
     ax[1, col].scatter(X[:, 0], X[:, 1], c=z, cmap="coolwarm", s=10, edgecolors="none")
@@ -456,6 +474,17 @@ for col, (nombre, X, y, salida) in enumerate(casos):
     for fila in range(2):
         ax[fila, col].set_xticks([])
         ax[fila, col].set_yticks([])
+
+print("\nEn los TRES casos la partición verdadera tiene PEOR inercia que la que")
+print("encuentra k-means. Es decir: k-means no se equivoca al optimizar, optimiza")
+print("bien; lo que pasa es que su objetivo prefiere la respuesta que no queremos.")
+print("Cambiar de algoritmo no arregla eso: hay que cambiar de OBJETIVO, y eso es")
+print("lo que hacen los capítulos 4, 6 y 7.")
+print("\nLa última columna es otra cosa: cuánto de la partición correcta se puede")
+print("siquiera expresar con dos centroides. Ahí las lunas son el caso más severo,")
+print("porque ninguna frontera recta las sigue.")
+for nombre, X, y, salida in casos:
+    print(f"  {nombre:22s} {salida}")
 plt.tight_layout()
 plt.show()
 </code></pre>
@@ -463,14 +492,38 @@ plt.show()
 
         <div class="terminal">
           <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-          <pre>1. alargados           acuerdo con la verdad:  52.3%   -&gt; mixturas gaussianas, cap. 4
-2. tamaños dispares    acuerdo con la verdad:  57.9%   -&gt; densidad, cap. 6
-3. no convexos         acuerdo con la verdad:  70.1%   -&gt; espectral, cap. 7</pre>
+          <pre>caso                    acuerdo  J de k-means  J de la verdad  ¿expresable?
+1. alargados             52.3%        1865.1          2627.6        98.3%
+2. tamaños dispares      57.9%        2805.4          3674.2        87.8%
+3. no convexos           70.1%         164.8           222.0        84.0%
+
+En los TRES casos la partición verdadera tiene PEOR inercia que la que
+encuentra k-means. Es decir: k-means no se equivoca al optimizar, optimiza
+bien; lo que pasa es que su objetivo prefiere la respuesta que no queremos.
+Cambiar de algoritmo no arregla eso: hay que cambiar de OBJETIVO, y eso es
+lo que hacen los capítulos 4, 6 y 7.
+
+La última columna es otra cosa: cuánto de la partición correcta se puede
+siquiera expresar con dos centroides. Ahí las lunas son el caso más severo,
+porque ninguna frontera recta las sigue.
+  1. alargados           -&gt; mixturas gaussianas, cap. 4
+  2. tamaños dispares    -&gt; densidad, cap. 6
+  3. no convexos         -&gt; espectral, cap. 7</pre>
         </div>
 
-        <p>Un acuerdo del 50 % por parejas es lo que daría una partición aleatoria en dos grupos del mismo tamaño. Así que 57,9 % en el caso de los tamaños dispares es casi nada: k-means parte el grupo grande en dos mitades e ignora por completo el pequeño y compacto, porque partir 280 puntos dispersos reduce más la inercia que aislar 40 puntos que ya están juntos. Es un fallo de <em>diseño del objetivo</em>, no de optimización: la solución «correcta» tiene peor inercia que la que encuentra.</p>
+        <p>Un acuerdo del 50 % por parejas es lo que daría una partición aleatoria en dos grupos del mismo tamaño. Así que el 52,3 % de los cigarros es literalmente el nivel de tirar una moneda, y el 57,9 % de los tamaños dispares no está mucho mejor.</p>
 
-        <p>Los otros dos casos son fallos de <em>expresividad</em>. El de los cigarros es el más espectacular: con un 52,3 % de acuerdo, k-means está literalmente al nivel de tirar una moneda. Los dos grupos están estirados 5:1 y girados 25°, y la frontera recta y perpendicular que k-means sabe dibujar los corta <em>a lo largo</em> en vez de separarlos. La reparación consiste en dejar que cada grupo tenga su propia matriz de covarianza, y eso son las mixturas gaussianas del <a href="04-gmm-y-em.html">capítulo 4</a> —que en estos mismos datos llegan al 99,3 %—. Con las lunas (70,1 %), ninguna pareja de centroides puede separarlas hagas lo que hagas: hay que abandonar la geometría euclídea y pasar a la conectividad, es decir, DBSCAN (<a href="06-densidad-dbscan.html">capítulo 6</a>) o el clústering espectral (<a href="07-clustering-espectral.html">capítulo 7</a>).</p>
+        <p>Pero lo importante de esa salida no son los porcentajes: son las dos columnas centrales, y conviene detenerse en ellas porque desmontan la explicación fácil.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ k-means no falla al optimizar. Falla el objetivo</div>
+          <p>La tentación es decir «k-means no ha sabido encontrar la partición correcta». Es falso, y la tabla lo prueba: <strong>en los tres casos la partición verdadera tiene <em>peor</em> inercia</strong> que la que k-means devuelve (2627,6 frente a 1865,1; 3674,2 frente a 2805,4; 222,0 frente a 164,8).</p>
+          <p>Es decir: si le enseñáramos a k-means la respuesta correcta, la rechazaría —y haría bien, porque su objetivo es minimizar $J$ y la respuesta correcta tiene $J$ mayor—. El algoritmo está optimizando impecablemente. Lo que ocurre es que <strong>el óptimo de la inercia no es lo que queríamos</strong>. Por eso los tres capítulos siguientes no proponen mejores optimizadores: proponen <em>otros objetivos</em>.</p>
+        </div>
+
+        <p>La última columna mide algo distinto e independiente: si colocamos los dos centroides en las medias de los grupos verdaderos y asignamos cada punto al más cercano, ¿cuánto de la partición correcta se recupera? Es decir, ¿podría k-means siquiera <em>expresarla</em>? Con los cigarros, un <strong>98,3 %</strong>: la partición correcta es prácticamente un diagrama de Voronoi, está al alcance del método y aun así este la descarta por tener peor inercia. Con las lunas, solo un <strong>84,0 %</strong>: ahí sí hay además un límite de expresividad, porque ninguna frontera recta sigue una curva.</p>
+
+        <p>Resumiendo los dos ejes: <em>todos</em> los casos fallan por el objetivo; <em>solo</em> las lunas fallan además por la forma de la frontera. La reparación es distinta en cada caso. Para los cigarros basta con dejar que cada grupo tenga su propia matriz de covarianza, y eso son las mixturas gaussianas del <a href="04-gmm-y-em.html">capítulo 4</a>, que en estos mismos datos llegan al 99,3 %. Para las lunas hay que abandonar la geometría euclídea y pasar a la conectividad: DBSCAN (<a href="06-densidad-dbscan.html">capítulo 6</a>) o el clústering espectral (<a href="07-clustering-espectral.html">capítulo 7</a>).</p>
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
@@ -511,12 +564,14 @@ plt.show()
         <div class="callout key">
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
-            <li>k-means minimiza la inercia $J = \sum_i \lVert x_i - \mu_{z_i}\rVert^2$. Minimizarla de forma exacta es NP-difícil; Lloyd es una heurística de descenso por bloques.</li>
+            <li>k-means minimiza la inercia $J = \sum_i \lVert x_i - \mu_{z_i}\rVert^2$. Minimizarla de forma exacta es NP-difícil en cuanto $k$ o $d$ quedan libres; Lloyd es una heurística de descenso por bloques.</li>
             <li>Los dos pasos tienen solución cerrada: el punto va al centroide más próximo, y el centroide óptimo es la media del grupo (porque el error es cuadrático).</li>
             <li>La inercia nunca sube y solo hay un número finito de particiones, así que el algoritmo termina; pero termina en un mínimo <em>local</em>.</li>
             <li>Identidad ANOVA: $T = W + B$ con $T$ fijo. Minimizar la dispersión intra equivale a maximizar la dispersión entre grupos.</li>
             <li>k-means++ siembra con probabilidad $\propto D(x)^2$ y garantiza $\mathbb{E}[J] \le 8(\ln k+2)J_{\mathrm{OPT}}$. Medido con 30 semillas: mediana 983,4 frente a 5056,7 del arranque al azar.</li>
             <li>Falla con grupos alargados (52,3 %, el nivel del azar), con dispersiones muy distintas (57,9 %) y con formas no convexas (70,1 %). Cada fallo abre uno de los tres capítulos siguientes.</li>
+            <li>Pero no falla al <em>optimizar</em>: en los tres casos la partición correcta tiene peor inercia que la que encuentra (2627,6 &gt; 1865,1 · 3674,2 &gt; 2805,4 · 222,0 &gt; 164,8). Lo que hay que cambiar no es el algoritmo, es el objetivo.</li>
+            <li>La expresividad es un eje aparte: la partición correcta de los cigarros es un diagrama de Voronoi al 98,3 %, y aun así se descarta; la de las lunas solo al 84,0 %, y ahí sí hay además un límite de forma.</li>
           </ul>
         </div>
 

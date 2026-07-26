@@ -90,10 +90,10 @@ for n_etq in [2, 4, 10, 20, 50]:
 
 # --- Comprobación: la solución es ARMÓNICA (media ponderada de los vecinos) ---
 r = np.random.default_rng(100)
-sel = np.concatenate([r.choice(np.flatnonzero(y == c), 2, replace=False) for c in (0, 1)])
+sel_fig = np.concatenate([r.choice(np.flatnonzero(y == c), 2, replace=False) for c in (0, 1)])
 etiquetado = np.zeros(n, bool)
-etiquetado[sel] = True
-F = solucion_armonica(W, etiquetado, np.eye(2)[y[sel]])
+etiquetado[sel_fig] = True
+F = solucion_armonica(W, etiquetado, np.eye(2)[y[sel_fig]])
 d = W.sum(axis=1)
 media_vecinos = (W @ F) / d[:, None]
 err = np.abs(F[~etiquetado] - media_vecinos[~etiquetado]).max()
@@ -156,7 +156,7 @@ print("es que su respuesta deja de tener que ver con los datos.")
 
 fig, ax = plt.subplots(1, 3, figsize=(14, 4))
 ax[0].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=8, alpha=0.35, edgecolors="none")
-ax[0].scatter(X[sel, 0], X[sel, 1], c="k", s=90, marker="*")
+ax[0].scatter(X[sel_fig, 0], X[sel_fig, 1], c="k", s=90, marker="*")
 ax[0].set_title("2 etiquetas por clase (estrellas)")
 ax[1].scatter(X[:, 0], X[:, 1], c=F[:, 1], cmap="coolwarm", s=10, edgecolors="none")
 ax[1].set_title("f propagada por el grafo")

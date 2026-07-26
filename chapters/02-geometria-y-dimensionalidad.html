@@ -355,6 +355,42 @@ Hubness (nº de veces que un punto es 1er vecino de otro; ideal ~1):
 
         <p>Los datos reales no lo son ni de lejos. Los píxeles vecinos están correlacionadísimos; las notas de un alumno en diez asignaturas, también. Los datos no llenan el cubo de dimensión $d$: se apiñan sobre un subconjunto de dimensión mucho menor, curvo y delgado. Esa es la <strong>hipótesis de la variedad</strong>: los datos de dimensión $d$ viven, aproximadamente, sobre una variedad de dimensión intrínseca $m \ll d$.</p>
 
+        <figure class="figure">
+  <svg viewBox="0 0 720 250" width="100%" role="img" aria-label="La dimensión intrínseca: una hoja de dimensión 2 arrugada dentro de un espacio de dimensión 3">
+    <rect x="40" y="40" width="200" height="160" rx="6" fill="none" stroke="#8b93a7" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <path d="M 70 170 C 108 96, 128 178, 166 106 C 190 62, 206 128, 216 100"
+          fill="none" stroke="#5b8def" stroke-width="3"/>
+    <g fill="#ef476f">
+      <circle cx="86" cy="141" r="4"/><circle cx="112" cy="112" r="4"/><circle cx="139" cy="146" r="4"/>
+      <circle cx="160" cy="118" r="4"/><circle cx="184" cy="82" r="4"/><circle cx="206" cy="110" r="4"/>
+    </g>
+    <text x="140" y="222" text-anchor="middle" font-size="12" fill="currentColor">lo que mides: 3 coordenadas</text>
+    <text x="140" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#8b93a7">el espacio ambiente</text>
+
+    <path d="M 268 120 L 322 120" stroke="currentColor" stroke-width="2" marker-end="url(#fl2)"/>
+    <text x="295" y="108" text-anchor="middle" font-size="11" fill="currentColor">desenrollar</text>
+
+    <rect x="352" y="40" width="200" height="160" rx="6" fill="none" stroke="#8b93a7" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <line x1="372" y1="120" x2="532" y2="120" stroke="#5b8def" stroke-width="3"/>
+    <g fill="#ef476f">
+      <circle cx="392" cy="120" r="4"/><circle cx="420" cy="120" r="4"/><circle cx="452" cy="120" r="4"/>
+      <circle cx="476" cy="120" r="4"/><circle cx="504" cy="120" r="4"/><circle cx="524" cy="120" r="4"/>
+    </g>
+    <text x="452" y="222" text-anchor="middle" font-size="12" fill="currentColor">lo que hace falta: 1 coordenada</text>
+    <text x="452" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#5b8def">la variedad</text>
+
+    <text x="620" y="94" text-anchor="middle" font-size="12" fill="currentColor">la maldición se</text>
+    <text x="620" y="110" text-anchor="middle" font-size="12" fill="currentColor">calcula con la</text>
+    <text x="620" y="126" text-anchor="middle" font-size="12" font-weight="700" fill="#8b93a7">dimensión ambiente</text>
+    <text x="620" y="150" text-anchor="middle" font-size="12" fill="currentColor">el aprendizaje ocurre</text>
+    <text x="620" y="166" text-anchor="middle" font-size="12" fill="currentColor">con la</text>
+    <text x="620" y="182" text-anchor="middle" font-size="12" font-weight="700" fill="#5b8def">intrínseca</text>
+
+    <defs><marker id="fl2" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="currentColor"/></marker></defs>
+  </svg>
+  <figcaption>Los seis puntos están sobre una curva: para situar cualquiera de ellos <em>sobre ella</em> basta un número, aunque hagan falta tres para decir dónde está en la habitación. El teorema de la concentración cuenta las tres; el aprendizaje solo necesita la una. Encontrar esa coordenada es el objeto de toda la parte III.</figcaption>
+</figure>
+
         <div class="callout intuition">
           <div class="callout-title">🧠 La dimensión que cuenta es la intrínseca</div>
           <p>Una hoja de papel arrugada dentro de una habitación es un objeto de dimensión 2 metido en $\mathbb{R}^3$. Puedes describir cada punto con dos coordenadas <em>sobre el papel</em>, aunque hagan falta tres para decir dónde está en la habitación. La maldición se calcula con la dimensión de la habitación; el aprendizaje ocurre con la del papel.</p>

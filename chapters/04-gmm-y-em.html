@@ -767,7 +767,9 @@ plt.show()
 BIC elige k = 3   |   AIC elige k = 5   |   verdad: k = 3</pre>
         </div>
 
-        <p>La columna de la log-verosimilitud confirma el diagnóstico: sube siempre, de $-2441{,}50$ a $-1765{,}08$, y nunca se daría la vuelta. Pero mira el salto: de $k=3$ a $k=4$ solo gana 3,4 nats a cambio de 6 parámetros nuevos. El BIC, que cobra $\log 500 = 6{,}21$ por parámetro, no acepta ese trato y <strong>elige $k=3$, la verdad</strong>. El AIC, que solo cobra 2, sí lo acepta y se va hasta $k=5$.</p>
+        <p>La columna de la log-verosimilitud confirma el diagnóstico: sube siempre, de $-2441{,}50$ a $-1765{,}08$, y nunca se daría la vuelta. Pero mira el salto: de $k=3$ a $k=4$ solo gana 3,4 nats a cambio de 6 parámetros nuevos. El BIC, que cobra $\log 500 = 6{,}21$ por parámetro, no acepta ese trato y <strong>elige $k=3$, la verdad</strong>.</p>
+
+        <p>El AIC, que solo cobra 2 por parámetro, tampoco acepta <em>ese</em> trato: su valor sube de 3596,75 a 3601,92, o sea que también rechaza $k=4$. Lo que sí acepta es el siguiente, y ahí está la diferencia. De $k=4$ a $k=5$ la log-verosimilitud gana 12,3 nats por 6 parámetros más, y con un precio de 2 por parámetro eso sale a cuenta: el AIC baja a 3589,28 y se queda en <strong>$k=5$</strong>. Al BIC, que cobra tres veces más, no le compensa.</p>
 
         <p>Es el comportamiento típico y conviene conocerlo: el AIC sobreestima el número de componentes porque su objetivo es predecir bien, no identificar la estructura correcta; el BIC es consistente —con $n\to\infty$ acierta el modelo verdadero si está en la familia— y por eso es el habitual para elegir $k$ en mixturas. En el <a href="08-validacion-clusteres.html">capítulo 8</a> veremos criterios que no necesitan modelo probabilístico.</p>
 

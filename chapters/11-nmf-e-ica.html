@@ -39,6 +39,42 @@
 
         <p>La causa es que PCA solo exige ortogonalidad, y la ortogonalidad permite cancelaciones. Si prohibimos los números negativos, prohibimos cancelar, y la única manera de construir el todo es <strong>sumando partes</strong>.</p>
 
+        <figure class="figure">
+  <svg viewBox="0 0 700 250" width="100%" role="img" aria-label="PCA usa todo el subespacio; NMF solo el cono no negativo">
+    <g>
+      <line x1="60" y1="200" x2="300" y2="200" stroke="currentColor" stroke-width="1.2"/>
+      <line x1="60" y1="200" x2="60" y2="40" stroke="currentColor" stroke-width="1.2"/>
+      <line x1="20" y1="228" x2="300" y2="46" stroke="#5b8def" stroke-width="2.4"/>
+      <g fill="#8b93a7">
+        <circle cx="120" cy="164" r="5"/><circle cx="156" cy="140" r="5"/><circle cx="196" cy="116" r="5"/>
+        <circle cx="232" cy="90" r="5"/><circle cx="140" cy="156" r="5"/><circle cx="212" cy="106" r="5"/>
+      </g>
+      <circle cx="44" cy="218" r="6" fill="#ef476f"/>
+      <text x="44" y="238" text-anchor="middle" font-size="10" fill="#ef476f">coeficiente</text>
+      <text x="44" y="250" text-anchor="middle" font-size="10" fill="#ef476f">negativo</text>
+      <text x="180" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#5b8def">PCA: una RECTA completa</text>
+    </g>
+
+    <line x1="350" y1="30" x2="350" y2="230" stroke="#8b93a7" stroke-width="1"/>
+
+    <g>
+      <line x1="410" y1="200" x2="660" y2="200" stroke="currentColor" stroke-width="1.2"/>
+      <line x1="410" y1="200" x2="410" y2="40" stroke="currentColor" stroke-width="1.2"/>
+      <path d="M 410 200 L 660 108 L 660 200 Z" fill="#43c59e" opacity="0.16"/>
+      <path d="M 410 200 L 660 108" stroke="#43c59e" stroke-width="2"/>
+      <path d="M 410 200 L 636 56" stroke="#43c59e" stroke-width="2"/>
+      <path d="M 410 200 L 660 108 L 660 56 L 636 56 Z" fill="#43c59e" opacity="0.16"/>
+      <g fill="#8b93a7">
+        <circle cx="470" cy="168" r="5"/><circle cx="506" cy="140" r="5"/><circle cx="546" cy="126" r="5"/>
+        <circle cx="580" cy="102" r="5"/><circle cx="492" cy="158" r="5"/><circle cx="562" cy="114" r="5"/>
+      </g>
+      <text x="535" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#43c59e">NMF: solo el CONO positivo</text>
+      <text x="535" y="228" text-anchor="middle" font-size="11" fill="currentColor">todo dato es suma positiva de las bases</text>
+    </g>
+  </svg>
+  <figcaption>PCA busca un subespacio, y en un subespacio se puede avanzar en las dos direcciones: los coeficientes negativos están permitidos y se usan para cancelar. NMF restringe la solución al cono generado por las bases con coeficientes no negativos, y ahí solo se puede <em>sumar</em>. Esa es toda la diferencia, y de ella salen las «partes».</figcaption>
+</figure>
+
         <div class="callout intuition">
           <div class="callout-title">🧠 Intuición</div>
           <p>Cambia la restricción y cambias lo que encuentras. <strong>Ortogonalidad</strong> (PCA) da direcciones eficientes pero abstractas. <strong>No negatividad</strong> (NMF) da partes que se suman. <strong>Independencia estadística</strong> (ICA) da causas separadas. Ninguna es «la correcta»: cada una es una hipótesis distinta sobre cómo se generaron los datos.</p>
@@ -126,32 +162,34 @@ print(f"  ¿monótono? {'sí' if (np.diff(err) &lt;= 1e-6).all() else 'NO'}")
 print(f"  mínimos de W y H: {W.min():.3e}, {H.min():.3e}  (nunca negativos)")
 
 # --- ¿Ha recuperado las partes? Emparejamos por correlación ---
+# OJO: en VALOR ABSOLUTO. El signo de una componente de PCA es arbitrario
+# (si u es autovector, -u también lo es), así que comparar con signo penalizaría
+# a PCA por algo que no es un error. Con NMF el problema no se plantea: todo
+# es no negativo.
 def empareja(A, B):
-    """Para cada fila de A, la fila de B más correlacionada."""
-    corr = np.zeros((len(A), len(B)))
-    for i, a in enumerate(A):
-        for j, b in enumerate(B):
-            corr[i, j] = np.corrcoef(a, b)[0, 1]
-    usados, pares = set(), []
-    for i in np.argsort(-corr.max(axis=1)):
-        j = int(np.argmax(np.where([x in usados for x in range(len(B))],
-                                   -np.inf, corr[i])))
-        usados.add(j)
-        pares.append((i, j, corr[i, j]))
-    return pares
+    """Empareja cada fila de A con una de B maximizando la suma de |correlación|.
+    Con k=4 se pueden probar las 24 permutaciones y quedarse con la mejor."""
+    from itertools import permutations
+    C = np.array([[abs(np.corrcoef(a, b)[0, 1]) for b in B] for a in A])
+    mejor = max(permutations(range(len(B))), key=lambda p: sum(C[i, p[i]] for i in range(len(A))))
+    return [(i, mejor[i], C[i, mejor[i]]) for i in range(len(A))]
 
 
-print("\nCorrelación entre cada componente aprendida y la parte real que le toca:")
-for i, j, c in sorted(empareja(H, partes)):
+print("\n|Correlación| entre cada componente aprendida y la parte real que le toca:")
+for i, j, c in sorted(empareja(H, partes), key=lambda p: p[1]):
     print(f"  componente NMF {i} &lt;-&gt; parte real {j}: {c:.4f}")
+print(f"  media: {np.mean([c for _, _, c in empareja(H, partes)]):.4f}")
 
 # --- PCA sobre los mismos datos, para comparar ---
 mu = X.mean(axis=0)
 Uc, s, Vt = np.linalg.svd(X - mu, full_matrices=False)
 comp_pca = Vt[:k_real]
-print("\nLo mismo con PCA (sus componentes tienen valores NEGATIVOS):")
-for i, j, c in sorted(empareja(comp_pca, partes)):
+print("\nLo mismo con PCA:")
+for i, j, c in sorted(empareja(comp_pca, partes), key=lambda p: p[1]):
     print(f"  componente PCA {i} &lt;-&gt; parte real {j}: {c:.4f}")
+print(f"  media: {np.mean([c for _, _, c in empareja(comp_pca, partes)]):.4f}")
+print("\nPCA también las encuentra. La diferencia NO está en acertar las partes,")
+print("sino en CÓMO las representa:")
 print(f"  fracción de píxeles negativos en las componentes de PCA: "
       f"{(comp_pca &lt; 0).mean():.1%}")
 print(f"  fracción de píxeles negativos en las de NMF            : "
@@ -161,10 +199,10 @@ fig, ax = plt.subplots(3, k_real, figsize=(10, 7.5))
 for j in range(k_real):
     ax[0, j].imshow(partes[j].reshape(lado, lado), cmap="viridis")
     ax[0, j].set_title(f"parte real {j}", fontsize=10)
-for i, j, _ in sorted(empareja(H, partes)):
+for i, j, _ in empareja(H, partes):
     ax[1, j].imshow(H[i].reshape(lado, lado), cmap="viridis")
     ax[1, j].set_title(f"NMF {i}", fontsize=10)
-for i, j, _ in sorted(empareja(comp_pca, partes)):
+for i, j, _ in empareja(comp_pca, partes):
     ax[2, j].imshow(comp_pca[i].reshape(lado, lado), cmap="coolwarm")
     ax[2, j].set_title(f"PCA {i}", fontsize=10)
 for fila in ax:
@@ -185,24 +223,39 @@ NMF: error 1632.494 -&gt; 1.923 en 400 iteraciones
   ¿monótono? sí
   mínimos de W y H: 7.015e-81, 6.700e-06  (nunca negativos)
 
-Correlación entre cada componente aprendida y la parte real que le toca:
+|Correlación| entre cada componente aprendida y la parte real que le toca:
   componente NMF 0 &lt;-&gt; parte real 0: 1.0000
   componente NMF 1 &lt;-&gt; parte real 1: 1.0000
   componente NMF 2 &lt;-&gt; parte real 2: 1.0000
   componente NMF 3 &lt;-&gt; parte real 3: 1.0000
+  media: 1.0000
 
-Lo mismo con PCA (sus componentes tienen valores NEGATIVOS):
+Lo mismo con PCA:
   componente PCA 0 &lt;-&gt; parte real 0: 0.9440
   componente PCA 1 &lt;-&gt; parte real 1: 0.9981
-  componente PCA 2 &lt;-&gt; parte real 3: 0.1020
-  componente PCA 3 &lt;-&gt; parte real 2: -0.0229
+  componente PCA 2 &lt;-&gt; parte real 2: 0.9925
+  componente PCA 3 &lt;-&gt; parte real 3: 0.8096
+  media: 0.9361
+
+PCA también las encuentra. La diferencia NO está en acertar las partes,
+sino en CÓMO las representa:
   fracción de píxeles negativos en las componentes de PCA: 55.6%
   fracción de píxeles negativos en las de NMF            : 0.0%</pre>
         </div>
 
-        <p>El resultado es rotundo. NMF recupera las cuatro partes con correlación <strong>1,0000</strong> las cuatro: no aproximadamente, sino exactamente. PCA acierta dos —0,944 y 0,998— y con las otras dos fracasa: 0,102 y $-0{,}023$, es decir, nada. Sus componentes tercera y cuarta son mezclas con signos de las dos partes restantes, porque el criterio de máxima varianza no tiene ningún motivo para separarlas.</p>
+        <p>NMF recupera las cuatro partes con correlación <strong>1,0000</strong> las cuatro: no aproximadamente, sino exactamente. Pero fíjate en la fila de PCA, porque el resultado es más interesante de lo que suele contarse: <strong>PCA también las encuentra</strong> —0,944, 0,998, 0,993 y 0,810, con una media de 0,936—.</p>
 
-        <p>Las dos últimas líneas cuantifican la diferencia estructural: el <strong>55,6 %</strong> de los píxeles de las componentes de PCA son negativos, frente al <strong>0,0 %</strong> en NMF. Ahí está toda la historia: PCA construye por suma y resta, NMF solo por suma.</p>
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Un detalle que cambia la conclusión: el signo</div>
+          <p>La comparación tiene que hacerse en <strong>valor absoluto</strong>, y no es una licencia: si $u$ es autovector de la covarianza, $-u$ también lo es con el mismo autovalor. El signo de una componente de PCA es arbitrario, cosa que el propio comienzo de este capítulo afirmaba. Comparando con signo, dos de las cuatro componentes salen con correlación $-0{,}993$ y $-0{,}810$ y uno concluiría —erróneamente— que PCA ha fracasado con ellas.</p>
+          <p>Con NMF el problema ni se plantea: al ser todo no negativo, no hay signo que elegir. Esa asimetría es en sí misma parte de lo que distingue a los dos métodos.</p>
+        </div>
+
+        <p>Así que la diferencia entre NMF y PCA <em>en estos datos</em> no está en acertar las partes. Está en cómo las representan, y eso lo cuantifican las dos últimas líneas.</p>
+
+        <p>El <strong>55,6 %</strong> de los píxeles de las componentes de PCA son negativos, frente al <strong>0,0 %</strong> en NMF. Ahí está toda la historia: para reconstruir una imagen, PCA suma <em>y resta</em> sus componentes —los coeficientes negativos cancelan lo que sobra—, mientras que NMF solo puede sumar. Por eso las bases de NMF son objetos que uno puede señalar y nombrar, y las de PCA son patrones con zonas positivas y negativas que solo tienen sentido en combinación.</p>
+
+        <p>Y conviene ser honesto sobre el alcance del experimento: estas partes son rectángulos disjuntos con activaciones dispersas, un caso especialmente amable en el que las direcciones de máxima varianza casi coinciden con las partes. Con partes solapadas —trozos de cara, temas que comparten palabras— PCA sí las mezcla, y ahí la ventaja de NMF deja de ser solo de interpretación y pasa a ser también de identificación.</p>
 
         <p>El error baja monótonamente de 1632,5 a 1,9 y los mínimos de $W$ y $H$ son $7\times10^{-81}$ y $6{,}7\times10^{-6}$: positivos, aunque uno de ellos ridículamente pequeño. Ese es el comportamiento típico de las reglas multiplicativas — se acercan a cero pero nunca lo cruzan, lo que produce de paso soluciones bastante <em>dispersas</em>.</p>
 
@@ -466,7 +519,7 @@ Curtosis de lo recuperado por ICA: [-1.913 -1.165 -1.472]</pre>
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
             <li>NMF minimiza $\lVert X - WH\rVert_F^2$ con $W,H\ge0$. Las reglas multiplicativas de Lee-Seung mantienen la no negatividad por construcción y no aumentan el error.</li>
-            <li>Al prohibir cancelaciones, la representación es aditiva y las bases son partes reconocibles: medido, NMF recupera las 4 partes con correlación 1,0000 mientras PCA solo acierta 2, y el 55,6 % de los píxeles de PCA son negativos frente al 0,0 % de NMF.</li>
+            <li>Al prohibir cancelaciones, la representación es aditiva. Medido: NMF recupera las 4 partes con correlación 1,0000; PCA también las encuentra (media 0,936) <em>si se compara en valor absoluto</em>, porque el signo de una componente es arbitrario. La diferencia real está en el 55,6 % de píxeles negativos de PCA frente al 0,0 % de NMF: uno reconstruye sumando y restando, el otro solo sumando.</li>
             <li>NMF no es única salvo escala, y elegir $k$ tiene los mismos problemas que en clústering.</li>
             <li>ICA busca componentes independientes, no solo incorreladas. Es imposible si las fuentes son gaussianas, porque la gaussiana estándar es invariante por rotaciones y $A$ y $AR$ dan la misma distribución.</li>
             <li>Mezclar acerca a la gaussiana: medido, curtosis de $-1{,}9$ a $-1{,}2$ en las fuentes frente a $-1{,}0$ a $-0{,}5$ en las mezclas. Maximizar la no gaussianidad deshace la mezcla.</li>

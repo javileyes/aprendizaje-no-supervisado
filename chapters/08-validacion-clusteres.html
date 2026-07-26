@@ -37,6 +37,12 @@
 
         <p>La tabla del capítulo 1 vuelve, ahora con contenido. Hay tres formas de evaluar una partición, y solo la primera está siempre disponible.</p>
 
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Intuición</div>
+          <p>Un índice interno es <strong>una regla de medir que trae incorporada su propia idea de lo que es un buen grupo</strong>. La silueta y Calinski-Harabasz miden compacidad respecto a un centro: son reglas hechas para bolas. Aplicarlas a unos datos con forma de luna es como juzgar si una silla está bien hecha midiendo cuánto se parece a un cubo — la medida funcionará perfectamente, y la respuesta no significará nada.</p>
+          <p>De ahí la única defensa posible: no fiarse de una sola regla, y sobre todo <em>saber qué forma supone cada una</em>. Que dos índices coincidan no es una confirmación si ambos suponen lo mismo.</p>
+        </div>
+
         <div class="table-wrap">
           <table>
             <thead>
@@ -60,6 +66,42 @@
           <p>$$ s(i) \;=\; \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}} \;\in\; [-1, 1] $$</p>
           <p class="math-note">$s(i) \approx 1$ significa que $i$ está mucho más cerca de los suyos que de cualquier otro grupo; $s(i) \approx 0$, que está en la frontera; $s(i) \lt 0$, que estaría mejor en otro grupo. El índice global es la media sobre todos los puntos. Su gran virtud es que también se puede mirar punto a punto, para localizar quién está mal colocado.</p>
         </div>
+
+        <figure class="figure">
+  <svg viewBox="0 0 700 240" width="100%" role="img" aria-label="Cómo se construye la silueta de un punto">
+    <ellipse cx="180" cy="122" rx="94" ry="66" fill="#5b8def" opacity="0.12" stroke="#5b8def" stroke-dasharray="5 4"/>
+    <ellipse cx="466" cy="106" rx="86" ry="60" fill="#43c59e" opacity="0.12" stroke="#43c59e" stroke-dasharray="5 4"/>
+    <text x="180" y="42" text-anchor="middle" font-size="12" font-weight="700" fill="#5b8def">su grupo</text>
+    <text x="466" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#43c59e">el grupo vecino más próximo</text>
+
+    <g fill="#5b8def">
+      <circle cx="140" cy="98" r="5"/><circle cx="164" cy="152" r="5"/><circle cx="118" cy="140" r="5"/>
+      <circle cx="188" cy="88" r="5"/><circle cx="152" cy="124" r="5"/>
+    </g>
+    <g fill="#43c59e">
+      <circle cx="452" cy="82" r="5"/><circle cx="490" cy="118" r="5"/><circle cx="430" cy="128" r="5"/>
+      <circle cx="504" cy="76" r="5"/><circle cx="466" cy="106" r="5"/>
+    </g>
+    <circle cx="240" cy="122" r="8" fill="#ef476f"/>
+    <text x="240" y="146" text-anchor="middle" font-size="12" fill="#ef476f">i</text>
+
+    <g stroke="#5b8def" stroke-width="1.2" stroke-dasharray="3 3">
+      <line x1="240" y1="122" x2="140" y2="98"/><line x1="240" y1="122" x2="164" y2="152"/>
+      <line x1="240" y1="122" x2="118" y2="140"/><line x1="240" y1="122" x2="188" y2="88"/>
+      <line x1="240" y1="122" x2="152" y2="124"/>
+    </g>
+    <g stroke="#43c59e" stroke-width="1.2" stroke-dasharray="3 3">
+      <line x1="240" y1="122" x2="452" y2="82"/><line x1="240" y1="122" x2="490" y2="118"/>
+      <line x1="240" y1="122" x2="430" y2="128"/><line x1="240" y1="122" x2="504" y2="76"/>
+      <line x1="240" y1="122" x2="466" y2="106"/>
+    </g>
+
+    <text x="150" y="196" text-anchor="middle" font-size="12" fill="#5b8def">a(i) = media de estas</text>
+    <text x="430" y="196" text-anchor="middle" font-size="12" fill="#43c59e">b(i) = media de estas</text>
+    <text x="350" y="222" text-anchor="middle" font-size="13" fill="currentColor">s(i) = (b(i) − a(i)) / max{a(i), b(i)}</text>
+  </svg>
+  <figcaption>La silueta de un punto compara lo lejos que está de los suyos, $a(i)$, con lo lejos que está del grupo ajeno más cercano, $b(i)$. Si $b(i) \gg a(i)$ el punto está claramente bien colocado y $s(i)\approx 1$; si $a(i) \gt b(i)$, estaría mejor en el otro grupo y $s(i)$ sale negativa.</figcaption>
+</figure>
 
         <div class="callout math">
           <div class="callout-title">➗ Calinski-Harabasz (1974)</div>
@@ -411,7 +453,159 @@ uniforme (sin grupos)   (respuesta correcta: k = 1)
 
         <p>Hay una intuición distinta y muy potente, formulada por Ben-Hur, Elisseeff y Guyon (2002): <strong>una estructura real se repite; un artefacto, no</strong>. Toma dos submuestras al azar de tus datos, agrupa cada una por separado y mira si coinciden en los puntos que comparten. Repítelo muchas veces y para cada $k$.</p>
 
-        <p>La ventaja es que el criterio no supone nada sobre la <em>forma</em> de los grupos: sirve igual para k-means, DBSCAN o el espectral. La desventaja es que un sesgo sistemático —un algoritmo que siempre parte por la mitad— es perfectamente estable, y la estabilidad le dará la razón.</p>
+        <p>La ventaja es que el criterio no supone nada sobre la <em>forma</em> de los grupos: sirve igual para k-means, DBSCAN o el espectral. Es el único de los tres que no arrastra una hipótesis geométrica.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Estabilidad por remuestreo</div>
+          <p>$$ \mathrm{Est}(k) \;=\; \mathbb{E}\Big[\, \mathrm{acuerdo}\big(\,\mathcal{A}(S_1)\big|_{S_1\cap S_2},\; \mathcal{A}(S_2)\big|_{S_1\cap S_2}\,\big) \Big] $$</p>
+          <p class="math-note">$S_1$ y $S_2$ son dos submuestras aleatorias (aquí, del 80&nbsp;%), $\mathcal{A}$ es el algoritmo de clústering con $k$ grupos, y el acuerdo se mide <em>solo en los puntos que ambas comparten</em> —a cada uno se le aplica el modelo aprendido en su submuestra—. La esperanza se estima repitiendo el sorteo. Un $k$ que produzca siempre la misma partición da $\mathrm{Est}\approx 1$.</p>
+        </div>
+
+        <div class="code-example" data-packages="numpy,matplotlib">
+          <div class="code-header">
+            <span class="file-name">estabilidad_remuestreo.py</span>
+            <div class="code-actions">
+              <button class="btn-run">▶ Ejecutar</button>
+              <button class="btn-copy">Copiar</button>
+              <button class="btn-download"><span>Descargar .py</span></button>
+            </div>
+          </div>
+          <pre class="code-source"><code>import numpy as np
+import matplotlib.pyplot as plt
+
+rng = np.random.default_rng(0)
+
+
+def kmeans(X, k, semilla=0, iters=200):
+    r = np.random.default_rng(semilla)
+    C = [X[r.integers(len(X))]]
+    for _ in range(k - 1):
+        d2 = ((X[:, None, :] - np.array(C)[None, :, :]) ** 2).sum(axis=2).min(axis=1)
+        C.append(X[r.choice(len(X), p=d2 / max(d2.sum(), 1e-12))])
+    C = np.array(C)
+    for _ in range(iters):
+        z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+        Cn = np.array([X[z == j].mean(axis=0) if np.any(z == j) else C[j]
+                       for j in range(k)])
+        if np.allclose(Cn, C):
+            break
+        C = Cn
+    return C
+
+
+def asigna(X, C):
+    return ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+
+
+def acuerdo(a, b):
+    ia, ib = a[:, None] == a[None, :], b[:, None] == b[None, :]
+    t = np.triu_indices(len(a), k=1)
+    return (ia[t] == ib[t]).mean()
+
+
+def estabilidad(X, k, reps=30, frac=0.8, semilla=0):
+    """Dos submuestras del 80 %, se agrupa cada una y se comparan EN LOS PUNTOS
+    QUE COMPARTEN. El modelo aprendido en una se aplica a los puntos de la otra."""
+    r = np.random.default_rng(semilla)
+    n, m = len(X), int(frac * len(X))
+    out = []
+    for rep in range(reps):
+        i1 = r.choice(n, m, replace=False)
+        i2 = r.choice(n, m, replace=False)
+        comun = np.intersect1d(i1, i2)
+        if len(comun) &lt; 10:
+            continue
+        C1 = kmeans(X[i1], k, rep)
+        C2 = kmeans(X[i2], k, rep + 500)
+        out.append(acuerdo(asigna(X[comun], C1), asigna(X[comun], C2)))
+    return np.mean(out), np.std(out)
+
+
+# --- Tres conjuntos: uno fácil, uno con forma, y uno SIN estructura ---
+centros = np.array([[0.0, 0.0], [5.0, 0.5], [2.5, 5.0]])
+XA = np.vstack([c + rng.normal(scale=0.8, size=(100, 2)) for c in centros])
+t = rng.uniform(0, np.pi, 150)
+XB = np.vstack([np.column_stack([np.cos(t), np.sin(t)]),
+                np.column_stack([1 - np.cos(t), 0.4 - np.sin(t)])]) \
+    + rng.normal(scale=0.07, size=(300, 2))
+XC = rng.uniform(0, 10, size=(300, 2))
+
+casos = [("A · tres grupos (k=3)", XA), ("B · dos lunas (k=2)", XB),
+         ("C · uniforme (sin grupos)", XC)]
+
+print(f"{'k':&gt;3} " + " ".join(f"{n:&gt;24}" for n, _ in casos))
+tabla = {}
+for k in range(2, 8):
+    fila = []
+    for nombre, X in casos:
+        m, s = estabilidad(X, k)
+        tabla[(nombre, k)] = m
+        fila.append(f"{m:.3f} ± {s:.3f}")
+    print(f"{k:3d} " + " ".join(f"{v:&gt;24}" for v in fila))
+
+print()
+for nombre, _ in casos:
+    ks = list(range(2, 8))
+    mejor = max(ks, key=lambda k: tabla[(nombre, k)])
+    print(f"  {nombre:26} la estabilidad elige k = {mejor} "
+          f"({tabla[(nombre, mejor)]:.3f})")
+
+print("\nA: acierta, y con un pico nítido. B: elige 4 donde hay 2, igual que")
+print("los índices internos: las lunas rotas en trozos son MUY reproducibles.")
+print("C: y aquí está el punto ciego. Sobre 300 puntos uniformes, sin ninguna")
+print("estructura, la estabilidad no baja de 0,76 y llega a 0,94: k-means corta")
+print("el cuadrado siempre por el mismo sitio, y eso es perfectamente estable.")
+print("Reproducible no es lo mismo que real. Por eso la estabilidad complementa")
+print("al gap statistic, que sí sabe decir «aquí no hay nada», pero no lo sustituye.")
+
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+for nombre, _ in casos:
+    ax[0].plot(range(2, 8), [tabla[(nombre, k)] for k in range(2, 8)], "o-", label=nombre)
+ax[0].set_xlabel("k")
+ax[0].set_ylabel("estabilidad (acuerdo entre submuestras)")
+ax[0].legend(fontsize=8)
+ax[0].set_title("más alto = más reproducible")
+ax[1].scatter(XC[:, 0], XC[:, 1], s=10, c=asigna(XC, kmeans(XC, 4, 0)), cmap="viridis")
+ax[1].set_title("C: k=4 sobre ruido, estabilidad 0,94")
+ax[1].set_xticks([])
+ax[1].set_yticks([])
+plt.tight_layout()
+plt.show()
+</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <pre>  k    A · tres grupos (k=3)      B · dos lunas (k=2) C · uniforme (sin grupos)
+  2            0.807 ± 0.218            0.938 ± 0.070            0.761 ± 0.225
+  3            0.989 ± 0.048            0.868 ± 0.108            0.909 ± 0.110
+  4            0.902 ± 0.036            0.980 ± 0.014            0.939 ± 0.081
+  5            0.885 ± 0.049            0.935 ± 0.060            0.907 ± 0.039
+  6            0.879 ± 0.030            0.936 ± 0.037            0.896 ± 0.035
+  7            0.889 ± 0.031            0.937 ± 0.030            0.898 ± 0.028
+
+  A · tres grupos (k=3)      la estabilidad elige k = 3 (0.989)
+  B · dos lunas (k=2)        la estabilidad elige k = 4 (0.980)
+  C · uniforme (sin grupos)  la estabilidad elige k = 4 (0.939)
+
+A: acierta, y con un pico nítido. B: elige 4 donde hay 2, igual que
+los índices internos: las lunas rotas en trozos son MUY reproducibles.
+C: y aquí está el punto ciego. Sobre 300 puntos uniformes, sin ninguna
+estructura, la estabilidad no baja de 0,76 y llega a 0,94: k-means corta
+el cuadrado siempre por el mismo sitio, y eso es perfectamente estable.
+Reproducible no es lo mismo que real. Por eso la estabilidad complementa
+al gap statistic, que sí sabe decir «aquí no hay nada», pero no lo sustituye.</pre>
+        </div>
+
+        <p>En el conjunto fácil funciona de maravilla: pico nítido en $k=3$ con <strong>0,989</strong> y una desviación de solo 0,048. Ningún índice interno hace falta.</p>
+
+        <p>En las lunas vuelve a elegir $k=4$, igual que la silueta y Calinski-Harabasz. Y la razón es instructiva: partir cada luna en dos trozos es una operación <em>muy reproducible</em>: cualquier submuestra da los mismos cuatro pedazos. La estabilidad no mide si la partición es correcta, mide si es <em>repetible</em>, y una manera sistemáticamente equivocada de partir los datos es perfectamente repetible.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ El punto ciego, medido</div>
+          <p>La tercera columna es la prueba que faltaba. Son <strong>300 puntos uniformes en un cuadrado</strong>, sin la menor estructura, y la estabilidad no baja de 0,761 y llega a <strong>0,939</strong>. Comparado con el 0,989 del conjunto que sí tiene tres grupos, la diferencia es de tres centésimas: indistinguible en la práctica.</p>
+          <p>El motivo es transparente: k-means sobre un cuadrado uniforme siempre lo corta por los mismos sitios —en cuatro cuadrantes, por ejemplo—, y eso es reproducible al 100&nbsp;%. <strong>Reproducible no es lo mismo que real.</strong> Por eso la estabilidad complementa al estadístico de hueco, que sí sabe decir «aquí no hay nada», pero no lo sustituye.</p>
+        </div>
 
         <h2 id="externos">Cuando sí hay etiquetas: Rand, ARI y NMI</h2>
 
@@ -610,7 +804,7 @@ plt.show()
             <li>Los índices internos (silueta, Calinski-Harabasz, Davies-Bouldin) aciertan cuando los grupos son esféricos: los tres eligen $k=3$ en el conjunto fácil.</li>
             <li>Y fallan a la vez cuando no lo son: los tres eligen $k=6$ en dos lunas, y con $k=2$ prefieren la partición equivocada (silueta 0,457 frente a 0,361 de la verdadera). Miden compacidad, no acierto.</li>
             <li>Ninguno admite $k=1$, así que siempre encuentran grupos. El estadístico de hueco sí: en 300 puntos uniformes se queda pegado a cero y elige $k=1$; en cuatro grupos reales salta a 1,135 en $k=4$.</li>
-            <li>La estabilidad por remuestreo no supone forma, pero es ciega a los sesgos sistemáticos del algoritmo.</li>
+            <li>La estabilidad por remuestreo no supone ninguna forma de grupo y acierta $k=3$ con 0,989 en el caso fácil. Pero es ciega a los sesgos sistemáticos: sobre 300 puntos uniformes <em>sin estructura</em> llega a 0,939, indistinguible del caso real.</li>
             <li>El índice de Rand sin ajustar está inflado: dos particiones aleatorias en 20 grupos dan 0,9048. El ARI corrige la línea base y da $-0{,}0002$. El NMI queda a medio camino (0,2259) y también favorece a quien proponga más grupos.</li>
             <li>Una subdivisión correcta pero más fina penaliza igual que un error: ARI 0,869. Los índices resumen; la matriz de contingencia informa.</li>
           </ul>
@@ -627,7 +821,10 @@ plt.show()
 <span class="prompt">$</span> python code/08-validacion-clusteres/gap_y_sin_estructura.py
 
 <span class="comment"># Rand, ARI y NMI con sus líneas base</span>
-<span class="prompt">$</span> python code/08-validacion-clusteres/indices_externos.py</pre>
+<span class="prompt">$</span> python code/08-validacion-clusteres/indices_externos.py
+
+<span class="comment"># estabilidad por remuestreo, y su punto ciego</span>
+<span class="prompt">$</span> python code/08-validacion-clusteres/estabilidad_remuestreo.py</pre>
         </div>
 
         <p>Con esto se cierra la parte II. Hemos visto cinco familias de algoritmos de clústering y hemos aprendido a desconfiar de las tres formas de validarlos. Todos comparten una limitación que no hemos tocado: <strong>trabajan en el espacio original</strong>, ese mismo espacio del que el <a href="02-geometria-y-dimensionalidad.html">capítulo 2</a> demostró que en dimensión alta es casi inservible. La parte III se dedica a construir un espacio mejor, y empieza por la herramienta más antigua y más usada de todas: el <a href="09-pca.html">análisis de componentes principales</a>.</p>

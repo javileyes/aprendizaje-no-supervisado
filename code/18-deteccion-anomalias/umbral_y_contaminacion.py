@@ -42,10 +42,16 @@ def prf(pred, y):
 
 
 # ---------------- Datos: normales gaussianos + anomalías desplazadas ----------
+# OJO: la covarianza se sortea UNA sola vez, fuera de genera(). Si se sorteara
+# dentro, cada llamada devolvería datos de una gaussiana distinta y el conjunto
+# de ajuste no sería «los mismos datos, sin anomalías» sino otra distribución.
+A_FIJA = np.random.default_rng(12345).normal(size=(D, D))
+S_FIJA = A_FIJA @ A_FIJA.T / D + 0.4 * np.eye(D)
+L_FIJA = np.linalg.cholesky(S_FIJA)
+
+
 def genera(n_norm, n_anom, r):
-    A = r.normal(size=(D, D))
-    S = A @ A.T / D + 0.4 * np.eye(D)
-    L = np.linalg.cholesky(S)
+    L = L_FIJA
     Xn = r.normal(size=(n_norm, D)) @ L.T
     Xa = r.normal(size=(n_anom, D)) @ L.T + 3.2
     X = np.vstack([Xn, Xa])
@@ -75,9 +81,9 @@ print(f"\n{'regla para el umbral':32} {'valor':>8} {'precisión':>11} "
 for nombre, u in umbrales:
     p, r_, f1 = prf(s > u, y)
     print(f"{nombre:32} {u:8.2f} {p:10.1%} {r_:14.1%} {f1:7.3f}")
-print("Mismo detector, mismo AUC, y la precisión va del 19,5 % al 98,0 % según")
-print("la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada tipo")
-print("de error- y no se deduce de los datos.")
+print("Mismo detector, mismo AUC de 0,999, y la precisión va del 55,7 % al 98,0 %")
+print("según la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada")
+print("tipo de error- y no se deduce de los datos.")
 
 # ================= 2) La contaminación =================
 print("\n¿Y si el conjunto de ajuste YA lleva anomalías dentro?")

@@ -1,13 +1,18 @@
 """
 Los tres fracasos característicos de k-means, uno al lado del otro.
 
-  1. Grupos alargados (anisótropos): k-means solo sabe dibujar fronteras
-     rectas y equidistantes, así que parte los grupos por la mitad.
-  2. Grupos de tamaño y densidad muy distintos: el grande se come al pequeño.
-  3. Grupos no convexos (dos lunas): no hay ningún par de centroides capaz
-     de separarlos.
+  1. Grupos alargados (anisótropos).
+  2. Grupos de tamaño y densidad muy distintos.
+  3. Grupos no convexos (dos lunas).
 
-Cada fracaso apunta a un capítulo posterior del manual.
+Y, sobre todo, el DIAGNÓSTICO: en los tres casos medimos la inercia de la
+partición VERDADERA y la comparamos con la que encuentra k-means. Si la
+verdadera tiene peor inercia, k-means no está fallando al optimizar: está
+optimizando bien un objetivo que prefiere la respuesta equivocada.
+
+Medimos también, como eje aparte, cuánto de la partición verdadera se puede
+siquiera EXPRESAR con dos centroides (colocándolos en las medias verdaderas
+y asignando por cercanía). Ahí es donde las lunas se distinguen del resto.
 
 Ejecútalo con:  python code/03-kmeans/kmeans_limites.py
 """
@@ -46,6 +51,20 @@ def acuerdo(a, b):
     return (ia[t] == ib[t]).mean()
 
 
+def inercia_de(X, z, k=2):
+    """Inercia de una partición cualquiera, con sus propios centroides óptimos."""
+    C = np.array([X[z == j].mean(axis=0) for j in range(k)])
+    return ((X - C[z]) ** 2).sum(), C
+
+
+def expresable(X, y, k=2):
+    """¿Podría k-means REPRESENTAR la partición verdadera? Colocamos los
+    centroides en las medias verdaderas y asignamos por cercanía."""
+    _, C = inercia_de(X, y, k)
+    z = ((X[:, None, :] - C[None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return max((z == y).mean(), (z != y).mean())
+
+
 # --- Caso 1: dos cigarros paralelos, estirados 5:1 y girados 25 grados ---
 estira = np.array([[3.0, 0.0], [0.0, 0.6]])
 th = np.deg2rad(25)
@@ -71,11 +90,15 @@ casos = [("1. alargados", X1, y1, "-> mixturas gaussianas, cap. 4"),
          ("2. tamaños dispares", X2, y2, "-> densidad, cap. 6"),
          ("3. no convexos", X3, y3, "-> espectral, cap. 7")]
 
+print(f"{'caso':22s} {'acuerdo':>8} {'J de k-means':>13} {'J de la verdad':>15} "
+      f"{'¿expresable?':>13}")
 fig, ax = plt.subplots(2, 3, figsize=(13, 7))
 for col, (nombre, X, y, salida) in enumerate(casos):
     z, C = kmeans(X, 2, semilla=0)
     a = acuerdo(z, y)
-    print(f"{nombre:22s} acuerdo con la verdad: {a:6.1%}   {salida}")
+    J_km = inercia_de(X, z)[0]
+    J_ver = inercia_de(X, y)[0]
+    print(f"{nombre:22s} {a:7.1%} {J_km:13.1f} {J_ver:15.1f} {expresable(X, y):12.1%}")
     ax[0, col].scatter(X[:, 0], X[:, 1], c=y, cmap="coolwarm", s=10, edgecolors="none")
     ax[0, col].set_title(f"{nombre}: verdad")
     ax[1, col].scatter(X[:, 0], X[:, 1], c=z, cmap="coolwarm", s=10, edgecolors="none")
@@ -84,5 +107,16 @@ for col, (nombre, X, y, salida) in enumerate(casos):
     for fila in range(2):
         ax[fila, col].set_xticks([])
         ax[fila, col].set_yticks([])
+
+print("\nEn los TRES casos la partición verdadera tiene PEOR inercia que la que")
+print("encuentra k-means. Es decir: k-means no se equivoca al optimizar, optimiza")
+print("bien; lo que pasa es que su objetivo prefiere la respuesta que no queremos.")
+print("Cambiar de algoritmo no arregla eso: hay que cambiar de OBJETIVO, y eso es")
+print("lo que hacen los capítulos 4, 6 y 7.")
+print("\nLa última columna es otra cosa: cuánto de la partición correcta se puede")
+print("siquiera expresar con dos centroides. Ahí las lunas son el caso más severo,")
+print("porque ninguna frontera recta las sigue.")
+for nombre, X, y, salida in casos:
+    print(f"  {nombre:22s} {salida}")
 plt.tight_layout()
 plt.show()

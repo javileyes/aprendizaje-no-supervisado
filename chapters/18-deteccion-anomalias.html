@@ -51,6 +51,50 @@
           </table>
         </div>
 
+        <figure class="figure">
+  <svg viewBox="0 0 720 270" width="100%" role="img" aria-label="Tres tipos de anomalía: global, local y de subespacio">
+    <g fill="#8b93a7">
+      <circle cx="108" cy="150" r="4"/><circle cx="124" cy="138" r="4"/><circle cx="96" cy="164" r="4"/>
+      <circle cx="132" cy="162" r="4"/><circle cx="114" cy="176" r="4"/><circle cx="140" cy="148" r="4"/>
+      <circle cx="100" cy="136" r="4"/><circle cx="126" cy="152" r="4"/><circle cx="116" cy="126" r="4"/>
+      <circle cx="152" cy="170" r="4"/><circle cx="88" cy="150" r="4"/><circle cx="138" cy="130" r="4"/>
+    </g>
+    <circle cx="216" cy="58" r="7" fill="#ef476f"/>
+    <text x="216" y="42" text-anchor="middle" font-size="11" fill="#ef476f">global</text>
+    <text x="120" y="212" text-anchor="middle" font-size="11" fill="currentColor">lejos de todo:</text>
+    <text x="120" y="228" text-anchor="middle" font-size="11" fill="currentColor">cualquier método la ve</text>
+
+    <line x1="256" y1="30" x2="256" y2="244" stroke="#8b93a7" stroke-width="1"/>
+
+    <g fill="#8b93a7">
+      <circle cx="308" cy="150" r="4"/><circle cx="316" cy="142" r="4"/><circle cx="300" cy="158" r="4"/>
+      <circle cx="322" cy="158" r="4"/><circle cx="310" cy="166" r="4"/><circle cx="326" cy="148" r="4"/>
+      <circle cx="302" cy="142" r="4"/><circle cx="318" cy="150" r="4"/>
+      <circle cx="430" cy="112" r="4"/><circle cx="466" cy="150" r="4"/><circle cx="418" cy="176" r="4"/>
+      <circle cx="462" cy="94" r="4"/><circle cx="444" cy="188" r="4"/><circle cx="480" cy="130" r="4"/>
+      <circle cx="404" cy="140" r="4"/><circle cx="486" cy="176" r="4"/>
+    </g>
+    <circle cx="364" cy="152" r="7" fill="#ef476f"/>
+    <text x="364" y="136" text-anchor="middle" font-size="11" fill="#ef476f">local</text>
+    <text x="392" y="212" text-anchor="middle" font-size="11" fill="currentColor">rara solo en SU vecindario:</text>
+    <text x="392" y="228" text-anchor="middle" font-size="11" fill="currentColor">solo la ve la densidad relativa</text>
+
+    <line x1="528" y1="30" x2="528" y2="244" stroke="#8b93a7" stroke-width="1"/>
+
+    <line x1="566" y1="188" x2="694" y2="76" stroke="#5b8def" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <g fill="#8b93a7">
+      <circle cx="576" cy="182" r="4"/><circle cx="596" cy="164" r="4"/><circle cx="614" cy="150" r="4"/>
+      <circle cx="634" cy="130" r="4"/><circle cx="652" cy="116" r="4"/><circle cx="672" cy="96" r="4"/>
+      <circle cx="586" cy="176" r="4"/><circle cx="624" cy="138" r="4"/><circle cx="662" cy="108" r="4"/>
+    </g>
+    <circle cx="592" cy="102" r="7" fill="#ef476f"/>
+    <text x="592" y="86" text-anchor="middle" font-size="11" fill="#ef476f">de subespacio</text>
+    <text x="630" y="212" text-anchor="middle" font-size="11" fill="currentColor">ningún valor es extremo,</text>
+    <text x="630" y="228" text-anchor="middle" font-size="11" fill="currentColor">rompe la relación entre ambos</text>
+  </svg>
+  <figcaption>La misma palabra tapa tres cosas distintas. El punto rojo de la izquierda está lejos de todo; el del centro tiene valores perfectamente normales y solo es raro <em>en comparación con sus vecinos</em>; el de la derecha cae dentro del rango de ambas variables y lo que rompe es la relación entre ellas.</figcaption>
+</figure>
+
         <p>Y hay otra distinción, esta metodológica: en <em>detección de valores atípicos</em> las anomalías están mezcladas en el conjunto de ajuste; en <em>detección de novedades</em> se dispone de datos limpios y se busca lo raro en los nuevos. La diferencia importa muchísimo, y la mediremos al final.</p>
 
         <div class="callout intuition">
@@ -374,10 +418,16 @@ def prf(pred, y):
 
 
 # ---------------- Datos: normales gaussianos + anomalías desplazadas ----------
+# OJO: la covarianza se sortea UNA sola vez, fuera de genera(). Si se sorteara
+# dentro, cada llamada devolvería datos de una gaussiana distinta y el conjunto
+# de ajuste no sería «los mismos datos, sin anomalías» sino otra distribución.
+A_FIJA = np.random.default_rng(12345).normal(size=(D, D))
+S_FIJA = A_FIJA @ A_FIJA.T / D + 0.4 * np.eye(D)
+L_FIJA = np.linalg.cholesky(S_FIJA)
+
+
 def genera(n_norm, n_anom, r):
-    A = r.normal(size=(D, D))
-    S = A @ A.T / D + 0.4 * np.eye(D)
-    L = np.linalg.cholesky(S)
+    L = L_FIJA
     Xn = r.normal(size=(n_norm, D)) @ L.T
     Xa = r.normal(size=(n_anom, D)) @ L.T + 3.2
     X = np.vstack([Xn, Xa])
@@ -407,9 +457,9 @@ print(f"\n{'regla para el umbral':32} {'valor':&gt;8} {'precisión':&gt;11} "
 for nombre, u in umbrales:
     p, r_, f1 = prf(s &gt; u, y)
     print(f"{nombre:32} {u:8.2f} {p:10.1%} {r_:14.1%} {f1:7.3f}")
-print("Mismo detector, mismo AUC, y la precisión va del 19,5 % al 98,0 % según")
-print("la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada tipo")
-print("de error- y no se deduce de los datos.")
+print("Mismo detector, mismo AUC de 0,999, y la precisión va del 55,7 % al 98,0 %")
+print("según la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada")
+print("tipo de error- y no se deduce de los datos.")
 
 # ================= 2) La contaminación =================
 print("\n¿Y si el conjunto de ajuste YA lleva anomalías dentro?")
@@ -474,32 +524,32 @@ plt.show()
           <div class="term-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
           <pre>1000 puntos en dimensión 6, con un 5.0% de anomalías.
 
-AUC del detector: 1.0000  (excelente... pero no es un umbral)
+AUC del detector: 0.9990  (excelente... pero no es un umbral)
 
 regla para el umbral                valor   precisión   exhaustividad      F1
-percentil 95 de los normales        12.60      19.5%         100.0%   0.326
-percentil 99 de los normales        16.54      31.6%         100.0%   0.481
-cuantil chi-cuadrado al 99 %        16.07      29.8%         100.0%   0.459
-suponer 5 % de anomalías            38.04      98.0%          98.0%   0.980
-Mismo detector, mismo AUC, y la precisión va del 19,5 % al 98,0 % según
-la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada tipo
-de error- y no se deduce de los datos.
+percentil 95 de los normales        12.59      55.7%          98.0%   0.710
+percentil 99 de los normales        16.56      83.1%          98.0%   0.899
+cuantil chi-cuadrado al 99 %        16.07      83.1%          98.0%   0.899
+suponer 5 % de anomalías            20.06      98.0%          98.0%   0.980
+Mismo detector, mismo AUC de 0,999, y la precisión va del 55,7 % al 98,0 %
+según la regla. El umbral es una decisión de NEGOCIO -cuánto cuesta cada
+tipo de error- y no se deduce de los datos.
 
 ¿Y si el conjunto de ajuste YA lleva anomalías dentro?
  contaminación   AUC (media)   AUC (robusto)
-           0%       0.9994         0.9985
-           2%       0.9948         0.9985
-           5%       0.9701         0.9988
-          10%       0.9056         0.9990
-          20%       0.7678         0.9994
+           0%       0.9992         0.9990
+           2%       0.9942         0.9989
+           5%       0.9755         0.9989
+          10%       0.9152         0.9991
+          20%       0.7805         0.9993
 El estimador clásico se envenena: las propias anomalías inflan la
 covarianza y dejan de parecer raras. El robusto descarta el 25 % más
 extremo en cada iteración y aguanta mucho mejor.</pre>
         </div>
 
-        <p>El detector tiene un AUC de <strong>1,0000</strong>: separación perfecta, no hay ni una anomalía por debajo de ninguna normal. Y aun así, la precisión resultante va del <strong>19,5 % al 98,0 %</strong> según la regla que se use para fijar el umbral. Con el percentil 95 de los normales se capturan todas las anomalías —exhaustividad 100 %— pero cuatro de cada cinco alarmas son falsas.</p>
+        <p>El detector tiene un AUC de <strong>0,9990</strong>: la ordenación es casi perfecta, apenas hay anomalías por debajo de datos normales. Y aun así, la precisión resultante va del <strong>55,7 % al 98,0 %</strong> según la regla que se use para fijar el umbral. Con el percentil 95 de los normales se captura el 98 % de las anomalías, pero <em>casi la mitad de las alarmas son falsas</em>.</p>
 
-        <p>La causa es el <strong>desequilibrio de clases</strong>. Con un 5 % de anomalías, un umbral que deje pasar un 5 % de falsos positivos genera 47,5 falsas alarmas frente a 50 aciertos posibles. En detección de anomalías la clase rara es rara <em>por definición</em>, así que la precisión se hunde con tasas de falso positivo que en otros contextos parecerían inocuas.</p>
+        <p>La causa es el <strong>desequilibrio de clases</strong>. Con un 5 % de anomalías, un umbral que deje pasar un 5 % de falsos positivos genera unas 47 falsas alarmas frente a 50 aciertos posibles: precisión del 50 %, con un detector cuya ordenación es casi perfecta. En detección de anomalías la clase rara es rara <em>por definición</em>, así que la precisión se hunde con tasas de falso positivo que en otros contextos parecerían inocuas.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El umbral no es un problema estadístico</div>
@@ -510,9 +560,9 @@ extremo en cada iteración y aguanta mucho mejor.</pre>
 
         <p>El último bloque ataca el supuesto más frágil de todos. Casi siempre se ajusta el detector con datos «normales» que en realidad nadie ha revisado, y que por tanto ya contienen anomalías. ¿Cuánto importa?</p>
 
-        <p>Mucho. Con un 20 % de contaminación, el AUC del Mahalanobis clásico cae de <strong>0,9994 a 0,7678</strong>. El mecanismo es el <em>enmascaramiento</em>: las anomalías presentes en el ajuste inflan la covarianza estimada, la elipse se agranda para abarcarlas y dejan de parecer raras — se han escondido a sí mismas.</p>
+        <p>Mucho. Con un 20 % de contaminación, el AUC del Mahalanobis clásico cae de <strong>0,9992 a 0,7805</strong>. El mecanismo es el <em>enmascaramiento</em>: las anomalías presentes en el ajuste inflan la covarianza estimada, la elipse se agranda para abarcarlas y dejan de parecer raras — se han escondido a sí mismas.</p>
 
-        <p>La solución es un estimador robusto. La versión implementada aquí es una forma simplificada del determinante mínimo de covarianza (MCD, Rousseeuw): ajustar, quedarse con el 75 % de los puntos más centrales, reajustar solo con ellos y repetir. Con eso el AUC se mantiene en <strong>0,9994 incluso con un 20 % de contaminación</strong>, y de hecho ni se inmuta: 0,9985 a 0,9994 en todo el rango.</p>
+        <p>La solución es un estimador robusto. La versión implementada aquí es una forma simplificada del determinante mínimo de covarianza (MCD, Rousseeuw): ajustar, quedarse con el 75 % de los puntos más centrales, reajustar solo con ellos y repetir. Con eso el AUC se mantiene en <strong>0,9993 incluso con un 20 % de contaminación</strong>, y de hecho ni se inmuta: entre 0,9989 y 0,9993 en todo el rango.</p>
 
         <div class="callout intuition">
           <div class="callout-title">🧠 La lección general</div>
@@ -565,8 +615,8 @@ extremo en cada iteración y aguanta mucho mejor.</pre>
             <li>La reconstrucción por PCA gana en las anomalías de subespacio (0,907) y pierde en las globales (0,778). No hay detector universal.</li>
             <li>Isolation Forest puntúa con $2^{-\mathbb{E}[h(x)]/c(n)}$, cuesta $O(n\log n)$ y no calcula distancias: por eso domina en la industria.</li>
             <li>En dimensión alta todo se degrada: de un AUC de 0,99 en $d=2$ a 0,65 en $d=200$ con la misma señal. Reduce antes de detectar.</li>
-            <li>Un AUC de 1,0000 no da un umbral: la precisión va del 19,5 % al 98,0 % según la regla. El umbral es una decisión de costes o de capacidad.</li>
-            <li>Con un 20 % de contaminación en el ajuste, el Mahalanobis clásico cae a 0,7678 por enmascaramiento; un estimador robusto tipo MCD se mantiene en 0,9994.</li>
+            <li>Un AUC de 0,9990 no da un umbral: la precisión va del 55,7 % al 98,0 % según la regla. El umbral es una decisión de costes o de capacidad.</li>
+            <li>Con un 20 % de contaminación en el ajuste, el Mahalanobis clásico cae a 0,7805 por enmascaramiento; un estimador robusto tipo MCD se mantiene en 0,9993.</li>
           </ul>
         </div>
 

@@ -43,6 +43,49 @@
           <p class="math-note">$U$ tiene por columnas los <em>vectores singulares por la izquierda</em>, $V$ los de la derecha, ambos ortonormales, y los $\sigma_j \ge 0$ son los <em>valores singulares</em>. Geométricamente: toda aplicación lineal es una rotación ($V^\top$), un estiramiento de cada eje por su $\sigma_j$ ($\Sigma$) y otra rotación ($U$). No hay más.</p>
         </div>
 
+        <figure class="figure">
+  <svg viewBox="0 0 740 210" width="100%" role="img" aria-label="La SVD descompone cualquier aplicación lineal en rotación, estiramiento y rotación">
+    <circle cx="76" cy="104" r="46" fill="#5b8def" opacity="0.16" stroke="#5b8def" stroke-width="2"/>
+    <line x1="76" y1="104" x2="122" y2="104" stroke="#5b8def" stroke-width="2"/>
+    <line x1="76" y1="104" x2="76" y2="58" stroke="#43c59e" stroke-width="2"/>
+    <text x="76" y="176" text-anchor="middle" font-size="11" fill="currentColor">la bola unidad</text>
+
+    <path d="M 140 104 L 186 104" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl10)"/>
+    <text x="163" y="94" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">Vᵀ</text>
+    <text x="163" y="126" text-anchor="middle" font-size="10" fill="#8b93a7">rota</text>
+
+    <circle cx="248" cy="104" r="46" fill="#5b8def" opacity="0.16" stroke="#5b8def" stroke-width="2"/>
+    <line x1="248" y1="104" x2="281" y2="72" stroke="#5b8def" stroke-width="2"/>
+    <line x1="248" y1="104" x2="215" y2="72" stroke="#43c59e" stroke-width="2"/>
+    <text x="248" y="176" text-anchor="middle" font-size="11" fill="currentColor">sigue siendo una bola</text>
+
+    <path d="M 312 104 L 358 104" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl10)"/>
+    <text x="335" y="94" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">Σ</text>
+    <text x="335" y="126" text-anchor="middle" font-size="10" fill="#8b93a7">estira cada eje</text>
+
+    <ellipse cx="440" cy="104" rx="66" ry="26" fill="#e2b53d" opacity="0.18" stroke="#e2b53d" stroke-width="2"/>
+    <line x1="440" y1="104" x2="506" y2="104" stroke="#e2b53d" stroke-width="2"/>
+    <line x1="440" y1="104" x2="440" y2="78" stroke="#43c59e" stroke-width="2"/>
+    <text x="516" y="100" font-size="11" fill="#e2b53d">σ₁</text>
+    <text x="446" y="74" font-size="11" fill="#43c59e">σ₂</text>
+    <text x="440" y="176" text-anchor="middle" font-size="11" fill="currentColor">un elipsoide con los ejes alineados</text>
+
+    <path d="M 520 104 L 566 104" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl10)"/>
+    <text x="543" y="94" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">U</text>
+    <text x="543" y="126" text-anchor="middle" font-size="10" fill="#8b93a7">vuelve a rotar</text>
+
+    <g transform="rotate(-27 656 104)">
+      <ellipse cx="656" cy="104" rx="66" ry="26" fill="#e2b53d" opacity="0.18" stroke="#e2b53d" stroke-width="2"/>
+      <line x1="656" y1="104" x2="722" y2="104" stroke="#e2b53d" stroke-width="2"/>
+      <line x1="656" y1="104" x2="656" y2="78" stroke="#43c59e" stroke-width="2"/>
+    </g>
+    <text x="656" y="176" text-anchor="middle" font-size="11" fill="currentColor">la imagen de la bola por X</text>
+
+    <defs><marker id="fl10" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="currentColor"/></marker></defs>
+  </svg>
+  <figcaption>Toda aplicación lineal transforma la bola unidad en un elipsoide, y la SVD dice exactamente cómo: una rotación que alinea los ejes, un estiramiento de cada uno por su valor singular, y otra rotación que los coloca donde toca. Los $\sigma_j$ son las longitudes de los semiejes.</figcaption>
+</figure>
+
         <p>La relación con el <a href="09-pca.html">capítulo anterior</a> es inmediata. Si $\tilde X$ son los datos centrados, la covarianza es</p>
 
         <p>$$ S = \frac{1}{n-1}\tilde X^\top \tilde X = \frac{1}{n-1}\,V\Sigma U^\top U\Sigma V^\top = V\,\frac{\Sigma^2}{n-1}\,V^\top . $$</p>
@@ -67,9 +110,9 @@
         <p>$$ X_k \;=\; \sum_{j=1}^{k} \sigma_j\, u_j\, v_j^\top \;=\; U_k \Sigma_k V_k^\top . $$</p>
 
         <div class="callout math">
-          <div class="callout-title">➗ Teorema de Eckart-Young-Mirsky (1936)</div>
+          <div class="callout-title">➗ Teorema de Eckart-Young (1936) y Mirsky (1960)</div>
           <p>$$ X_k \;=\; \arg\min_{\operatorname{rango}(B) \le k} \; \lVert X - B \rVert_F, \qquad\text{y}\qquad \lVert X - X_k\rVert_F^2 = \sum_{j\gt k} \sigma_j^2 $$</p>
-          <p class="math-note">$\lVert\cdot\rVert_F$ es la norma de Frobenius (la raíz de la suma de todos los elementos al cuadrado). El teorema dice que <strong>entre todas las matrices de rango a lo sumo $k$ —infinitas—, ninguna se acerca más a $X$ que la SVD truncada</strong>, y da el error exacto. El resultado vale también para la norma espectral, con error $\sigma_{k+1}$.</p>
+          <p class="math-note">$\lVert\cdot\rVert_F$ es la norma de Frobenius (la raíz de la suma de todos los elementos al cuadrado). El teorema dice que <strong>entre todas las matrices de rango a lo sumo $k$ —infinitas—, ninguna se acerca más a $X$ que la SVD truncada</strong>, y da el error exacto. Eckart y Young lo demostraron en 1936 para la norma de Frobenius; Mirsky lo extendió en 1960 a <em>toda</em> norma unitariamente invariante, y de ahí se sigue que también vale para la norma espectral, con error $\sigma_{k+1}$. Es decir: la misma matriz truncada es óptima para todas esas normas a la vez, cosa nada evidente.</p>
         </div>
 
         <p>Es un resultado extraordinariamente fuerte: un problema de optimización sobre un conjunto no convexo y de dimensión enorme se resuelve <em>exactamente</em> con una descomposición. De él salen la compresión de imágenes, el análisis semántico latente en texto, y los sistemas de recomendación por factorización de matrices.</p>

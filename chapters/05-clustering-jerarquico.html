@@ -102,6 +102,12 @@
 
         <p>Nota la última columna: centroide y Ward operan sobre distancias <em>al cuadrado</em>; los otros tres, sobre distancias. Es la única asimetría del cuadro, y olvidarla es el error de implementación más común.</p>
 
+        <div class="callout warn">
+          <div class="callout-title">⚠️ ¿Qué es exactamente la $d$ de la fila de Ward?</div>
+          <p>En las tres primeras filas, $d$ es la distancia entre grupos que da nombre al enlace. En la de Ward no: lo que la recurrencia propaga no es una distancia sino <strong>el doble del coste de fusión</strong>, $2\Delta(A,B)$, y la altura que se dibuja en el dendrograma es su raíz cuadrada, $\sqrt{2\Delta}$.</p>
+          <p>La comprobación es inmediata: para dos puntos sueltos, $\Delta = \tfrac{1\cdot1}{1+1}\lVert x-y\rVert^2 = \tfrac12\lVert x-y\rVert^2$, luego $\sqrt{2\Delta} = \lVert x-y\rVert$, la distancia euclídea de toda la vida. Por eso el primer nivel del dendrograma de Ward coincide con el de los demás enlaces y a partir de ahí se separa. Es la convención que usa scipy, y explica que el ejemplo de abajo imprima alturas de 1,00 y 1,02 y no los costes 0,50 y 0,52.</p>
+        </div>
+
         <p>Los truquitos de $\gamma$ merecen un momento. Con $\gamma = -1/2$, la fórmula $\tfrac12 d_{AC} + \tfrac12 d_{BC} - \tfrac12|d_{AC}-d_{BC}|$ es exactamente $\min(d_{AC}, d_{BC})$; con $\gamma=+1/2$, es $\max$. Las identidades $\min(u,v) = \tfrac{u+v-|u-v|}{2}$ y $\max(u,v) = \tfrac{u+v+|u-v|}{2}$ son las que permiten meter enlace simple y completo dentro del mismo molde algebraico.</p>
 
         <h2 id="inversiones">Monotonía e inversiones</h2>
@@ -497,6 +503,42 @@ Correlación cofenética (cuánto respeta el dendrograma las distancias reales):
         <h2 id="lectura">Cómo se lee y se corta un dendrograma</h2>
 
         <p>El dendrograma se lee de abajo arriba. Cada hoja es un dato, cada horizontal una fusión, y <strong>la altura de esa horizontal es la distancia a la que ocurrió</strong>. Un salto vertical largo sin fusiones significa que hubo que aumentar mucho la tolerancia para que algo más se uniera: señal de que la estructura de ese nivel era estable.</p>
+
+        <figure class="figure">
+  <svg viewBox="0 0 700 280" width="100%" role="img" aria-label="Cómo se lee un dendrograma: alturas de fusión, salto grande y corte">
+    <line x1="70" y1="230" x2="70" y2="40" stroke="currentColor" stroke-width="1.2"/>
+    <text x="60" y="46" text-anchor="end" font-size="11" fill="currentColor">altura</text>
+    <text x="60" y="234" text-anchor="end" font-size="11" fill="currentColor">0</text>
+
+    <g stroke="#5b8def" stroke-width="1.8" fill="none">
+      <path d="M 110 230 L 110 206 L 150 206 L 150 230"/>
+      <path d="M 190 230 L 190 214 L 230 214 L 230 230"/>
+      <path d="M 130 206 L 130 176 L 210 176 L 210 214"/>
+      <path d="M 290 230 L 290 200 L 330 200 L 330 230"/>
+      <path d="M 370 230 L 370 220 L 410 220 L 410 230"/>
+      <path d="M 310 200 L 310 168 L 390 168 L 390 220"/>
+      <path d="M 170 176 L 170 84 L 350 84 L 350 168"/>
+    </g>
+
+    <line x1="70" y1="126" x2="620" y2="126" stroke="#ef476f" stroke-width="2" stroke-dasharray="7 5"/>
+    <text x="628" y="130" font-size="12" fill="#ef476f">corte → 2 grupos</text>
+
+    <path d="M 470 84 L 470 176" stroke="#e2b53d" stroke-width="2.4"/>
+    <path d="M 464 90 L 470 84 L 476 90" stroke="#e2b53d" stroke-width="2.4" fill="none"/>
+    <path d="M 464 170 L 470 176 L 476 170" stroke="#e2b53d" stroke-width="2.4" fill="none"/>
+    <text x="484" y="126" font-size="12" fill="#e2b53d">salto grande</text>
+    <text x="484" y="142" font-size="11" fill="#e2b53d">hubo que subir mucho</text>
+    <text x="484" y="156" font-size="11" fill="#e2b53d">para volver a fusionar</text>
+
+    <g font-size="11" fill="currentColor" text-anchor="middle">
+      <text x="110" y="248">a</text><text x="150" y="248">b</text><text x="190" y="248">c</text>
+      <text x="230" y="248">d</text><text x="290" y="248">e</text><text x="330" y="248">f</text>
+      <text x="370" y="248">g</text><text x="410" y="248">h</text>
+    </g>
+    <text x="260" y="270" text-anchor="middle" font-size="11" fill="#8b93a7">cada hoja es un dato; cada horizontal, una fusión a esa altura</text>
+  </svg>
+  <figcaption>El dendrograma se lee de abajo arriba: la altura de cada barra horizontal es la distancia a la que se produjo esa fusión. Un tramo vertical largo sin fusiones —el salto amarillo— indica que hubo que relajar mucho la tolerancia para unir algo más, y por eso el corte suele ponerse ahí.</figcaption>
+</figure>
 
         <p>De ahí la heurística habitual para elegir $k$: <strong>cortar por el salto vertical más grande</strong>. Es el equivalente jerárquico del método del codo, con la misma naturaleza cualitativa y las mismas limitaciones. En el <a href="08-validacion-clusteres.html">capítulo 8</a> veremos criterios menos artesanales.</p>
 

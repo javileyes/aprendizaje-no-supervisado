@@ -98,7 +98,9 @@ def tsne(D2, perplejidad=30.0, iters=600, semilla=0, dim=2):
         Y = Y + velocidad
         Y -= Y.mean(axis=0)
         if it % 50 == 0 or it == iters - 1:
-            historia.append((it, (exagera * P * np.log(exagera * P / Q)).sum()))
+            # OJO: la KL se mide SIEMPRE con la P de verdad, no con la exagerada.
+            # sum(4P·log(4P/Q)) no es una divergencia, porque 4P suma 4 y no 1.
+            historia.append((it, (P * np.log(P / Q)).sum()))
     return Y, historia
 
 

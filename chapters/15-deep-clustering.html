@@ -59,7 +59,8 @@
         <div class="callout math">
           <div class="callout-title">➗ La distribución objetivo</div>
           <p>$$ p_{ij} \;=\; \frac{q_{ij}^2 \,/\, f_j}{\sum_{j'} q_{ij'}^2 \,/\, f_{j'}}, \qquad f_j = \sum_{i} q_{ij} $$</p>
-          <p class="math-note">Dos ingredientes. El <strong>cuadrado</strong> exagera las diferencias: si $q_i = (0{,}6,\, 0{,}4)$, elevar al cuadrado y renormalizar da $(0{,}69,\, 0{,}31)$ — la asignación se vuelve más segura. La división por $f_j$, la «frecuencia» del grupo $j$, <strong>equilibra los tamaños</strong>: un grupo que se está tragando a todo el mundo ve reducida su influencia. Sin ese denominador, la solución trivial de meter todos los puntos en un grupo sería un mínimo perfecto.</p>
+          <p class="math-note">Dos ingredientes. El <strong>cuadrado</strong> exagera las diferencias: si $q_i = (0{,}6,\, 0{,}4)$, elevar al cuadrado y renormalizar da $(0{,}69,\, 0{,}31)$ — la asignación se vuelve más segura. La división por $f_j$, la «frecuencia» del grupo $j$, <strong>equilibra los tamaños</strong>: un grupo que se está tragando a todo el mundo ve reducida su influencia, y los puntos dudosos se empujan hacia los grupos menos poblados.</p>
+          <p class="math-note">Conviene decir también lo que $f_j$ <em>no</em> hace, porque es un malentendido extendido: no impide el colapso. Si todas las filas de $q$ fueran idénticas, la normalización por $f_j$ es la misma para todas y $p$ sale exactamente igual a $q$, con lo que $D_{\mathrm{KL}}(P\Vert Q) = 0$ — un mínimo global perfecto. Comprobado numéricamente: con 200 filas iguales a $(0{,}97;\,0{,}01;\,0{,}01;\,0{,}01)$ la función objetivo del propio programa devuelve $p = q$ y una KL de $3{,}5\times10^{-14}$, cero en doble precisión. Lo que de verdad mantiene poblados los cuatro grupos es de dónde se parte, no el denominador.</p>
         </div>
 
         <p>Y la pérdida es la divergencia de siempre, con $P$ tratada como constante (se recalcula solo cada cierto número de iteraciones, no en cada paso):</p>
@@ -75,6 +76,47 @@
         </div>
 
         <p>El procedimiento completo tiene tres fases: <strong>(1)</strong> preentrenar un autoencoder, <strong>(2)</strong> inicializar los centroides con k-means sobre el código, <strong>(3)</strong> afinar codificador y centroides minimizando $\mathcal{L}_{\mathrm{clu}}$. La fase 1 no es opcional, y lo mediremos.</p>
+
+        <figure class="figure">
+  <svg viewBox="0 0 700 260" width="100%" role="img" aria-label="El bucle de autoentrenamiento de DEC: q se afila en p y p reentrena la representación">
+    <rect x="60" y="46" width="150" height="46" rx="9" fill="none" stroke="#5b8def" stroke-width="2"/>
+    <text x="135" y="68" text-anchor="middle" font-size="12" fill="currentColor">codificador</text>
+    <text x="135" y="84" text-anchor="middle" font-size="11" fill="#8b93a7">z = f(x)</text>
+
+    <path d="M 216 69 L 276 69" stroke="currentColor" stroke-width="1.8" marker-end="url(#fl15)"/>
+
+    <rect x="282" y="46" width="150" height="46" rx="9" fill="none" stroke="#e2b53d" stroke-width="2"/>
+    <text x="357" y="68" text-anchor="middle" font-size="12" fill="currentColor">asignación blanda</text>
+    <text x="357" y="84" text-anchor="middle" font-size="11" fill="#8b93a7">q, t de Student</text>
+
+    <path d="M 438 69 L 498 69" stroke="currentColor" stroke-width="1.8" marker-end="url(#fl15)"/>
+
+    <rect x="504" y="46" width="150" height="46" rx="9" fill="#e2b53d" fill-opacity="0.16" stroke="#e2b53d" stroke-width="2"/>
+    <text x="579" y="66" text-anchor="middle" font-size="12" fill="currentColor">objetivo afilado</text>
+    <text x="579" y="82" text-anchor="middle" font-size="11" fill="#8b93a7">p ∝ q² / f</text>
+
+    <path d="M 579 98 L 579 140 L 357 140" stroke="#ef476f" stroke-width="2" fill="none" marker-end="url(#fl15r)"/>
+    <text x="470" y="132" text-anchor="middle" font-size="11" fill="#ef476f">minimizar KL(p ‖ q)</text>
+    <path d="M 300 140 L 135 140 L 135 100" stroke="#ef476f" stroke-width="2" fill="none" marker-end="url(#fl15r)"/>
+    <text x="205" y="132" text-anchor="middle" font-size="11" fill="#ef476f">y retropropagar</text>
+
+    <rect x="60" y="180" width="150" height="42" rx="9" fill="#43c59e" fill-opacity="0.16" stroke="#43c59e" stroke-width="2"/>
+    <text x="135" y="200" text-anchor="middle" font-size="12" fill="currentColor">decodificador</text>
+    <text x="135" y="216" text-anchor="middle" font-size="11" fill="#43c59e">solo en IDEC</text>
+    <path d="M 135 100 L 135 176" stroke="#43c59e" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#fl15v)"/>
+    <text x="228" y="196" font-size="11" fill="#43c59e">ancla la representación:</text>
+    <text x="228" y="212" font-size="11" fill="#43c59e">sin él, el latente se deforma sin límite</text>
+
+    <text x="357" y="30" text-anchor="middle" font-size="12" fill="#8b93a7">p se recalcula solo cada cierto número de pasos, y se trata como constante</text>
+
+    <defs>
+      <marker id="fl15" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="currentColor"/></marker>
+      <marker id="fl15r" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#ef476f"/></marker>
+      <marker id="fl15v" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#43c59e"/></marker>
+    </defs>
+  </svg>
+  <figcaption>El bucle se muerde la cola a propósito: la asignación $q$ que produce el modelo se eleva al cuadrado para fabricar el objetivo $p$, y ese objetivo se usa para reentrenar al modelo que lo generó. Por eso DEC <em>refuerza</em> lo que ya creía en vez de descubrir nada nuevo, y por eso necesita partir de una representación preentrenada. La rama verde es lo único que añade IDEC, y es lo que impide que el latente se deforme sin límite.</figcaption>
+</figure>
 
         <h2 id="idec">IDEC: no soltar la reconstrucción</h2>
 
@@ -416,7 +458,9 @@ representando los datos. IDEC consigue lo mismo sin romper nada.</pre>
 
         <h3>Lo cuarto: sin preentrenar no hay nada</h3>
 
-        <p>El último bloque quita la fase 1 y arranca DEC desde pesos aleatorios. El acuerdo se queda en el <strong>76,5 %</strong>, es decir, al nivel del k-means original (74,4 %). No colapsa a un solo grupo —el denominador $f_j$ de la distribución objetivo lo impide, y de hecho los cuatro grupos quedan poblados con tamaños 321/430/196/253— pero tampoco descubre nada.</p>
+        <p>El último bloque quita la fase 1 y arranca DEC desde pesos aleatorios. El acuerdo se queda en el <strong>76,5 %</strong>, es decir, al nivel del k-means original (74,4 %). No colapsa a un solo grupo —los cuatro quedan poblados, con tamaños 321/430/196/253— pero tampoco descubre nada.</p>
+
+        <p>Y el motivo de que no colapse no es el que uno diría. Repitiendo el experimento con el denominador $f_j$ eliminado, el resultado apenas cambia: 76,9 % de acuerdo frente al 76,5 %. Lo que impide el colapso no es el término de equilibrado, sino el hecho de que la optimización arranca de una partición ya repartida —la que da k-means sobre el latente inicial— y $D_{\mathrm{KL}}(P\Vert Q)$ solo sabe reforzar aquello de lo que parte. Es la misma razón por la que no descubre nada nuevo: es un amplificador, y un amplificador conserva el signo de lo que le entra.</p>
 
         <p>La razón es estructural: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ <strong>solo puede reforzar la partición de la que se parte</strong>. Es un amplificador, no una fuente. Si arrancas del ruido, amplificas ruido. Por eso todas las variantes de deep clustering llevan una fase de inicialización no trivial: un autoencoder, un modelo contrastivo o —en los métodos más recientes— ambos.</p>
 
@@ -459,7 +503,7 @@ representando los datos. IDEC consigue lo mismo sin romper nada.</pre>
           <div class="callout-title">🔑 Resumen del capítulo</div>
           <ul>
             <li>Representar antes de agrupar ya vale mucho: 74,4 % en el espacio original frente a 97,9 % sobre el código del autoencoder.</li>
-            <li>DEC usa asignación blanda con t de Student y una distribución objetivo $p_{ij}\propto q_{ij}^2/f_j$: el cuadrado afila, el denominador equilibra tamaños e impide la solución trivial.</li>
+            <li>DEC usa asignación blanda con t de Student y una distribución objetivo $p_{ij}\propto q_{ij}^2/f_j$: el cuadrado afila y el denominador equilibra tamaños. Lo que <em>no</em> hace $f_j$ es impedir el colapso: con todas las filas iguales, $p=q$ y la KL vale cero igualmente.</li>
             <li>Su efecto real no es descubrir sino afilar: el acuerdo sube del 97,9 % al 98,6 %, pero la confianza pasa de 0,796 a 0,978 y los puntos decididos del 31,2 % al 100 %.</li>
             <li>Sin el término de reconstrucción, la representación se destruye: el error pasa de 0,0138 a 0,7613, un factor 55. IDEC lo conserva en 0,0161 renunciando a dos décimas de acuerdo.</li>
             <li>Sin preentrenamiento, DEC se queda en el 76,5 %, el nivel del k-means original: $D_{\mathrm{KL}}(P\Vert Q)$ con $P$ derivada de $Q$ solo amplifica lo que ya había.</li>

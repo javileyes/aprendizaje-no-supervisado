@@ -92,7 +92,7 @@ print(f"\nMDS clásico con distancias euclídeas = PCA: "
 # --- 3) Isomap: distancias geodésicas + MDS ---
 print("\nCalculando geodésicas (esto tarda unos segundos)...")
 resultados = []
-for kv in [5, 8, 12, 20]:
+for kv in [5, 8, 12, 20, 40]:
     Dg = geodesicas(X, kv)
     Y_iso = mds_clasico(Dg, 2)
     resultados.append((kv, Y_iso, spearman(Y_iso[:, 0], t), Dg))
@@ -104,7 +104,16 @@ for kv, _, sp, _ in resultados:
     print(f"{'Isomap, ' + str(kv) + ' vecinos':<26} {sp:32.4f}")
 
 mejor_kv, Y_iso, mejor_sp, Dg = max(resultados, key=lambda r: r[2])
-print(f"\nMejor Isomap: {mejor_kv} vecinos, |Spearman| = {mejor_sp:.4f}")
+print(f"\nMejor Isomap: {mejor_kv} vecinos, |Spearman| = {mejor_sp:.7f}")
+# Contamos los pares DISCORDANTES de verdad, sin fórmulas aproximadas.
+orden_t = np.argsort(np.argsort(t))
+orden_y = np.argsort(np.argsort(Y_iso[:, 0] * np.sign(np.corrcoef(Y_iso[:, 0], t)[0, 1])))
+dt = np.sign(orden_t[:, None] - orden_t[None, :])
+dy = np.sign(orden_y[:, None] - orden_y[None, :])
+tri = np.triu_indices(len(t), k=1)
+disc = int((dt[tri] != dy[tri]).sum())
+print(f"  (ojo con el redondeo: NO es 1 exacto. De los {len(tri[0])} pares de puntos,")
+print(f"   {disc} quedan en orden invertido respecto al parámetro real.)")
 print("Un valor cercano a 1 significa que la coordenada recuperada ordena los")
 print("puntos igual que el recorrido REAL a lo largo de la lámina.")
 

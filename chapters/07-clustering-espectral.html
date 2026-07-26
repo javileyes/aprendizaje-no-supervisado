@@ -85,7 +85,15 @@
           <li><strong>La multiplicidad del 0 cuenta las componentes conexas.</strong> Si $Lf = 0$ entonces $f^\top L f = 0$, y como todos los sumandos son no negativos, $w_{ij} \gt 0 \Rightarrow f_i = f_j$. Es decir: $f$ es constante sobre cada componente conexa. El núcleo de $L$ está generado exactamente por los vectores indicadores de las componentes.</li>
         </ol>
 
-        <p>El tercer punto es el corazón del método. Si tus grupos fueran componentes <em>totalmente desconectadas</em>, los autovectores de autovalor cero <strong>serían</strong> las etiquetas, sin más. El clústering espectral apuesta a que, cuando la separación no es perfecta sino solo buena, esos autovectores se deforman poco y siguen sirviendo.</p>
+        <p>El tercer punto es el corazón del método, pero hay que enunciarlo con precisión. Si tus grupos fueran componentes <em>totalmente desconectadas</em>, el núcleo de $L$ estaría <strong>generado</strong> por los indicadores de los grupos. Eso no significa que cada autovector <em>sea</em> un indicador: cualquier base ortonormal de ese subespacio es igual de válida, y la que devuelve una rutina como <code>eigh</code> es arbitraria —típicamente combinaciones de los indicadores, no los indicadores—.</p>
+
+        <div class="callout intuition">
+          <div class="callout-title">🧠 Por eso hay un k-means al final</div>
+          <p>Aquí está la respuesta a una pregunta natural: si los autovectores ya «contienen» los grupos, ¿por qué el algoritmo termina aplicándoles k-means en vez de leerlos directamente?</p>
+          <p>Porque lo que está determinado es el <strong>subespacio</strong>, no la base. Los autovectores individuales pueden ser cualquier rotación dentro de él. Lo que sí ocurre es que, al mirar cada punto como la <em>fila</em> de la matriz de autovectores, todos los puntos de una misma componente reciben <strong>exactamente la misma fila</strong>. Se convierten en $k$ puntos distintos repetidos muchas veces, y eso ya es un problema trivial para k-means, sea cual sea la rotación. El paso final no es un apaño: es lo que hace el método inmune a la arbitrariedad de la base.</p>
+        </div>
+
+        <p>El clústering espectral apuesta a que, cuando la separación no es perfecta sino solo buena, esa estructura de filas se deforma poco y k-means sigue encontrándola.</p>
 
         <h2 id="cortes">Paso 3: del corte mínimo a los autovectores</h2>
 
@@ -115,7 +123,14 @@
           <p class="math-note">Ese segundo autovector se llama <strong>vector de Fiedler</strong>, y su autovalor $\lambda_2$ es la <em>conectividad algebraica</em> del grafo. Para volver a una partición basta con mirar el signo de cada componente, o pasarle un k-means.</p>
         </div>
 
-        <p>¿Cuánto se pierde al relajar? La <strong>desigualdad de Cheeger</strong> lo acota: si $h(G)$ es la conductancia del mejor corte posible, entonces $\frac{\lambda_2}{2} \le h(G) \le \sqrt{2\lambda_2}$. No es una garantía de optimalidad, pero sí dice que $\lambda_2$ pequeño implica que existe un buen corte, y que $\lambda_2$ grande implica que no existe ninguno. La relajación no puede engañarnos del todo.</p>
+        <p>¿Cuánto se pierde al relajar? Hay una cota, pero exige un cuidado que casi siempre se pasa por alto: <strong>no se enuncia con el $\lambda_2$ que acabamos de definir</strong>. La conectividad algebraica es el segundo autovalor del laplaciano <em>sin normalizar</em>, y con ella la desigualdad es sencillamente falsa —crece con los grados, mientras que la conductancia está acotada por 1—.</p>
+
+        <div class="callout math">
+          <div class="callout-title">➗ Desigualdad de Cheeger (con el laplaciano normalizado)</div>
+          <p>$$ \frac{\lambda_2^{\mathrm{sym}}}{2} \;\le\; h(G) \;\le\; \sqrt{2\,\lambda_2^{\mathrm{sym}}}, \qquad h(G) = \min_{A} \frac{\operatorname{cut}(A,\bar A)}{\min\{\operatorname{vol}(A), \operatorname{vol}(\bar A)\}} $$</p>
+          <p class="math-note">$\lambda_2^{\mathrm{sym}}$ es el segundo autovalor de $L_{\mathrm{sym}}$, que vive en $[0,2]$, y $h(G)$ es la <em>conductancia</em>: el mejor corte posible normalizado por volumen. La cota dice que $\lambda_2^{\mathrm{sym}}$ pequeño implica que existe un buen corte, y grande implica que no existe ninguno. La relajación no puede engañarnos del todo.</p>
+          <p class="math-note">Comprobado numéricamente: en el grafo completo $K_{10}$, $\lambda_2(L) = 10$, $\lambda_2(L_{\mathrm{sym}}) = 1{,}111$ y $h = 0{,}556$. Con el laplaciano sin normalizar la cota diría $5 \le 0{,}556$, que es falso; con el normalizado da $0{,}556 \le 0{,}556 \le 1{,}491$, y de hecho es <em>exacta</em> por la izquierda. Es otra razón para preferir siempre la versión normalizada.</p>
+        </div>
 
         <h3>La versión normalizada</h3>
 
@@ -267,6 +282,73 @@ plt.show()
           <li>Normalizar las filas de $U$ a norma 1. Esto proyecta los puntos a la esfera unidad, donde —según la teoría— los grupos se concentran en direcciones distintas.</li>
           <li>Aplicar k-means a esas filas.</li>
         </ol>
+
+        <figure class="figure">
+  <svg viewBox="0 0 740 220" width="100%" role="img" aria-label="Las cinco etapas del clústering espectral">
+    <g fill="#8b93a7">
+      <circle cx="42" cy="88" r="4"/><circle cx="58" cy="76" r="4"/><circle cx="36" cy="104" r="4"/>
+      <circle cx="62" cy="100" r="4"/><circle cx="90" cy="126" r="4"/><circle cx="104" cy="112" r="4"/>
+      <circle cx="86" cy="142" r="4"/><circle cx="110" cy="136" r="4"/>
+    </g>
+    <text x="72" y="176" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">1 · datos</text>
+    <text x="72" y="192" text-anchor="middle" font-size="10" fill="#8b93a7">formas cualesquiera</text>
+
+    <path d="M 132 108 L 168 108" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl7)"/>
+
+    <g stroke="#5b8def" stroke-width="1.2">
+      <line x1="204" y1="80" x2="228" y2="70"/><line x1="228" y1="70" x2="216" y2="98"/>
+      <line x1="204" y1="80" x2="216" y2="98"/><line x1="216" y1="98" x2="244" y2="122"/>
+      <line x1="244" y1="122" x2="262" y2="108"/><line x1="244" y1="122" x2="252" y2="142"/>
+      <line x1="262" y1="108" x2="252" y2="142"/>
+    </g>
+    <g fill="#5b8def">
+      <circle cx="204" cy="80" r="4"/><circle cx="228" cy="70" r="4"/><circle cx="216" cy="98" r="4"/>
+      <circle cx="244" cy="122" r="4"/><circle cx="262" cy="108" r="4"/><circle cx="252" cy="142" r="4"/>
+    </g>
+    <text x="234" y="176" text-anchor="middle" font-size="11" font-weight="700" fill="#5b8def">2 · grafo</text>
+    <text x="234" y="192" text-anchor="middle" font-size="10" fill="#8b93a7">k vecinos o gaussiana</text>
+
+    <path d="M 288 108 L 324 108" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl7)"/>
+
+    <rect x="342" y="66" width="76" height="76" rx="6" fill="none" stroke="#e2b53d" stroke-width="1.8"/>
+    <g stroke="#e2b53d" stroke-width="0.8" opacity="0.55">
+      <line x1="342" y1="85" x2="418" y2="85"/><line x1="342" y1="104" x2="418" y2="104"/>
+      <line x1="342" y1="123" x2="418" y2="123"/><line x1="361" y1="66" x2="361" y2="142"/>
+      <line x1="380" y1="66" x2="380" y2="142"/><line x1="399" y1="66" x2="399" y2="142"/>
+    </g>
+    <text x="380" y="110" text-anchor="middle" font-size="13" font-weight="700" fill="#e2b53d">L</text>
+    <text x="380" y="176" text-anchor="middle" font-size="11" font-weight="700" fill="#e2b53d">3 · laplaciano</text>
+    <text x="380" y="192" text-anchor="middle" font-size="10" fill="#8b93a7">L = D − W</text>
+
+    <path d="M 438 108 L 474 108" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl7)"/>
+
+    <line x1="492" y1="142" x2="574" y2="142" stroke="currentColor" stroke-width="1.2"/>
+    <line x1="492" y1="142" x2="492" y2="62" stroke="currentColor" stroke-width="1.2"/>
+    <g fill="#43c59e">
+      <circle cx="502" cy="140" r="4"/><circle cx="518" cy="136" r="4"/>
+      <circle cx="534" cy="88" r="4"/><circle cx="550" cy="80" r="4"/><circle cx="566" cy="72" r="4"/>
+    </g>
+    <path d="M 526 66 L 526 148" stroke="#ef476f" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <text x="533" y="176" text-anchor="middle" font-size="11" font-weight="700" fill="#43c59e">4 · espectro</text>
+    <text x="533" y="192" text-anchor="middle" font-size="10" fill="#8b93a7">salto tras los k primeros</text>
+
+    <path d="M 592 108 L 628 108" stroke="currentColor" stroke-width="1.6" marker-end="url(#fl7)"/>
+
+    <g fill="#43c59e">
+      <circle cx="652" cy="82" r="4"/><circle cx="666" cy="74" r="4"/><circle cx="660" cy="92" r="4"/>
+      <circle cx="674" cy="86" r="4"/>
+    </g>
+    <g fill="#8b5cf6">
+      <circle cx="700" cy="136" r="4"/><circle cx="714" cy="128" r="4"/><circle cx="706" cy="146" r="4"/>
+      <circle cx="720" cy="140" r="4"/>
+    </g>
+    <text x="686" y="176" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">5 · k-means</text>
+    <text x="686" y="192" text-anchor="middle" font-size="10" fill="#8b93a7">ahora sí funciona</text>
+
+    <defs><marker id="fl7" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="currentColor"/></marker></defs>
+  </svg>
+  <figcaption>El clústering espectral no sustituye a k-means: le cambia el terreno de juego. Los pasos 2 a 4 son una reducción de dimensión no lineal, y solo el paso 5 agrupa — en un espacio donde los grupos ya son bolas separadas.</figcaption>
+</figure>
 
         <p>Nótese lo que ha pasado: k-means, que en el espacio original era incapaz de separar dos lunas, <strong>sí funciona en el espacio de los autovectores</strong>. El clústering espectral no sustituye a k-means: le cambia el terreno de juego. Es, literalmente, una reducción de dimensión no lineal seguida de un clústering trivial, y por eso es también el puente hacia la <a href="09-pca.html">parte III</a>.</p>
 
@@ -443,7 +525,10 @@ DESCONECTADOS, así que hay tantos autovalores nulos como grupos.
 
         <div class="callout warn">
           <div class="callout-title">🧪 Experimenta</div>
-          <p>Sustituye la lista <code>vecinos_probados</code> por valores consecutivos: <code>[5, 6, 7, 8, 9, 10]</code>. Verás que las lunas dan un salto brusco del 67,5 % al 100 % <strong>entre 8 y 9 vecinos</strong>, sin transición: 67,5 % con 5, 6, 7 y 8, y 100 % con 9 y 10. Es el momento en que las dos mitades de cada luna dejan de estar partidas y pasan a ser una sola componente conexa. El comportamiento del método es <em>discreto</em>, y por eso barrer el parámetro no basta: hay que mirar el espectro.</p>
+          <p>Sustituye la lista <code>vecinos_probados</code> por valores consecutivos: <code>[5, 6, 7, 8, 9, 10]</code>. Verás que las lunas dan un salto brusco del 67,5 % al 100 % <strong>entre 8 y 9 vecinos</strong>, sin transición: 67,5 % con 5, 6, 7 y 8, y 100 % con 9 y 10.</p>
+          <p>La explicación tentadora —«ahí es cuando las lunas dejan de estar partidas»— es falsa, y comprobarlo enseña más que el resultado. Con 8 y con 9 vecinos el grafo tiene <strong>exactamente las mismas tres componentes conexas</strong>: una luna entera (150 puntos) y la otra rota en dos trozos (89 y 61). No cambia nada en el grafo.</p>
+          <p>Lo que cambia es <em>cuáles dos de esas tres componentes se fusionan</em> al pedir solo dos grupos. Con 8 vecinos, el trozo de 61 se junta con la luna equivocada; con 9, los trozos de 89 y 61 se juntan entre sí, que es lo correcto. Y esa decisión no la toman los datos: hay <strong>tres</strong> autovalores nulos —el núcleo tiene dimensión 3— pero solo pedimos <strong>dos</strong> autovectores, así que nos quedamos con dos vectores de un subespacio tridimensional cuya base es arbitraria. Es exactamente el problema de la sección anterior, ahora mordiendo.</p>
+          <p>La moraleja no es que 9 sea mejor que 8, sino que <strong>pedir menos grupos de los que hay componentes conexas es un caso degenerado</strong>, y su resultado depende de un detalle numérico en vez de los datos. Con 10 vecinos el grafo pasa por fin a tener dos componentes, una por luna, y a partir de ahí el 100 % deja de ser suerte. Antes de barrer el parámetro, cuenta los autovalores nulos.</p>
         </div>
 
         <h2 id="limites">Coste y límites</h2>

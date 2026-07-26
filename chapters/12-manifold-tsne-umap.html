@@ -160,7 +160,7 @@ print(f"\nMDS clásico con distancias euclídeas = PCA: "
 # --- 3) Isomap: distancias geodésicas + MDS ---
 print("\nCalculando geodésicas (esto tarda unos segundos)...")
 resultados = []
-for kv in [5, 8, 12, 20]:
+for kv in [5, 8, 12, 20, 40]:
     Dg = geodesicas(X, kv)
     Y_iso = mds_clasico(Dg, 2)
     resultados.append((kv, Y_iso, spearman(Y_iso[:, 0], t), Dg))
@@ -172,7 +172,16 @@ for kv, _, sp, _ in resultados:
     print(f"{'Isomap, ' + str(kv) + ' vecinos':&lt;26} {sp:32.4f}")
 
 mejor_kv, Y_iso, mejor_sp, Dg = max(resultados, key=lambda r: r[2])
-print(f"\nMejor Isomap: {mejor_kv} vecinos, |Spearman| = {mejor_sp:.4f}")
+print(f"\nMejor Isomap: {mejor_kv} vecinos, |Spearman| = {mejor_sp:.7f}")
+# Contamos los pares DISCORDANTES de verdad, sin fórmulas aproximadas.
+orden_t = np.argsort(np.argsort(t))
+orden_y = np.argsort(np.argsort(Y_iso[:, 0] * np.sign(np.corrcoef(Y_iso[:, 0], t)[0, 1])))
+dt = np.sign(orden_t[:, None] - orden_t[None, :])
+dy = np.sign(orden_y[:, None] - orden_y[None, :])
+tri = np.triu_indices(len(t), k=1)
+disc = int((dt[tri] != dy[tri]).sum())
+print(f"  (ojo con el redondeo: NO es 1 exacto. De los {len(tri[0])} pares de puntos,")
+print(f"   {disc} quedan en orden invertido respecto al parámetro real.)")
 print("Un valor cercano a 1 significa que la coordenada recuperada ordena los")
 print("puntos igual que el recorrido REAL a lo largo de la lámina.")
 
@@ -216,8 +225,11 @@ Isomap, 5 vecinos                                    0.9995
 Isomap, 8 vecinos                                    0.9999
 Isomap, 12 vecinos                                   0.9999
 Isomap, 20 vecinos                                   1.0000
+Isomap, 40 vecinos                                   0.2691
 
-Mejor Isomap: 20 vecinos, |Spearman| = 1.0000
+Mejor Isomap: 20 vecinos, |Spearman| = 0.9999726
+  (ojo con el redondeo: NO es 1 exacto. De los 179700 pares de puntos,
+   278 quedan en orden invertido respecto al parámetro real.)
 Un valor cercano a 1 significa que la coordenada recuperada ordena los
 puntos igual que el recorrido REAL a lo largo de la lámina.
 
@@ -226,13 +238,20 @@ Hay pares de puntos que en línea recta están 11 veces más cerca
 de lo que están sobre la lámina: eso es lo que engaña a PCA.</pre>
         </div>
 
-        <p>La diferencia es de otro orden de magnitud. PCA y el MDS clásico euclídeo —que dan exactamente lo mismo, con diferencia 0,0000, tal como predice la teoría— consiguen una correlación de rangos de <strong>0,25</strong> con la posición real a lo largo del rollo: prácticamente nada. Isomap llega a <strong>1,0000</strong>: reconstruye el orden de los 600 puntos sobre la lámina sin equivocarse ni una vez.</p>
+        <p>La diferencia es de otro orden de magnitud. PCA y el MDS clásico euclídeo —que dan exactamente lo mismo, con diferencia 0,0000, tal como predice la teoría— consiguen una correlación de rangos de <strong>0,25</strong> con la posición real a lo largo del rollo: prácticamente nada. Isomap llega a <strong>1,0000</strong>… con la trampa del redondeo. El valor real es <strong>0,9999726</strong>, y el propio programa lo señala: de los 179 700 pares de puntos, <strong>278</strong> quedan en orden invertido respecto al recorrido real. Es un 0,15 % de errores, no cero. Merece la pena insistir porque es un vicio frecuente: cuatro decimales convierten un «casi perfecto» en un «perfecto» que no lo es.</p>
 
         <p>La última medida explica el porqué. Hay pares de puntos cuya distancia geodésica es <strong>11 veces</strong> su distancia en línea recta: son los que caen en capas contiguas del rollo, separados por medio milímetro de aire pero por media vuelta de lámina. PCA los ve juntos y los proyecta juntos. Isomap los ve lejos porque cuenta el camino.</p>
 
         <div class="callout warn">
           <div class="callout-title">⚠️ El cortocircuito</div>
-          <p>Isomap depende críticamente de que el grafo de vecinos no salte entre pliegues. Si el número de vecinos es demasiado grande, aparece un enlace entre dos capas y la geodésica se «cortocircuita»: todas las distancias largas se contaminan. En una versión anterior de este ejemplo, con 700 puntos y 20 vecinos, la correlación caía de 1,0000 a <strong>0,8331</strong> exactamente por eso. Es el mismo compromiso del grafo que ya sufrimos en el <a href="07-clustering-espectral.html">capítulo 7</a>.</p>
+          <p>Isomap depende críticamente de que el grafo de vecinos no salte entre pliegues. Si el número de vecinos es demasiado grande, aparece un enlace entre dos capas del rollo y la geodésica se «cortocircuita»: ese atajo falso contamina todas las distancias largas que pasen por él, y con ellas el MDS entero.</p>
+          <p>La tabla lo enseña en su última fila. Con 5, 8, 12 y 20 vecinos la correlación sube hasta 1,0000; con <strong>40</strong> se desploma a <strong>0,2691</strong>, prácticamente el 0,2548 de PCA. Un solo enlace de más entre capas contiguas basta para tirar por tierra todo lo que el método había ganado. Es el mismo compromiso del grafo que ya sufrimos en el <a href="07-clustering-espectral.html">capítulo 7</a>, y aquí es aún menos indulgente.</p>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-title">🧪 Experimenta</div>
+          <p>Sube el número de vecinos aún más: cambia <code>for kv in [5, 8, 12, 20, 40]</code> por <code>[5, 20, 40, 60, 100]</code>. Verás que la degradación no es gradual sino un <strong>precipicio</strong>: 1,0000 con 20 vecinos y 0,2691 con 40, sin nada intermedio que avise. Y a partir de ahí da casi igual cuántos añadas —0,3041 con 60 y 0,2035 con 100, todos rondando el 0,2548 de PCA—, porque el daño ya está hecho: un solo atajo entre capas contamina todos los caminos largos que pasen por él, y añadir más atajos no empeora mucho lo que ya está roto.</p>
+          <p>Compáralo con el barrido del <a href="07-clustering-espectral.html">capítulo 7</a>, donde el clústering espectral también saltaba de golpe. Los métodos que se apoyan en un grafo de vecinos comparten esta patología: no se degradan, se rompen. Por eso conviene mirar el grafo —cuántas componentes tiene, si hay aristas sospechosamente largas— antes que barrer el parámetro a ciegas.</p>
         </div>
 
         <h2 id="tsne">t-SNE: no conservar distancias, conservar vecindarios</h2>
@@ -254,6 +273,39 @@ de lo que están sobre la lámina: eso es lo que engaña a PCA.</pre>
           <p>$$ q_{ij} = \frac{\big(1 + \lVert y_i - y_j\rVert^2\big)^{-1}}{\sum_{k\ne l}\big(1 + \lVert y_k - y_l\rVert^2\big)^{-1}} $$</p>
           <p class="math-note">Es una t de Student con 1 grado de libertad (una Cauchy), de <strong>colas pesadas</strong>. Resuelve el <em>problema del apiñamiento</em>: en dimensión alta caben muchísimos más puntos «a distancia media» que en el plano, así que al bajar de dimensión no hay sitio y todo se aplasta al centro. Con colas pesadas, dos puntos moderadamente separados en el original pueden colocarse <em>muy</em> lejos en el mapa sin penalización, lo que libera espacio y separa los grupos.</p>
         </div>
+
+        <figure class="figure">
+  <svg viewBox="0 0 720 260" width="100%" role="img" aria-label="El problema del apiñamiento y por qué t-SNE usa colas pesadas">
+    <text x="176" y="20" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">el problema: no hay sitio</text>
+    <circle cx="176" cy="122" r="16" fill="#5b8def" opacity="0.5"/>
+    <text x="176" y="127" text-anchor="middle" font-size="10" fill="currentColor">i</text>
+    <circle cx="176" cy="122" r="72" fill="none" stroke="#8b93a7" stroke-dasharray="4 3"/>
+    <g fill="#43c59e">
+      <circle cx="248" cy="122" r="6"/><circle cx="227" cy="173" r="6"/><circle cx="176" cy="194" r="6"/>
+      <circle cx="125" cy="173" r="6"/><circle cx="104" cy="122" r="6"/><circle cx="125" cy="71" r="6"/>
+      <circle cx="176" cy="50" r="6"/><circle cx="227" cy="71" r="6"/>
+    </g>
+    <text x="176" y="228" text-anchor="middle" font-size="11" fill="currentColor">en el plano, a distancia media</text>
+    <text x="176" y="244" text-anchor="middle" font-size="11" fill="currentColor">solo caben unos pocos vecinos</text>
+    <text x="176" y="212" text-anchor="middle" font-size="11" fill="#8b93a7">en dimensión 50 caben millones</text>
+
+    <line x1="352" y1="40" x2="352" y2="230" stroke="#8b93a7" stroke-width="1"/>
+
+    <text x="540" y="20" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">la solución: colas pesadas</text>
+    <line x1="410" y1="196" x2="690" y2="196" stroke="currentColor" stroke-width="1.2"/>
+    <line x1="410" y1="196" x2="410" y2="52" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M 410 60 C 440 62, 452 110, 470 152 C 486 186, 500 194, 690 196" fill="none" stroke="#ef476f" stroke-width="2.4"/>
+    <path d="M 410 78 C 440 84, 458 128, 486 158 C 530 188, 600 186, 690 178" fill="none" stroke="#43c59e" stroke-width="2.4"/>
+    <text x="600" y="88" font-size="12" fill="#ef476f">gaussiana</text>
+    <text x="600" y="106" font-size="12" fill="#43c59e">t de Student</text>
+    <text x="550" y="216" text-anchor="middle" font-size="11" fill="currentColor">distancia en el mapa</text>
+    <text x="404" y="46" text-anchor="end" font-size="11" fill="currentColor">afinidad</text>
+    <path d="M 640 178 L 640 196" stroke="#43c59e" stroke-width="1.6"/>
+    <text x="656" y="150" font-size="11" fill="#43c59e">aquí queda</text>
+    <text x="656" y="164" font-size="11" fill="#43c59e">afinidad de sobra</text>
+  </svg>
+  <figcaption>En dimensión alta caben muchísimos puntos «a distancia media» de otro; en el plano no hay sitio para todos y el mapa los aplasta contra el centro. La t de Student, al decaer mucho más despacio que la gaussiana, permite colocarlos <em>lejos</em> sin penalización: eso es lo que abre hueco entre los grupos.</figcaption>
+</figure>
 
         <p>El objetivo es la divergencia de Kullback-Leibler entre las dos, que ya conocemos del <a href="01-aprender-sin-etiquetas.html">capítulo 1</a>, y su gradiente tiene una forma sorprendentemente física:</p>
 
@@ -362,7 +414,9 @@ def tsne(D2, perplejidad=30.0, iters=600, semilla=0, dim=2):
         Y = Y + velocidad
         Y -= Y.mean(axis=0)
         if it % 50 == 0 or it == iters - 1:
-            historia.append((it, (exagera * P * np.log(exagera * P / Q)).sum()))
+            # OJO: la KL se mide SIEMPRE con la P de verdad, no con la exagerada.
+            # sum(4P·log(4P/Q)) no es una divergencia, porque 4P suma 4 y no 1.
+            historia.append((it, (P * np.log(P / Q)).sum()))
     return Y, historia
 
 
@@ -431,8 +485,8 @@ Radio medio de cada grupo: 1.62 10.85 1.62
 
 Ajustando t-SNE (perplejidad 30)...
  iteración     KL(P||Q)
-         0     14.59266
-        50     13.86398
+         0      2.26187
+        50      2.07970
        100      2.14167
        150      1.02428
        200      0.99991
@@ -470,7 +524,13 @@ Misma nube, distintas perplejidades:
   y el valor que sale depende más de la perplejidad que de los datos.</pre>
         </div>
 
-        <p>La KL baja de 14,59 a 0,948: el algoritmo funciona y converge. El salto brusco entre las iteraciones 50 y 100 es el final de la <em>exageración temprana</em>, un truco que multiplica las $p_{ij}$ por 4 durante las primeras iteraciones para que los grupos se separen antes de afinar los detalles.</p>
+        <p>La KL baja de 2,262 a 0,948: el algoritmo funciona y converge. Pero la columna tiene una sutileza que conviene leer, porque no es monótona: entre las iteraciones 50 y 100 la KL <em>sube</em> ligeramente, de 2,080 a 2,142, y solo después se desploma a 1,024.</p>
+
+        <div class="callout warn">
+          <div class="callout-title">⚠️ Durante la exageración temprana no se minimiza la KL</div>
+          <p>La <em>exageración temprana</em> multiplica las $p_{ij}$ por 4 durante las primeras 100 iteraciones, para que los grupos se separen antes de afinar los detalles. En esa fase el gradiente está minimizando el objetivo <em>exagerado</em>, no la KL verdadera, así que no hay ninguna garantía de que esta baje — y de hecho aquí sube un poco.</p>
+          <p>Cuidado también al medirla: la cantidad $\sum_{ij} 4p_{ij}\log(4p_{ij}/q_{ij})$ <strong>no es una divergencia KL</strong>, porque $4P$ suma 4 y no 1. Para que la columna sea comparable a lo largo de todo el entrenamiento hay que evaluarla siempre con la $P$ de verdad, que es lo que hace el código. El desplome de la iteración 100 a la 150 es exactamente el momento en que la exageración se apaga y el optimizador vuelve a perseguir el objetivo real.</p>
+        </div>
 
         <h3>Advertencia 1: las distancias entre grupos no significan nada</h3>
 
